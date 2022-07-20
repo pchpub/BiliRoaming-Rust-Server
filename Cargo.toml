@@ -1,0 +1,15 @@
+[package]
+name = "biliroaming_rust_server"
+version = "0.1.33"
+edition = "2022"
+author = "P CH"
+
+[dependencies]
+chrono = "0.4.19"
+curl = "0.4.43"
+actix-web = "4.1.0"
+qstring = "0.7.2"
+md5 = "0.7.0"
+json = "0.12.4"
+deadpool = "0.9.5"
+deadpool-redis = "0.10.2"
