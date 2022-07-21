@@ -11,5 +11,7 @@ actix-web = "4.1.0"
 qstring = "0.7.2"
 md5 = "0.7.0"
 json = "0.12.4"
+serde_json = "1.0.82"
+serde = {version ="1.0.139",features = ["derive"]}
 deadpool = "0.9.5"
 deadpool-redis = "0.10.2"
