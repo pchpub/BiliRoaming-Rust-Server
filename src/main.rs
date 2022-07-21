@@ -262,8 +262,8 @@ async fn zhplayurl_web(req:HttpRequest) -> impl Responder {
 }
 
 #[get("/intl/gateway/v2/ogv/playurl")]
-async fn zh_search3(req:HttpRequest) -> impl Responder {
-    get_playurl(&req, false).await
+async fn zh_playurl_app(req:HttpRequest) -> impl Responder {
+    get_playurl(&req, true).await
 }
 
 // #[get("/pgc/view/web/season")]
@@ -619,19 +619,23 @@ async fn main() -> std::io::Result<()> {
     let config_file: File;
     match File::open("config.json") {
         Ok(value) => config_file = value,
-        Err(_) => {std::process::exit(78);},
+        Err(_) => {
+            println!("缺少配置文件喵");
+            std::process::exit(78);
+        },
     }
     let config: BiliConfig = serde_json::from_reader(config_file).unwrap();
     HttpServer::new(move || {
-        let rediscfg = Config::from_url(&config.redis);//明天写读取配置文件（
+        let rediscfg = Config::from_url(&config.redis);
         let pool = rediscfg.create_pool(Some(Runtime::Tokio1)).unwrap();
         App::new()
             .app_data((pool,config.clone()))
             .service(hello)
             .service(zhplayurl_app)
             .service(zhplayurl_web)
+            .service(zh_playurl_app)
     })
-    .bind(("127.0.0.1", 2661))?
+    .bind(("127.0.0.1", 2662))?
     .workers(4)
     .keep_alive(None)
     .run()
