@@ -20,5 +20,5 @@ jobs:
       with:
         name: biliroaming-rust-server-${{ github.run_number }}
         path: |
-          ./target/debug/biliroaming_rust_server
+          ./target/fast/biliroaming_rust_server
           ./config.json
