@@ -11,7 +11,10 @@ jobs:
     if: ${{ !startsWith(github.event.head_commit.message, '[skip ci]') }}
     steps:
     - uses: actions/checkout@v2
-
+    
+    - name: Prepare
+      run: rustup target add x86_64-unknown-linux-musl
+      
     - name: Build
       run: cargo build --profile=fast  --target=x86_64-unknown-linux-musl
 
