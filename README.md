@@ -8,7 +8,7 @@
     * /x/v2/search/type?
     * /x/web-interface/search/type?
     * /intl/gateway/v2/ogv/view/app/season?
-    * 
+    * local black&white list
 * [TODO]
     * /intl/gateway/v2/app/search/v2?
     * /intl/gateway/v2/app/subtitle?
