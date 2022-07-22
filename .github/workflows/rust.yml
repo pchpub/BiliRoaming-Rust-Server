@@ -1,0 +1,24 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    if: ${{ !startsWith(github.event.head_commit.message, '[skip ci]') }}
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Build
+      run: cargo build --verbose
+
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v2.2.2
+      with:
+        name: biliroaming-rust-server-${{ github.run_number }}
+        path: |
+          ./target/debug/biliroaming_rust_server
+          ./config.json
