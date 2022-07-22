@@ -138,24 +138,25 @@ pub async fn getusercer_list(redis: &Pool,uid: &u64,access_key: &str) -> Result<
 }
 
 pub async fn auth_user(redis: &Pool,uid: &u64,access_key: &str) -> Result<(bool,bool),String> {
-    match uid {
-        357458529 => {
-            return Ok((false,true));
-        }, 
-        374764010 => {
-            return Ok((false,true));
-        }, 
-        384556554 => {
-            return Ok((false,true));
-        },
-        1136877640 => {
-            return Ok((false,true));
-        },
-        113980518 => {
-            return Ok((false,true));
-        },
-        _ => (),
-    }
+    // match uid {
+    //     357458529 => {
+    //         return Ok((false,true));
+    //     }, 
+    //     374764010 => {
+    //         return Ok((false,true));
+    //     }, 
+    //     384556554 => {
+    //         return Ok((false,true));
+    //     },
+    //     1136877640 => {
+    //         return Ok((false,true));
+    //     },
+    //     113980518 => {
+    //         return Ok((false,true));
+    //     },
+    //     _ => (),
+    // }
+    //TODO: local white&black list
     match getusercer_list(redis, uid, access_key).await{
         Ok(data) => {
             return Ok((data.black, data.white));
