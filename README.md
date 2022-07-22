@@ -15,3 +15,9 @@
     * /intl/gateway/v2/ogv/view/app/episode?
     * /pgc/view/web/season?
     * /x/intl/passport-login/oauth2/refresh_token?
+* [使用说明]
+安装 redis
+填写 config.json
+启动
+反代到 http://127.0.0.1:2662   (这个port在config.json里)
+完事
