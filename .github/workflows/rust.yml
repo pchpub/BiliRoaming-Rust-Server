@@ -13,7 +13,7 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Build
-      run: cargo build --profile=fast
+      run: cargo build --profile=fast  --target=x86_64-unknown-linux-musl
 
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v2.2.2
