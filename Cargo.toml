@@ -15,6 +15,7 @@ serde_json = "1.0.82"
 serde = {version ="1.0.139",features = ["derive"]}
 deadpool = "0.9.5"
 deadpool-redis = "0.10.2"
+#openssl = { version = "0.10", features = ["vendored"] }
 
 [profile.fast]
 inherits = "release"

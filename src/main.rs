@@ -441,8 +441,8 @@ async fn get_search(req: &HttpRequest,is_app: bool) -> impl Responder {
 }
 
 #[get("/")]
-async fn hello(req:HttpRequest) -> impl Responder {
-    println!("{:?}",req.headers().get("Host").unwrap());
+async fn hello() -> impl Responder {
+    //println!("{:?}",req.headers().get("Host").unwrap());
     HttpResponse::Ok().body("Rust server is online!")
 }
 
