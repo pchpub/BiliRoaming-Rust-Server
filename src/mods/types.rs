@@ -31,6 +31,7 @@ pub struct BiliConfig {
     pub tw_proxy_open : bool,
     pub hk_proxy_open : bool,
     pub th_proxy_open : bool,
+    pub local_wblist : HashMap<String, (bool, bool)>,
     pub search_remake : HashMap<String, String>,
 }
 

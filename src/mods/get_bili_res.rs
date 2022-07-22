@@ -89,7 +89,7 @@ pub async fn get_playurl(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Res
         }
     };
     
-    let (_,white) = match auth_user(pool,&user_info.uid,&access_key).await {
+    let (_,white) = match auth_user(pool,&user_info.uid,&access_key,&config).await {
         Ok(value) => value,
         Err(value) => {
             return HttpResponse::Ok()
@@ -310,7 +310,7 @@ pub async fn get_search(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Resp
         }
     };
     
-    let (_,white) = match auth_user(pool,&user_info.uid,&access_key).await {
+    let (_,white) = match auth_user(pool,&user_info.uid,&access_key,&config).await {
         Ok(value) => value,
         Err(_) => (false,false)
     };
@@ -508,7 +508,7 @@ pub async fn get_season(req: &HttpRequest,_is_app: bool,_is_th: bool) -> impl Re
         }
     };
     
-    let (_,white) = match auth_user(pool,&user_info.uid,&access_key).await {
+    let (_,white) = match auth_user(pool,&user_info.uid,&access_key,&config).await {
         Ok(value) => value,
         Err(_) => (false,false)
     };

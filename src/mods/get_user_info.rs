@@ -3,7 +3,7 @@ use std::string::String;
 use md5;
 use chrono::prelude::*;
 use super::request::{redis_get,redis_set,getwebpage};
-use super::types::{UserCerinfo, UserInfo};
+use super::types::{UserCerinfo, UserInfo, BiliConfig};
 
 pub async fn getuser_list(redis: &Pool,access_key: &str,appkey:&str,appsec:&str,user_agent: &str) -> Result<UserInfo,String> {
     let info: String = match redis_get(&redis,&format!("{access_key}20501")).await {
@@ -137,26 +137,13 @@ pub async fn getusercer_list(redis: &Pool,uid: &u64,access_key: &str) -> Result<
     }
 }
 
-pub async fn auth_user(redis: &Pool,uid: &u64,access_key: &str) -> Result<(bool,bool),String> {
-    // match uid {
-    //     357458529 => {
-    //         return Ok((false,true));
-    //     }, 
-    //     374764010 => {
-    //         return Ok((false,true));
-    //     }, 
-    //     384556554 => {
-    //         return Ok((false,true));
-    //     },
-    //     1136877640 => {
-    //         return Ok((false,true));
-    //     },
-    //     113980518 => {
-    //         return Ok((false,true));
-    //     },
-    //     _ => (),
-    // }
+pub async fn auth_user(redis: &Pool,uid: &u64,access_key: &str,config: &BiliConfig) -> Result<(bool,bool),String> {
     //TODO: local white&black list
+    match config.local_wblist.get(&uid.to_string()) {
+        Some(value) => {return Ok((value.0, value.1));},
+        None => (),
+    }
+
     match getusercer_list(redis, uid, access_key).await{
         Ok(data) => {
             return Ok((data.black, data.white));
