@@ -13,12 +13,12 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Build
-      run: cargo build --profile=fast
+      run: cargo build --profile=release
 
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v2.2.2
       with:
         name: biliroaming-rust-server-${{ github.run_number }}
         path: |
-          ./target/fast/biliroaming_rust_server
+          ./target/release/biliroaming_rust_server
           ./config.json
