@@ -22,6 +22,7 @@ pub struct BiliConfig {
     pub tw_web_search_api : String,
     pub hk_web_search_api : String,
     pub th_web_search_api : String,
+    pub th_app_season_api : String,
     pub cn_proxy_url : String,
     pub tw_proxy_url : String,
     pub hk_proxy_url : String,

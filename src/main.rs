@@ -1,4 +1,4 @@
-use biliroaming_rust_server::mods::get_bili_res::{get_playurl, get_search};
+use biliroaming_rust_server::mods::get_bili_res::{get_playurl, get_search,get_season};
 use biliroaming_rust_server::mods::types::BiliConfig;
 use deadpool_redis::{Config, Runtime};
 use actix_web::{get, App, HttpResponse, HttpServer, Responder, HttpRequest};
@@ -41,6 +41,11 @@ async fn thsearch_app(req:HttpRequest) -> impl Responder {
     get_search(&req, true,true).await //emmmm 油猴脚本也用的这个
 }
 
+#[get("/intl/gateway/v2/ogv/view/app/season")]
+async fn thseason_app(req:HttpRequest) -> impl Responder {
+    get_season(&req, true,true).await
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     println!("你好喵~");
@@ -68,6 +73,7 @@ async fn main() -> std::io::Result<()> {
             .service(zhsearch_app)
             .service(zhsearch_web)
             .service(thsearch_app)
+            .service(thseason_app)
     })
     .bind(("0.0.0.0", port))?
     .workers(woker_num)

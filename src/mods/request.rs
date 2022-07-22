@@ -31,7 +31,6 @@ pub fn getwebpage(url: &str,proxy_open: &bool,proxy_url: &str,user_agent: &str) 
     }
 
     let getwebpage_string: String = String::from_utf8(data).expect("error");
-    //println!("getwebpage_string:{getwebpage_string}");
     Ok(getwebpage_string)
 
 }

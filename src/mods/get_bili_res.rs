@@ -6,11 +6,11 @@ use md5;
 use chrono::prelude::*;
 use serde_json;
 use super::types::BiliConfig;
-
 use super::get_user_info::{appkey_to_sec, getuser_list, auth_user};
 use super::request::{redis_get, getwebpage, redis_set};
 
 pub async fn get_playurl(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Responder {
+
     let (pool,config) = req.app_data::<(Pool,BiliConfig)>().unwrap();
     match req.headers().get("user-agent") {
         Option::Some(_ua) => (),
@@ -80,7 +80,7 @@ pub async fn get_playurl(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Res
         }
     };
 
-    let user_info = match getuser_list(pool, access_key, appkey, &appsec,&user_agent).await{
+    let user_info = match getuser_list(pool, access_key, appkey, &appsec,&user_agent).await {
         Ok(value)=> value,
         Err(value) => {
             return HttpResponse::Ok()
@@ -260,7 +260,7 @@ pub async fn get_search(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Resp
         }
     };
 
-    let appkey = match query.get("appkey") {
+    let mut appkey = match query.get("appkey") {
         Option::Some(key) => key,
         _ => "1d8b6e7d45233436", //为了应对新的appkey,应该设定默认值
     };
@@ -285,7 +285,10 @@ pub async fn get_search(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Resp
         "cn" => 1,
         "hk" => 2,
         "tw" => 3,
-        "th" => 4,
+        "th" => {
+            appkey = "7d089525d3611b1c";    
+            4
+        },
         _ => 2,
     };
 
@@ -319,35 +322,69 @@ pub async fn get_search(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Resp
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let ts_string = ts.to_string();
-    let mut query_vec = vec![
-        ("access_key", access_key),
-        ("appkey", appkey),
-        ("build",query.get("build").unwrap_or("6400000")),
-        ("c_locale","zh_CN"),
-        ("channel","master"),
-        ("device", query.get("device").unwrap_or("android")),
-        ("disable_rcmd","0"),
-        ("fnval","4048"),
-        ("fnver","0"),
-        ("fourk","1"),
-        ("highlight","1"),
-        ("keyword",keyword),
-        ("mobi_app","android"),
-        ("platform","android"),
-        ("pn","1"),
-        ("ps","20"),
-        ("qn","120"),
-        ("s_locale","zh_CN"),
-        ("ts",&ts_string),
-        ("type","7"),
-    ];
-
-    match query.get("statistics") {
-        Some(value) => {
-            query_vec.push(("statistics",value));
+    let mut query_vec: Vec<(&str, &str)>;
+    if is_th {
+        query_vec = vec![
+            ("access_key", access_key),
+            ("appkey", appkey),
+            ("build",query.get("build").unwrap_or("1080003")),
+            ("c_locale","zh_SG"),
+            ("channel","master"),
+            ("device", query.get("device").unwrap_or("android")),
+            ("disable_rcmd","0"),
+            ("fnval",query.get("fnval").unwrap_or("976")),
+            ("fnver","0"),
+            ("fourk","1"),
+            ("highlight","1"),
+            ("keyword",keyword),
+            ("lang","hans"),
+            ("mobi_app","bstar_a"),
+            ("platform","android"),
+            ("pn","1"),
+            ("ps","20"),
+            ("qn","120"),
+            ("s_locale","zh_SG"),
+            ("sim_code","52004"),
+            ("ts",&ts_string),
+            ("type","7"),
+        ];
+        match query.get("statistics") {
+            Some(value) => {
+                query_vec.push(("statistics",value));
+            }
+            _ => (),
         }
-        _ => (),
+    }else{
+        query_vec = vec![
+            ("access_key", access_key),
+            ("appkey", appkey),
+            ("build",query.get("build").unwrap_or("6400000")),
+            ("c_locale","zh_CN"),
+            ("channel","master"),
+            ("device", query.get("device").unwrap_or("android")),
+            ("disable_rcmd","0"),
+            ("fnval","4048"),
+            ("fnver","0"),
+            ("fourk","1"),
+            ("highlight","1"),
+            ("keyword",keyword),
+            ("mobi_app","android"),
+            ("platform","android"),
+            ("pn","1"),
+            ("ps","20"),
+            ("qn","120"),
+            ("s_locale","zh_CN"),
+            ("ts",&ts_string),
+            ("type","7"),
+        ];
+        match query.get("statistics") {
+            Some(value) => {
+                query_vec.push(("statistics",value));
+            }
+            _ => (),
+        }
     }
+
     query_vec.sort_by_key(|v| v.0);
     //let unsigned_url = qstring::QString::new(query_vec);
     let unsigned_url = format!("{}",qstring::QString::new(query_vec));
@@ -437,4 +474,91 @@ pub async fn get_search(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Resp
         }
     };
 
+}
+
+pub async fn get_season(req: &HttpRequest,_is_app: bool,_is_th: bool) -> impl Responder {
+    let (pool,config) = req.app_data::<(Pool,BiliConfig)>().unwrap();
+    match req.headers().get("user-agent") {
+        Option::Some(_ua) => (),
+        _ => {
+            return HttpResponse::Ok()
+                .content_type(ContentType::plaintext())
+                .body("{\"code\":-2331,\"message\":\"草,没ua你看个der\"}");
+        }
+    }
+
+    let user_agent = format!("{}",req.headers().get("user-agent").unwrap().to_str().unwrap());
+    let query = QString::from(req.query_string());
+
+    let access_key = match query.get("access_key") {
+      Option::Some(key) => key.clone(),
+      _ => {
+        return HttpResponse::Ok()
+            .content_type(ContentType::plaintext())
+            .body("{\"code\":-2332,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}");
+        }
+    };
+
+    let user_info = match getuser_list(pool, access_key, "1d8b6e7d45233436", &appkey_to_sec("1d8b6e7d45233436").unwrap(),&user_agent).await{
+        Ok(value)=> value,
+        Err(value) => {
+            return HttpResponse::Ok()
+                .content_type(ContentType::plaintext())
+                .body(format!("{{\"code\":-2337,\"message\":\"{value}\"}}"));
+        }
+    };
+    
+    let (_,white) = match auth_user(pool,&user_info.uid,&access_key).await {
+        Ok(value) => value,
+        Err(_) => (false,false)
+    };
+
+    if white {
+        // TODO: resign
+    }
+
+    let dt = Local::now();
+    let ts = dt.timestamp_millis() as u64;
+    let ts_string = ts.to_string();
+    let mut query_vec = vec![
+        ("access_key", access_key),
+        ("appkey", "7d089525d3611b1c"),
+        ("build",query.get("build").unwrap_or("1080003")),
+        ("mobi_app","bstar_a"),
+        ("season_id",query.get("build").unwrap_or("114514")),
+        ("s_locale","zh_CN"),
+        ("ts",&ts_string),
+    ];
+
+    query_vec.sort_by_key(|v| v.0);
+    //let unsigned_url = qstring::QString::new(query_vec);
+    let unsigned_url = format!("{}",qstring::QString::new(query_vec));
+    let appsec = match appkey_to_sec("7d089525d3611b1c") {
+        Ok(value) => value,
+        _ => {
+            return HttpResponse::Ok()
+                .content_type(ContentType::plaintext())
+                .body(format!("{{\"code\":-2338,\"message\":\"没有对应的appsec\"}}"));
+        }
+    };
+    let signed_url = format!("{unsigned_url}&sign={:x}",md5::compute(format!("{unsigned_url}{appsec}")));
+    let proxy_open = &config.th_proxy_open;
+    let proxy_url = &config.th_proxy_url;
+    let api = &config.th_app_season_api;
+    let body_data = match getwebpage(&format!("{api}?{signed_url}"), proxy_open, &proxy_url,&user_agent) {
+        Ok(data) => data,
+        Err(_) => {
+            return HttpResponse::Ok()
+                .content_type(ContentType::plaintext())
+                .body("{\"code\":-2338,\"message\":\"获取失败喵\"}");
+        }
+    };
+    
+    return HttpResponse::Ok()
+        .content_type(ContentType::json())
+        .insert_header(("From", "biliroaming-rust-server"))
+        .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+        .insert_header(("Access-Control-Allow-Credentials","true"))
+        .insert_header(("Access-Control-Allow-Methods", "GET"))
+        .body(body_data);
 }
