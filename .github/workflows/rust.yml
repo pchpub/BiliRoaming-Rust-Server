@@ -12,7 +12,10 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     
-    - name: Prepare
+    - name: Prepare1
+      run: apt-get install musl-gcc
+    
+    - name: Prepare2
       run: rustup target add x86_64-unknown-linux-musl
       
     - name: Build
