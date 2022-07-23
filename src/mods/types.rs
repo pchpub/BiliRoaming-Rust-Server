@@ -24,6 +24,7 @@ pub struct BiliConfig {
     pub th_web_search_api : String,
     pub th_app_season_api : String,
     pub th_app_season_sub_api : String,
+    pub th_app_season_sub_name : String,
     pub th_app_season_sub_open : bool,
     pub cn_proxy_url : String,
     pub tw_proxy_url : String,
