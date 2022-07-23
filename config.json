@@ -1,7 +1,7 @@
 {
     "redis" : "redis://:password@host:6379",
     "port" : 2662,
-    "woker_num" : 120,
+    "woker_num" : 8,
     "cn_app_playurl_api" : "https://api.bilibili.com/pgc/player/api/playurl",
     "tw_app_playurl_api" : "https://api.bilibili.com/pgc/player/api/playurl",
     "hk_app_playurl_api" : "https://api.bilibili.com/pgc/player/api/playurl",
