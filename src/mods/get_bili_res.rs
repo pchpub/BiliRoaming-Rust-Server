@@ -625,8 +625,8 @@ pub async fn get_season(req: &HttpRequest,_is_app: bool,_is_th: bool) -> impl Re
             let lang = sub_replace_json["data"][index_of_replace_json]["lang"].as_str().unwrap();
             let url = sub_replace_json["data"][index_of_replace_json]["url"].as_str().unwrap();
             if is_result {
-                let element = format!("{{\"id\":1,\"key\":\"{key}\",\"title\":\"[非官方]\":\"{lang}\",\"url\":\"{url}\"}}");
-                body_data_json["result"]["modules"][0]["data"]["episodes"][ep]["subtitles"].as_array_mut().unwrap().insert(0, serde_json::Value::String(element));
+                let element = format!("{{\"id\":1,\"key\":\"{key}\",\"title\":\"[非官方] {lang}\",\"url\":\"{url}\"}}");
+                body_data_json["result"]["modules"][0]["data"]["episodes"][ep]["subtitles"].as_array_mut().unwrap().insert(0, serde_json::from_str(&element).unwrap());
             }
             index_of_replace_json += 1;
         }
