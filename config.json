@@ -19,6 +19,8 @@
     "hk_web_search_api" : "https://app.bilibili.com/x/web-interface/search/type",
     "th_web_search_api" : "https://app.biliintl.com/intl/gateway/v2/app/search/type",
     "th_app_season_api" : "https://app.biliintl.com/intl/gateway/v2/ogv/view/app/season",
+    "th_app_season_sub_api" : "https://示例.永雏塔菲.我爱你/?season_id=",
+    "th_app_season_sub_open" : true,
     "cn_proxy_url" : "127.0.0.1:7890",
     "tw_proxy_url" : "127.0.0.1:7890",
     "hk_proxy_url" : "127.0.0.1:7890",
