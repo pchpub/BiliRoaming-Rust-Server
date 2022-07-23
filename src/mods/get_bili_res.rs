@@ -526,7 +526,7 @@ pub async fn get_season(req: &HttpRequest,_is_app: bool,_is_th: bool) -> impl Re
         ("build",query.get("build").unwrap_or("1080003")),
         ("mobi_app","bstar_a"),
         ("season_id",query.get("build").unwrap_or("114514")),
-        ("s_locale","zh_CN"),
+        ("s_locale","zh_SG"),
         ("ts",&ts_string),
     ];
 
