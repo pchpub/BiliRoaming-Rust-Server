@@ -513,10 +513,6 @@ pub async fn get_season(req: &HttpRequest,_is_app: bool,_is_th: bool) -> impl Re
         Err(_) => (false,false)
     };
 
-    if white {
-        // TODO: resign
-    }
-
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let ts_string = ts.to_string();
@@ -525,10 +521,14 @@ pub async fn get_season(req: &HttpRequest,_is_app: bool,_is_th: bool) -> impl Re
         ("appkey", "7d089525d3611b1c"),
         ("build",query.get("build").unwrap_or("1080003")),
         ("mobi_app","bstar_a"),
-        ("season_id",query.get("build").unwrap_or("114514")),
+        ("season_id",query.get("season_id").unwrap_or("114514")),
         ("s_locale","zh_SG"),
         ("ts",&ts_string),
     ];
+
+    if white {
+        // TODO: resign
+    }
 
     query_vec.sort_by_key(|v| v.0);
     //let unsigned_url = qstring::QString::new(query_vec);
