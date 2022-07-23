@@ -620,10 +620,10 @@ pub async fn get_season(req: &HttpRequest,_is_app: bool,_is_th: bool) -> impl Re
         let mut index_of_replace_json = 0;
         let len_of_replace_json = sub_replace_json["data"].as_array().unwrap().len();
         while index_of_replace_json < len_of_replace_json {
-            let ep:usize = sub_replace_json[index_of_replace_json]["ep"].as_u64().unwrap() as usize;
-            let key = sub_replace_json[index_of_replace_json]["key"].as_str().unwrap();
-            let lang = sub_replace_json[index_of_replace_json]["lang"].as_str().unwrap();
-            let url = sub_replace_json[index_of_replace_json]["url"].as_str().unwrap();
+            let ep:usize = sub_replace_json["data"][index_of_replace_json]["ep"].as_u64().unwrap() as usize;
+            let key = sub_replace_json["data"][index_of_replace_json]["key"].as_str().unwrap();
+            let lang = sub_replace_json["data"][index_of_replace_json]["lang"].as_str().unwrap();
+            let url = sub_replace_json["data"][index_of_replace_json]["url"].as_str().unwrap();
             if is_result {
                 let element = format!("{{\"id\":1,\"key\":\"{key}\",\"title\":\"[非官方]\":\"{lang}\",\"url\":\"{url}\"}}");
                 body_data_json["result"]["modules"][0]["data"]["episodes"][ep]["subtitles"].as_array_mut().unwrap().insert(0, serde_json::Value::String(element));
