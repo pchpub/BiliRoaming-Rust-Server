@@ -4,7 +4,7 @@ use actix_web::{http::header::ContentType};
 use qstring::QString;
 use md5;
 use chrono::prelude::*;
-use serde_json;
+use serde_json::{self};
 use super::types::BiliConfig;
 use super::get_user_info::{appkey_to_sec, getuser_list, auth_user};
 use super::request::{redis_get, getwebpage, redis_set};
@@ -553,12 +553,99 @@ pub async fn get_season(req: &HttpRequest,_is_app: bool,_is_th: bool) -> impl Re
                 .body("{\"code\":-2338,\"message\":\"获取失败喵\"}");
         }
     };
-    
-    return HttpResponse::Ok()
-        .content_type(ContentType::json())
-        .insert_header(("From", "biliroaming-rust-server"))
-        .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-        .insert_header(("Access-Control-Allow-Credentials","true"))
-        .insert_header(("Access-Control-Allow-Methods", "GET"))
-        .body(body_data);
+    if config.th_app_season_sub_open {
+        let mut body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
+        let season_id: Option<u64>;
+        let is_result: bool;
+        match &body_data_json["result"] {
+            serde_json::Value::Object(value) => {
+                is_result = true;
+                season_id = Some(value["season_id"].as_u64().unwrap());
+            },
+            serde_json::Value::Null => {
+                is_result = false;
+                match &body_data_json["data"] {
+                    serde_json::Value::Null => {season_id = None;},
+                    serde_json::Value::Object(value) => {
+                        season_id = Some(value["season_id"].as_u64().unwrap());
+                    },
+                    _ => {season_id = None;},
+                }
+            },
+            _ => {
+                is_result = false;
+                season_id = None;
+            },
+        }
+        
+        match season_id {
+            None => {
+                return HttpResponse::Ok()
+                    .content_type(ContentType::json())
+                    .insert_header(("From", "biliroaming-rust-server"))
+                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                    .insert_header(("Access-Control-Allow-Credentials","true"))
+                    .insert_header(("Access-Control-Allow-Methods", "GET"))
+                    .body(body_data);
+            },
+            Some(_) => (),
+        }
+
+        let sub_replace_str = match getwebpage(&format!("{}{}",&config.th_app_season_sub_api,season_id.unwrap()), &false, "", &user_agent){
+            Ok(value) => value,
+            Err(_) => {
+                return HttpResponse::Ok()
+                    .content_type(ContentType::json())
+                    .insert_header(("From", "biliroaming-rust-server"))
+                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                    .insert_header(("Access-Control-Allow-Credentials","true"))
+                    .insert_header(("Access-Control-Allow-Methods", "GET"))
+                    .body(body_data);
+            },
+        };
+        let sub_replace_json: serde_json::Value = serde_json::from_str(&sub_replace_str).unwrap();
+        match sub_replace_json["code"].as_i64().unwrap() {
+            0 => (),
+            _ => {
+                return HttpResponse::Ok()
+                    .content_type(ContentType::json())
+                    .insert_header(("From", "biliroaming-rust-server"))
+                    .insert_header(("Tips", "Failed-to-get-subs"))
+                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                    .insert_header(("Access-Control-Allow-Credentials","true"))
+                    .insert_header(("Access-Control-Allow-Methods", "GET"))
+                    .body(body_data);
+            }
+        }
+        let mut index_of_replace_json = 0;
+        let len_of_replace_json = sub_replace_json["data"].as_array().unwrap().len();
+        while index_of_replace_json < len_of_replace_json {
+            let ep:usize = sub_replace_json[index_of_replace_json]["ep"].as_u64().unwrap() as usize;
+            let key = sub_replace_json[index_of_replace_json]["key"].as_str().unwrap();
+            let lang = sub_replace_json[index_of_replace_json]["lang"].as_str().unwrap();
+            let url = sub_replace_json[index_of_replace_json]["url"].as_str().unwrap();
+            if is_result {
+                let element = format!("{{\"id\":1,\"key\":\"{key}\",\"title\":\"[非官方]\":\"{lang}\",\"url\":\"{url}\"}}");
+                body_data_json["result"]["modules"][0]["data"]["episodes"][ep]["subtitles"].as_array_mut().unwrap().insert(0, serde_json::Value::String(element));
+            }
+            index_of_replace_json += 1;
+        }
+        let body_data = body_data_json.to_string();
+        return HttpResponse::Ok()
+            .content_type(ContentType::json())
+            .insert_header(("From", "biliroaming-rust-server"))
+            .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+            .insert_header(("Access-Control-Allow-Credentials","true"))
+            .insert_header(("Access-Control-Allow-Methods", "GET"))
+            .body(body_data);
+
+    }else{
+        return HttpResponse::Ok()
+            .content_type(ContentType::json())
+            .insert_header(("From", "biliroaming-rust-server"))
+            .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+            .insert_header(("Access-Control-Allow-Credentials","true"))
+            .insert_header(("Access-Control-Allow-Methods", "GET"))
+            .body(body_data);
+    }   
 }
