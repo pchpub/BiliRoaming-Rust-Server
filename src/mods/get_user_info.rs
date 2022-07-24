@@ -146,6 +146,9 @@ pub async fn auth_user(redis: &Pool,uid: &u64,access_key: &str,config: &BiliConf
 
     match getusercer_list(redis, uid, access_key).await{
         Ok(data) => {
+            if config.one_click_run {
+                return Ok((!data.white, data.white));
+            }
             return Ok((data.black, data.white));
         },
         Err(_) => {

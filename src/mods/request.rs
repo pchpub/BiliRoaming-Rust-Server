@@ -57,12 +57,17 @@ pub async fn redis_set(redis: &Pool,key: &str,value: &String,expire_time: u64) -
             Ok(_) => (),
             _ => return None,
         }
-    match cmd("EXPIRE")
-        .arg(&[key, &format!("{expire_time}")])
-        .query_async::<_, ()>(&mut conn)
-        .await {
-            Ok(_) => (),
-            _ => return None,
-        }
-    Some(())
+    if expire_time != 0 {
+        match cmd("EXPIRE")
+            .arg(&[key, &format!("{expire_time}")])
+            .query_async::<_, ()>(&mut conn)
+            .await {
+                Ok(_) => (),
+                _ => return None,
+            }
+        Some(())
+    }else{
+        Some(())
+    }
+    
 } 

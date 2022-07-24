@@ -52,6 +52,7 @@ pub struct BiliConfig {
     pub resign_open : HashMap<String,bool>,
     pub cache : HashMap<String, u64>,
     pub local_wblist : HashMap<String, (bool, bool)>,
+    pub one_click_run : bool,
     pub search_remake : HashMap<String, String>,
 }
 
