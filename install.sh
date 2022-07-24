@@ -5,11 +5,13 @@ debian|ubuntu|devuan)
     sudo apt-get install git
     sudo apt-get install cargo
     sudo apt-get install screen
+    sudo apt-get install redis
     ;;
 centos|fedora|rhel)
     sudo yum install git
     sudo yum install cargo
     sudo yum install screen
+    sudo yum install redis
     ;;
 *)
     exit 1
