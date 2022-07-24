@@ -199,18 +199,18 @@ pub async fn get_playurl(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Res
         let unsigned_url = format!("{unsigned_url}");
         let signed_url = format!("{unsigned_url}&sign={:x}",md5::compute(format!("{unsigned_url}{appsec}")));
         let proxy_open = match area_num {
-            1 => &config.cn_proxy_open,
-            2 => &config.hk_proxy_open,
-            3 => &config.tw_proxy_open,
-            4 => &config.th_proxy_open,
-            _ => &config.tw_proxy_open,
+            1 => &config.cn_proxy_playurl_open,
+            2 => &config.hk_proxy_playurl_open,
+            3 => &config.tw_proxy_playurl_open,
+            4 => &config.th_proxy_playurl_open,
+            _ => &config.tw_proxy_playurl_open,
         };
         let proxy_url = match area_num{
-            1 => &config.cn_proxy_url,
-            2 => &config.hk_proxy_url,
-            3 => &config.tw_proxy_url,
-            4 => &config.th_proxy_url,
-            _ => &config.tw_proxy_url,
+            1 => &config.cn_proxy_playurl_url,
+            2 => &config.hk_proxy_playurl_url,
+            3 => &config.tw_proxy_playurl_url,
+            4 => &config.th_proxy_playurl_url,
+            _ => &config.tw_proxy_playurl_url,
         };
         let api = match is_app {
             true => {
@@ -581,8 +581,8 @@ pub async fn get_season(req: &HttpRequest,_is_app: bool,_is_th: bool) -> impl Re
         }
     };
     let signed_url = format!("{unsigned_url}&sign={:x}",md5::compute(format!("{unsigned_url}{appsec}")));
-    let proxy_open = &config.th_proxy_open;
-    let proxy_url = &config.th_proxy_url;
+    let proxy_open = &config.th_proxy_playurl_open;
+    let proxy_url = &config.th_proxy_playurl_url;
     let api = &config.th_app_season_api;
     let body_data = match getwebpage(&format!("{api}?{signed_url}"), proxy_open, &proxy_url,&user_agent) {
         Ok(data) => data,
