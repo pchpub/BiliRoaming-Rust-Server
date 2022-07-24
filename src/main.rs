@@ -2,13 +2,17 @@ use biliroaming_rust_server::mods::get_bili_res::{get_playurl, get_search,get_se
 use biliroaming_rust_server::mods::types::BiliConfig;
 use deadpool_redis::{Config, Runtime};
 use actix_web::{get, App, HttpResponse, HttpServer, Responder, HttpRequest};
-use std::fs::File;
+use std::fs::{File, self};
 use serde_json;
 
 #[get("/")]
 async fn hello() -> impl Responder {
     //println!("{:?}",req.headers().get("Host").unwrap());
-    HttpResponse::Ok().body("Rust server is online!")
+    let response_body = match fs::read_to_string("index.html") {
+        Ok(value) => value,
+        Err(_) => "Rust server is online. Powered by BiliRoaming-Rust-Server".to_string(),
+    };
+    HttpResponse::Ok().body(fs::read_to_string(response_body).unwrap())
 }
 
 #[get("/pgc/player/api/playurl")]

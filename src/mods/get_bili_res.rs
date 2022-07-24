@@ -710,7 +710,7 @@ async fn change_accesskey(redis: &Pool,area_num: &i8) -> Option<String> {
     //     owner_token 12
     //版本 ：用于处理版本更新后导致的格式变更
     //     now 01
-    match redis_get(redis, &format!("a{area_num}11")).await {
+    match redis_get(redis, &format!("a{area_num}1101")).await {
         Some(value) => Some(value),
         None => None,
     }
