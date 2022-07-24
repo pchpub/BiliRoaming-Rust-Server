@@ -47,7 +47,7 @@ pub async fn redis_get(redis: &Pool,key: &String) -> Option<String> {
     Some(value)
 } 
 
-pub async fn redis_set(redis: &Pool,key: &String,value: &String,expire_time: u64) -> Option<()> {
+pub async fn redis_set(redis: &Pool,key: &str,value: &String,expire_time: u64) -> Option<()> {
     let mut conn = redis.get().await.unwrap();
     //let mut return_data: Option<()>;
     match cmd("SET")

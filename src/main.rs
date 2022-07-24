@@ -58,7 +58,6 @@ async fn main() -> std::io::Result<()> {
         },
     }
     let config: BiliConfig = serde_json::from_reader(config_file).unwrap();
-    // println!("{}", config.search_remake.get("bili.pch.pub").unwrap());
     let woker_num = config.woker_num;
     let port = config.port.clone();
     HttpServer::new(move || {

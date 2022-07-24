@@ -23,8 +23,8 @@ pub async fn get_playurl(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Res
     let user_agent = format!("{}",req.headers().get("user-agent").unwrap().to_str().unwrap());
     let query = QString::from(req.query_string());
 
-    let access_key = match query.get("access_key") {
-      Option::Some(key) => key.clone(),
+    let mut access_key = match query.get("access_key") {
+      Option::Some(key) => key.to_string(),
       _ => {
         return HttpResponse::Ok()
             .content_type(ContentType::plaintext())
@@ -53,7 +53,7 @@ pub async fn get_playurl(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Res
         },
     };
 
-    let area_num = match area {
+    let area_num: i8 = match area {
         "cn" => 1,
         "hk" => 2,
         "tw" => 3,
@@ -80,7 +80,7 @@ pub async fn get_playurl(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Res
         }
     };
 
-    let user_info = match getuser_list(pool, access_key, appkey, &appsec,&user_agent).await {
+    let user_info = match getuser_list(pool, &access_key, appkey, &appsec,&user_agent).await {
         Ok(value)=> value,
         Err(value) => {
             return HttpResponse::Ok()
@@ -97,37 +97,56 @@ pub async fn get_playurl(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Res
                 .body(value);
         }
     };
-    if white {
-        // TODO: resign
-    }
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let mut is_vip = 0;
-    if user_info.vip_expire_time >= ts {
-        is_vip = 1;
+    // if (white || *config.resign_pub.get(&area_num.to_string()).unwrap_or(&false)) & config.resign_open.get(&area_num.to_string()).unwrap_or(&false) {
+    //     // TODO: resign
+    //     let access_key = change_resign(&area_num,&config).await.unwrap_or("".to_string());
+    //     user_info = match getuser_list(pool, &access_key, appkey, &appsec,&user_agent).await {
+    //         Ok(value)=> value,
+    //         Err(value) => {
+    //             return HttpResponse::Ok()
+    //                 .content_type(ContentType::plaintext())
+    //                 .body(format!("{{\"code\":-2337,\"message\":\"{value}\"}}"));
+    //         }
+    //     };
+    // } //算了 不支持国区resign了
+    if is_th {
+        is_vip = 0;
+        if white || *config.resign_pub.get("4").unwrap_or(&false) {
+            access_key = change_accesskey(pool,&4).await.unwrap_or(access_key);
+        }
+    }else{
+        if user_info.vip_expire_time >= ts {
+            is_vip = 1;
+        }
     }
+
     let key = match is_app {
         true => format!("e{}c{}v{is_vip}{area_num}0101",ep_id.unwrap_or(""),cid.unwrap_or("")),
         false => format!("e{}c{}v{is_vip}{area_num}0701",ep_id.unwrap_or(""),cid.unwrap_or("")),
     };
-    //查询数据+地区（1位）+类型（2位）+版本（2位）
-    //地区 cn 1
-    //     hk 2
-    //     tw 3
-    //     th 4 （不打算支持，切割泰区，没弹幕我为什么不看nc-raw?）
-    //     default 2
-    //类型 app playurl 01
-    //     app search 02
-    //     app subtitle 03
-    //     app season 04 (留着备用)
-    //     user_info 05
-    //     user_cerinfo 06
-    //     web playurl 07
-    //     web search 08
-    //     web subtitle 09
-    //     web season 10
-    //版本 ：用于处理版本更新后导致的格式变更
-    //     now 01
+        //查询数据+地区（1位）+类型（2位）+版本（2位）
+        //地区 cn 1
+        //     hk 2
+        //     tw 3
+        //     th 4 （不打算支持，切割泰区，没弹幕我为什么不看nc-raw?）
+        //     default 2
+        //类型 app playurl 01
+        //     app search 02
+        //     app subtitle 03
+        //     app season 04 (留着备用)
+        //     user_info 05
+        //     user_cerinfo 06
+        //     web playurl 07
+        //     web search 08
+        //     web subtitle 09
+        //     web season 10
+        //     owner_key 11
+        //     owner_token 12
+        //版本 ：用于处理版本更新后导致的格式变更
+        //     now 01
     let is_expire: bool;
     let mut redis_get_data = String::new();
     match redis_get(&pool, &key).await {
@@ -148,7 +167,7 @@ pub async fn get_playurl(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Res
         //println!("is_expire");
         let ts_string = ts.to_string();
         let mut query_vec = vec![
-            ("access_key", access_key),
+            ("access_key", &access_key[..]),
             ("appkey", appkey),
             ("build",query.get("build").unwrap_or("6800300")),
             ("device", query.get("device").unwrap_or("android")),
@@ -222,8 +241,15 @@ pub async fn get_playurl(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Res
                     .body("{\"code\":-2338,\"message\":\"获取播放地址失败喵\"}");
             }
         };
-        let value = format!("{}{body_data}",ts+6480*1000);
-        let _: () = redis_set(&pool, &key, &value, 6480).await.unwrap_or_default();
+        let body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
+        let expire_time = match config.cache.get(body_data_json["code"].as_str().unwrap()) {
+            Some(value) => value.clone(),
+            None => {
+                config.cache.get("other").unwrap().clone()
+            },
+        };
+        let value = format!("{}{body_data}",ts+expire_time*1000);
+        let _: () = redis_set(&pool, &key, &value, expire_time).await.unwrap_or_default();
         response_body = body_data;
     }else{
         response_body = redis_get_data;
@@ -402,19 +428,19 @@ pub async fn get_search(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Resp
     };
 
     let proxy_open = match area_num {
-        1 => &config.cn_proxy_open,
-        2 => &config.hk_proxy_open,
-        3 => &config.tw_proxy_open,
-        4 => &config.th_proxy_open,
-        _ => &config.hk_proxy_open,
+        1 => &config.cn_proxy_search_open,
+        2 => &config.hk_proxy_search_open,
+        3 => &config.tw_proxy_search_open,
+        4 => &config.th_proxy_search_open,
+        _ => &config.hk_proxy_search_open,
     };
 
     let proxy_url = match area_num {
-        1 => &config.cn_proxy_url,
-        2 => &config.hk_proxy_url,
-        3 => &config.tw_proxy_url,
-        4 => &config.th_proxy_url,
-        _ => &config.hk_proxy_url,
+        1 => &config.cn_proxy_search_url,
+        2 => &config.hk_proxy_search_url,
+        3 => &config.tw_proxy_search_url,
+        4 => &config.th_proxy_search_url,
+        _ => &config.hk_proxy_search_url,
     };
 
     let body_data = match getwebpage(&format!("{api}?{signed_url}"), proxy_open, &proxy_url,&user_agent) {
@@ -453,7 +479,20 @@ pub async fn get_search(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Resp
                     .body("{\"code\":-2338,\"message\":\"获取失败喵\"}");
             }
 
-            body_data_json["data"]["items"].as_array_mut().unwrap().insert(0, serde_json::from_str(&value).unwrap());
+            match body_data_json["data"]["items"].as_array_mut(){
+                Some(value2) => {value2.insert(0, serde_json::from_str(&value).unwrap());},
+                None => {
+                    //body_data_json["data"]["items"]
+                    return HttpResponse::Ok() //TODO: fix bug
+                        .content_type(ContentType::json())
+                        .insert_header(("From", "biliroaming-rust-server"))
+                        .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                        .insert_header(("Access-Control-Allow-Credentials","true"))
+                        .insert_header(("Access-Control-Allow-Methods", "GET"))
+                        .body(body_data);
+
+                },
+            }
             let body_data = body_data_json.to_string();
             return HttpResponse::Ok()
                 .content_type(ContentType::json())
@@ -649,3 +688,34 @@ pub async fn get_season(req: &HttpRequest,_is_app: bool,_is_th: bool) -> impl Re
             .body(body_data);
     }   
 }
+
+async fn change_accesskey(redis: &Pool,area_num: &i8) -> Option<String> {
+    //查询数据+地区（1位）+类型（2位）+版本（2位）
+    //地区 cn 1
+    //     hk 2
+    //     tw 3
+    //     th 4 （不打算支持，切割泰区，没弹幕我为什么不看nc-raw?）
+    //     default 2
+    //类型 app playurl 01
+    //     app search 02
+    //     app subtitle 03
+    //     app season 04 (留着备用)
+    //     user_info 05
+    //     user_cerinfo 06
+    //     web playurl 07
+    //     web search 08
+    //     web subtitle 09
+    //     web season 10
+    //     owner_key 11
+    //     owner_token 12
+    //版本 ：用于处理版本更新后导致的格式变更
+    //     now 01
+    match redis_get(redis, &format!("a{area_num}11")).await {
+        Some(value) => Some(value),
+        None => None,
+    }
+}
+
+// async fn get_accesskey_from_token_th() -> Option<String> {
+
+// }
