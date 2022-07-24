@@ -30,7 +30,7 @@
   * `yum install redis` #CentOS
 * 填写 config.json
 *  `./biliroaming_rust_server` 启动服务端
-* 使用 Nginx 反代 `http://127.0.0.1:2662`   (这个port在config.json里)
+* 使用 Nginx 反代 `http://127.0.0.1:2662` (端口号可在 config.json 中修改)
 * Enjoy~
 
 ### 2. 自行编译二进制文件
@@ -48,5 +48,5 @@
 * `cp target/fast/biliroaming_rust_server biliroaming_rust_server`将编译好的二进制文件复制至项目根目录
 * 填写 config.json
 * 使用 `./biliroaming_rust_server` 启动服务端
-* 使用 Nginx 反代 `http://127.0.0.1:2662`   (这个port在config.json里)
+* 使用 Nginx 反代 `http://127.0.0.1:2662` (端口号可在 config.json 中修改)
 * Enjoy~
