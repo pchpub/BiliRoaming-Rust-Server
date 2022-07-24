@@ -27,4 +27,4 @@ cd /root/rust/
 echo "请去按实际情况修改/root/rust/config.json 修改好再来"
 read -p  "修改好了后按下任意键"
 screen -dmS "biliroaming_rust_server" ./biliroaming_rust_server
-echo "请反代到127.0.0.1:2662(这个端口就是config中的port,默认为2661)"
+echo "请反代到127.0.0.1:2662(这个端口就是config中的port,默认为2662)"
