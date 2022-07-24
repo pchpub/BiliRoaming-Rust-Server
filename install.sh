@@ -2,12 +2,14 @@
 source /etc/os-release
 case $ID in
 debian|ubuntu|devuan)
+    apt update && apt upgrade -y
     sudo apt-get install git
     sudo apt-get install cargo
     sudo apt-get install screen
     sudo apt-get install redis
     ;;
 centos|fedora|rhel)
+    yum update -y
     sudo yum install -y git
     sudo yum install -y cargo
     sudo yum install -y screen
