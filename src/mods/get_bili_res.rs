@@ -242,7 +242,7 @@ pub async fn get_playurl(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Res
             }
         };
         let body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
-        let expire_time = match config.cache.get(body_data_json["code"].as_str().unwrap()) {
+        let expire_time = match config.cache.get(&body_data_json["code"].as_i64().unwrap().to_string()) {
             Some(value) => value.clone(),
             None => {
                 config.cache.get("other").unwrap().clone()
