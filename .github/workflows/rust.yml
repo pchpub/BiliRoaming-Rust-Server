@@ -21,4 +21,3 @@ jobs:
         name: biliroaming-rust-server-${{ github.run_number }}
         path: |
           ./target/release/biliroaming_rust_server
-          ./config.json

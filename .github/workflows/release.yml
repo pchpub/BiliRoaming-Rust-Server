@@ -22,6 +22,10 @@ jobs:
         registry.gitlab.com/rust_musl_docker/image:stable-latest \
         cargo build --profile=fast -vv --target=x86_64-unknown-linux-musl
 
+    - name: Rename config file
+      run: |
+        cp config.example.json config.json
+
     - name: Release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
