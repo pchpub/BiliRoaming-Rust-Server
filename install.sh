@@ -35,3 +35,17 @@ else
 
 screen -dmS "biliroaming_rust_server" ./biliroaming_rust_server
 echo "请反代到127.0.0.1:2662(这个端口就是config中的port,默认为2662)"
+cat <<'TEXT' > /etc/systemd/system/biliroaming_rust_server.service
+[Unit]
+Description=Biliroaming Rust Server
+After=network.target
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/rust
+ExecStart=/root/rust/biliroaming_rust_server
+Restart=always
+TEXT
