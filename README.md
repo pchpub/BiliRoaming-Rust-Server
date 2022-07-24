@@ -11,13 +11,13 @@
 * /intl/gateway/v2/ogv/view/app/season?
 * local black&white list
 
-## [TODO]
+## [TODO] 带有删除线的api不知道哪里会用到（
 
-* /intl/gateway/v2/app/search/v2?
-* /intl/gateway/v2/app/subtitle?
-* /intl/gateway/v2/ogv/view/app/season2?
-* /intl/gateway/v2/ogv/view/app/episode?
-* /pgc/view/web/season?
+* ~~/intl/gateway/v2/app/search/v2?~~
+* ~~/intl/gateway/v2/app/subtitle?~~
+* ~~/intl/gateway/v2/ogv/view/app/season2?~~
+* ~~/intl/gateway/v2/ogv/view/app/episode?~~
+* ~~/pgc/view/web/season?~~
 * /x/intl/passport-login/oauth2/refresh_token?
 
 ## [使用说明]
