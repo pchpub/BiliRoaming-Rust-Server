@@ -22,14 +22,40 @@
     "th_app_season_sub_api" : "https://示例.永雏塔菲.我爱你/?season_id=",
     "th_app_season_sub_name" : "示例永雏塔菲字幕组",
     "th_app_season_sub_open" : true,
-    "cn_proxy_url" : "127.0.0.1:7890",
+   "cn_proxy_url" : "127.0.0.1:7890",
     "tw_proxy_url" : "127.0.0.1:7890",
     "hk_proxy_url" : "127.0.0.1:7890",
     "th_proxy_url" : "127.0.0.1:7890",
-    "cn_proxy_open" : true,
+    "cn_proxy_open" : false,
     "tw_proxy_open" : true,
     "hk_proxy_open" : false,
     "th_proxy_open" : true,
+    "cn_proxy_search_url" : "127.0.0.1:7890",
+    "hk_proxy_search_url" : "127.0.0.1:7890",
+    "tw_proxy_search_url" : "127.0.0.1:7890",
+    "th_proxy_search_url" : "127.0.0.1:7890",
+    "cn_proxy_search_open" : false,
+    "tw_proxy_search_open" : true,
+    "hk_proxy_search_open" : false,
+    "th_proxy_search_open" : true,
+    "resign_pub" :{
+        "1" : false,
+        "2" : false,
+        "3" : false,
+        "4" : false
+    },
+    "resign_open" :{
+        "1" : false,
+        "2" : false,
+        "3" : false,
+        "4" : false
+    },
+    "cache" : {
+        "-412" : 0,
+        "0" : 6480,
+        "-404" : 180,
+        "other" : 180
+    },
     "local_wblist" :{
         "114514":[false,false]
     },
