@@ -50,3 +50,9 @@
 * 使用 `./biliroaming_rust_server` 启动服务端
 * 使用 Nginx 反代 `http://127.0.0.1:2662` (端口号可在 config.json 中修改)
 * Enjoy~
+
+### 2. 使用一键安装脚本
+*  `curl -sSO https://raw.githubusercontent.com/pchpub/BiliRoaming-Rust-Server/main/install.sh && sudo bash install.sht` 
+* 按提示操作 默认选y（yes）
+* 使用 Nginx 反代 `http://127.0.0.1:2662` (端口号可在 config.json 中修改)
+* Enjoy~
