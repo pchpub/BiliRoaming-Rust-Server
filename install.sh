@@ -3,7 +3,7 @@ source /etc/os-release
 case $ID in
 debian|ubuntu|devuan)
     apt update && apt upgrade -y
-    sudo apt-get install git cargo screen redis
+    sudo apt-get install git cargo screen redis -y
     ;;
 centos|fedora|rhel)
     yum update -y
