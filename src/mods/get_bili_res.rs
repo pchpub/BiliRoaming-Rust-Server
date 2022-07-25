@@ -102,18 +102,6 @@ pub async fn get_playurl(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Res
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let mut is_vip = 0;
-    // if (white || *config.resign_pub.get(&area_num.to_string()).unwrap_or(&false)) & config.resign_open.get(&area_num.to_string()).unwrap_or(&false) {
-    //     // TODO: resign
-    //     let access_key = change_resign(&area_num,&config).await.unwrap_or("".to_string());
-    //     user_info = match getuser_list(pool, &access_key, appkey, &appsec,&user_agent).await {
-    //         Ok(value)=> value,
-    //         Err(value) => {
-    //             return HttpResponse::Ok()
-    //                 .content_type(ContentType::plaintext())
-    //                 .body(format!("{{\"code\":-2337,\"message\":\"{value}\"}}"));
-    //         }
-    //     };
-    // } //算了 不支持国区resign了
     if is_th {
         is_vip = 0;
         if white || *config.resign_pub.get("4").unwrap_or(&false) {
@@ -122,6 +110,8 @@ pub async fn get_playurl(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Res
     }else{
         if user_info.vip_expire_time >= ts {
             is_vip = 1;
+        }else if white || *config.resign_pub.get(&area_num.to_string()).unwrap_or(&false) {
+            access_key = get_resign_accesskey(pool,&area_num,&user_agent,&config).await.unwrap_or(access_key);
         }
     }
 
@@ -145,8 +135,7 @@ pub async fn get_playurl(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Res
         //     web search 08
         //     web subtitle 09
         //     web season 10
-        //     owner_key 11
-        //     owner_token 12
+        //     resign_info 11
         //版本 ：用于处理版本更新后导致的格式变更
         //     now 01
     let is_expire: bool;
@@ -704,8 +693,7 @@ async fn get_resign_accesskey(redis: &Pool,area_num: &i8,user_agent: &str,config
     }else{
         match area_num {
             4 => get_accesskey_from_token_th(redis,user_agent,config).await,
-            _ => None,
-            //TODO: _ => get_accesskey_from_token_cn(redis).await,
+            _ => get_accesskey_from_token_cn(redis,user_agent,config).await,
         }
     }
 
@@ -731,9 +719,9 @@ async fn get_accesskey_from_token_th(redis: &Pool,user_agent: &str,config: &Bili
     handle.post(true).unwrap();
     handle.post_field_size(request_data.len() as u64).unwrap();
     handle.useragent(user_agent).unwrap();
-    if config.th_proxy_playurl_open {
+    if config.th_proxy_token_open {
         handle.proxy_type(curl::easy::ProxyType::Socks5Hostname).unwrap();
-        handle.proxy(&config.th_proxy_playurl_url).unwrap();
+        handle.proxy(&config.th_proxy_token_url).unwrap();
     }
     {
         let mut transfer = handle.transfer();
@@ -767,22 +755,36 @@ async fn get_accesskey_from_token_th(redis: &Pool,user_agent: &str,config: &Bili
     Some(getpost_json["data"]["token_info"]["access_token"].to_string())
 }
 
-pub fn postwebpage(url: &str,proxy_open: &bool,proxy_url: &str,user_agent: &str) -> Result<String, ()> {
+async fn get_accesskey_from_token_cn(redis: &Pool,user_agent: &str,config: &BiliConfig) -> Option<String> {
+    let dt = Local::now();
+    let ts = dt.timestamp() as u64;
+    let resign_info = to_resign_info(&redis_get(redis, &format!("a11101")).await.unwrap()).await;
+    let access_key = resign_info.access_key;
+    let refresh_token = resign_info.refresh_token;
     let mut data = Vec::new();
     let mut handle = Easy::new();
-    handle.url(url).unwrap();
-    handle.follow_location(true).unwrap();
+    let mut request_body_string = format!("access_token={access_key}&appkey=1d8b6e7d45233436&refresh_token={refresh_token}&ts={ts}");
+    request_body_string = format!("{request_body_string}&sign={:x}",md5::compute(format!("{request_body_string}560c52ccd288fed045859ed18bffd973")));
+    let mut request_data = request_body_string.as_bytes();
+    handle.url("https://passport.bilibili.com/x/passport-login/oauth2/refresh_token").unwrap();
+    let mut headers = List::new();
+    headers.append("Content-Type: application/x-www-form-urlencoded").unwrap();
+    headers.append("charset=utf-8").unwrap();
+    handle.http_headers(headers).unwrap();
+    handle.follow_location(false).unwrap();
     handle.ssl_verify_peer(false).unwrap();
-    handle.post(false).unwrap();
-    
-    if *proxy_open { 
+    handle.post(true).unwrap();
+    handle.post_field_size(request_data.len() as u64).unwrap();
+    handle.useragent(user_agent).unwrap();
+    if config.cn_proxy_token_open {
         handle.proxy_type(curl::easy::ProxyType::Socks5Hostname).unwrap();
-        handle.proxy(proxy_url).unwrap();
-        handle.useragent(user_agent).unwrap();
+        handle.proxy(&config.th_proxy_token_url).unwrap();
     }
-
     {
         let mut transfer = handle.transfer();
+        transfer.read_function(|into| {
+            Ok(request_data.read(into).unwrap())
+        }).unwrap();
         transfer.write_function(|new_data| {
             data.extend_from_slice(new_data);
             Ok(new_data.len())
@@ -790,14 +792,24 @@ pub fn postwebpage(url: &str,proxy_open: &bool,proxy_url: &str,user_agent: &str)
         match transfer.perform() {
             Ok(()) => (()),
             _error => {
-                return Err(());
+                return None;
             }
         }
     }
 
-    let getwebpage_string: String = String::from_utf8(data).expect("error");
-    Ok(getwebpage_string)
-
+    let getpost_string: String = match String::from_utf8(data){
+        Ok(value) => value,
+        Err(_) => return None,
+    };
+    let getpost_json: serde_json::Value = serde_json::from_str(&getpost_string).unwrap();
+    let resign_info = ResignInfo {
+        area_num : 4,
+        access_key : getpost_json["data"]["token_info"]["access_token"].to_string(),
+        refresh_token : getpost_json["data"]["token_info"]["refresh_token"].to_string(),
+        expire_time: getpost_json["data"]["token_info"]["expires_in"].as_u64().unwrap() + ts,
+    };
+    redis_set(redis, "a11101", &resign_info.to_json(), 0).await;
+    Some(getpost_json["data"]["token_info"]["access_token"].to_string())
 }
 
 async fn to_resign_info(resin_info_str: &str) -> ResignInfo{

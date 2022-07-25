@@ -48,6 +48,10 @@ pub struct BiliConfig {
     // pub cn_accesskey : String,
     // pub cn_token : String,
     // pub cn_force_update : bool, 此方法弃用
+    pub cn_proxy_token_url : String,
+    pub th_proxy_token_url : String,
+    pub cn_proxy_token_open : bool,
+    pub th_proxy_token_open : bool,
     pub resign_pub : HashMap<String,bool>,
     pub resign_open : HashMap<String,bool>,
     pub cache : HashMap<String, u64>,
