@@ -9,6 +9,7 @@
 * /x/v2/search/type?
 * /x/web-interface/search/type?
 * /intl/gateway/v2/ogv/view/app/season?
+* /x/intl/passport-login/oauth2/refresh_token?
 * local black&white list
 
 ## [TODO] 带有删除线的api不知道哪里会用到（
@@ -18,7 +19,6 @@
 * ~~/intl/gateway/v2/ogv/view/app/season2?~~
 * ~~/intl/gateway/v2/ogv/view/app/episode?~~
 * ~~/pgc/view/web/season?~~
-* /x/intl/passport-login/oauth2/refresh_token?
 
 ## [使用说明]
 
