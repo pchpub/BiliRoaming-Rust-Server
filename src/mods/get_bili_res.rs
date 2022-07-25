@@ -693,6 +693,10 @@ pub async fn get_season(req: &HttpRequest,_is_app: bool,_is_th: bool) -> impl Re
 }
 
 async fn get_resign_accesskey(redis: &Pool,area_num: &i8,user_agent: &str,config: &BiliConfig) -> Option<String> {
+    let area_num = match area_num {
+        4 => 4,
+        _ => 1,
+    };
     let resign_info_str = match redis_get(redis, &format!("a{area_num}1101")).await {
         Some(value) => value,
         None => return None,
@@ -815,7 +819,7 @@ async fn get_accesskey_from_token_cn(redis: &Pool,user_agent: &str,config: &Bili
     };
     let getpost_json: serde_json::Value = serde_json::from_str(&getpost_string).unwrap();
     let resign_info = ResignInfo {
-        area_num : 4,
+        area_num : 1,
         access_key : getpost_json["data"]["token_info"]["access_token"].to_string(),
         refresh_token : getpost_json["data"]["token_info"]["refresh_token"].to_string(),
         expire_time: getpost_json["data"]["token_info"]["expires_in"].as_u64().unwrap() + ts,
