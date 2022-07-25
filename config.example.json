@@ -38,6 +38,10 @@
     "hk_proxy_search_open" : false,
     "tw_proxy_search_open" : false,
     "th_proxy_search_open" : false,
+    "cn_proxy_token_url" : "127.0.0.1:7890",
+    "th_proxy_token_url" : "127.0.0.1:7890",
+    "cn_proxy_token_open" : false,
+    "th_proxy_token_open" : true,
     "resign_pub" :{
         "1" : false,
         "2" : false,
