@@ -12,7 +12,7 @@ async fn hello() -> impl Responder {
         Ok(value) => value,
         Err(_) => "Rust server is online. Powered by BiliRoaming-Rust-Server".to_string(),
     };
-    HttpResponse::Ok().body(fs::read_to_string(response_body).unwrap())
+    HttpResponse::Ok().body(response_body)
 }
 
 #[get("/pgc/player/api/playurl")]
