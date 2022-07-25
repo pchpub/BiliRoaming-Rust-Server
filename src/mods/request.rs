@@ -9,11 +9,11 @@ pub fn getwebpage(url: &str,proxy_open: &bool,proxy_url: &str,user_agent: &str) 
     handle.follow_location(true).unwrap();
     handle.ssl_verify_peer(false).unwrap();
     handle.post(false).unwrap();
+    handle.useragent(user_agent).unwrap();
     
     if *proxy_open { 
         handle.proxy_type(curl::easy::ProxyType::Socks5Hostname).unwrap();
         handle.proxy(proxy_url).unwrap();
-        handle.useragent(user_agent).unwrap();
     }
 
     {
@@ -34,6 +34,8 @@ pub fn getwebpage(url: &str,proxy_open: &bool,proxy_url: &str,user_agent: &str) 
     Ok(getwebpage_string)
 
 }
+
+
 
 pub async fn redis_get(redis: &Pool,key: &String) -> Option<String> {
     let mut conn = redis.get().await.unwrap();

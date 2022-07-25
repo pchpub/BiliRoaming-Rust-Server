@@ -56,6 +56,7 @@ pub struct BiliConfig {
     pub search_remake : HashMap<String, String>,
 }
 
+#[derive(Serialize, Deserialize,Clone)]
 pub struct UserCerinfo {
     pub uid: u64,
     pub black:bool,
@@ -69,6 +70,7 @@ impl UserCerinfo {
     }
 }
 
+#[derive(Serialize, Deserialize,Clone)]
 pub struct UserInfo {
     pub access_key: String,
     pub uid: u64,
@@ -79,5 +81,19 @@ pub struct UserInfo {
 impl UserInfo {
     pub fn to_json(&self) -> String {
         format!("{{\"access_key\":\"{}\",\"uid\":{},\"vip_expire_time\":{},\"expire_time\":{}}}", self.access_key,self.uid,self.vip_expire_time,self.expire_time)
+    }
+}
+
+#[derive(Serialize, Deserialize,Clone)]
+pub struct ResignInfo {
+    pub area_num : i32,
+    pub access_key: String,
+    pub refresh_token: String,
+    pub expire_time : u64,
+}
+
+impl ResignInfo {
+    pub fn to_json(&self) -> String {
+        format!("{{\"area_num\":{},\"access_key\":\"{}\",\"refresh_token\":\"{}\",\"expire_time\":{}}}",self.area_num,self.access_key,self.refresh_token,self.expire_time)
     }
 }

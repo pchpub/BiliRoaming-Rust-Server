@@ -1,3 +1,4 @@
+use curl::easy::{Easy, List};
 use deadpool_redis::{Pool};
 use actix_web::{HttpResponse, Responder, HttpRequest};
 use actix_web::{http::header::ContentType};
@@ -5,7 +6,8 @@ use qstring::QString;
 use md5;
 use chrono::prelude::*;
 use serde_json::{self};
-use super::types::BiliConfig;
+use std::io::Read;
+use super::types::{BiliConfig, ResignInfo};
 use super::get_user_info::{appkey_to_sec, getuser_list, auth_user};
 use super::request::{redis_get, getwebpage, redis_set};
 
@@ -115,7 +117,7 @@ pub async fn get_playurl(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Res
     if is_th {
         is_vip = 0;
         if white || *config.resign_pub.get("4").unwrap_or(&false) {
-            access_key = change_accesskey(pool,&4).await.unwrap_or(access_key);
+            access_key = get_resign_accesskey(pool,&4,&user_agent,&config).await.unwrap_or(access_key);
         }
     }else{
         if user_info.vip_expire_time >= ts {
@@ -689,33 +691,115 @@ pub async fn get_season(req: &HttpRequest,_is_app: bool,_is_th: bool) -> impl Re
     }   
 }
 
-async fn change_accesskey(redis: &Pool,area_num: &i8) -> Option<String> {
-    //查询数据+地区（1位）+类型（2位）+版本（2位）
-    //地区 cn 1
-    //     hk 2
-    //     tw 3
-    //     th 4 （不打算支持，切割泰区，没弹幕我为什么不看nc-raw?）
-    //     default 2
-    //类型 app playurl 01
-    //     app search 02
-    //     app subtitle 03
-    //     app season 04 (留着备用)
-    //     user_info 05
-    //     user_cerinfo 06
-    //     web playurl 07
-    //     web search 08
-    //     web subtitle 09
-    //     web season 10
-    //     owner_key 11
-    //     owner_token 12
-    //版本 ：用于处理版本更新后导致的格式变更
-    //     now 01
-    match redis_get(redis, &format!("a{area_num}1101")).await {
-        Some(value) => Some(value),
-        None => None,
+async fn get_resign_accesskey(redis: &Pool,area_num: &i8,user_agent: &str,config: &BiliConfig) -> Option<String> {
+    let resign_info_str = match redis_get(redis, &format!("a{area_num}1101")).await {
+        Some(value) => value,
+        None => return None,
+    };
+    let resign_info_json: ResignInfo = serde_json::from_str(&resign_info_str).unwrap();
+    let dt = Local::now();
+    let ts = dt.timestamp() as u64;
+    if resign_info_json.expire_time > ts {
+        return Some(resign_info_json.access_key);
+    }else{
+        match area_num {
+            4 => get_accesskey_from_token_th(redis,user_agent,config).await,
+            _ => None,
+            //TODO: _ => get_accesskey_from_token_cn(redis).await,
+        }
     }
+
 }
 
-// async fn get_accesskey_from_token_th() -> Option<String> {
+async fn get_accesskey_from_token_th(redis: &Pool,user_agent: &str,config: &BiliConfig) -> Option<String> {
+    let dt = Local::now();
+    let ts = dt.timestamp() as u64;
+    let resign_info = to_resign_info(&redis_get(redis, &format!("a41101")).await.unwrap()).await;
+    let access_key = resign_info.access_key;
+    let refresh_token = resign_info.refresh_token;
+    let mut data = Vec::new();
+    let mut handle = Easy::new();
+    let request_body_string = format!("access_token={access_key}&refresh_token={refresh_token}");
+    let mut request_data = request_body_string.as_bytes();
+    handle.url("https://passport.biliintl.com/x/intl/passport-login/oauth2/refresh_token").unwrap();
+    let mut headers = List::new();
+    headers.append("Content-Type: application/x-www-form-urlencoded").unwrap();
+    headers.append("charset=utf-8").unwrap();
+    handle.http_headers(headers).unwrap();
+    handle.follow_location(true).unwrap();
+    handle.ssl_verify_peer(false).unwrap();
+    handle.post(true).unwrap();
+    handle.post_field_size(request_data.len() as u64).unwrap();
+    handle.useragent(user_agent).unwrap();
+    if config.th_proxy_playurl_open {
+        handle.proxy_type(curl::easy::ProxyType::Socks5Hostname).unwrap();
+        handle.proxy(&config.th_proxy_playurl_url).unwrap();
+    }
+    {
+        let mut transfer = handle.transfer();
+        transfer.read_function(|into| {
+            Ok(request_data.read(into).unwrap())
+        }).unwrap();
+        transfer.write_function(|new_data| {
+            data.extend_from_slice(new_data);
+            Ok(new_data.len())
+        }).unwrap();
+        match transfer.perform() {
+            Ok(()) => (()),
+            _error => {
+                return None;
+            }
+        }
+    }
 
-// }
+    let getpost_string: String = match String::from_utf8(data){
+        Ok(value) => value,
+        Err(_) => return None,
+    };
+    let getpost_json: serde_json::Value = serde_json::from_str(&getpost_string).unwrap();
+    let resign_info = ResignInfo {
+        area_num : 4,
+        access_key : getpost_json["data"]["token_info"]["access_token"].to_string(),
+        refresh_token : getpost_json["data"]["token_info"]["refresh_token"].to_string(),
+        expire_time: getpost_json["data"]["token_info"]["expires_in"].as_u64().unwrap() + ts,
+    };
+    redis_set(redis, "a41101", &resign_info.to_json(), 0).await;
+    Some(getpost_json["data"]["token_info"]["access_token"].to_string())
+}
+
+pub fn postwebpage(url: &str,proxy_open: &bool,proxy_url: &str,user_agent: &str) -> Result<String, ()> {
+    let mut data = Vec::new();
+    let mut handle = Easy::new();
+    handle.url(url).unwrap();
+    handle.follow_location(true).unwrap();
+    handle.ssl_verify_peer(false).unwrap();
+    handle.post(false).unwrap();
+    
+    if *proxy_open { 
+        handle.proxy_type(curl::easy::ProxyType::Socks5Hostname).unwrap();
+        handle.proxy(proxy_url).unwrap();
+        handle.useragent(user_agent).unwrap();
+    }
+
+    {
+        let mut transfer = handle.transfer();
+        transfer.write_function(|new_data| {
+            data.extend_from_slice(new_data);
+            Ok(new_data.len())
+        }).unwrap();
+        match transfer.perform() {
+            Ok(()) => (()),
+            _error => {
+                return Err(());
+            }
+        }
+    }
+
+    let getwebpage_string: String = String::from_utf8(data).expect("error");
+    Ok(getwebpage_string)
+
+}
+
+async fn to_resign_info(resin_info_str: &str) -> ResignInfo{
+    serde_json::from_str(resin_info_str).unwrap()
+}
