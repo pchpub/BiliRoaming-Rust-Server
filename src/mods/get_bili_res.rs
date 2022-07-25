@@ -106,12 +106,24 @@ pub async fn get_playurl(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Res
         is_vip = 0;
         if white || *config.resign_pub.get("4").unwrap_or(&false) {
             access_key = get_resign_accesskey(pool,&4,&user_agent,&config).await.unwrap_or(access_key);
+            is_vip = 1;
         }
     }else{
         if user_info.vip_expire_time >= ts {
             is_vip = 1;
         }else if white || *config.resign_pub.get(&area_num.to_string()).unwrap_or(&false) {
             access_key = get_resign_accesskey(pool,&area_num,&user_agent,&config).await.unwrap_or(access_key);
+            let user_info = match getuser_list(pool, &access_key, appkey, &appsec,&user_agent).await {
+                Ok(value)=> value,
+                Err(value) => {
+                    return HttpResponse::Ok()
+                        .content_type(ContentType::plaintext())
+                        .body(format!("{{\"code\":-23372,\"message\":\"{value}\"}}"));
+                }
+            };
+            if user_info.vip_expire_time >= ts {
+                is_vip = 1;
+            }
         }
     }
 
