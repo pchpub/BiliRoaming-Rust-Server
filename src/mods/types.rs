@@ -52,6 +52,8 @@ pub struct BiliConfig {
     pub th_proxy_token_url : String,
     pub cn_proxy_token_open : bool,
     pub th_proxy_token_open : bool,
+    pub aid : u64,
+    pub aid_replace_open : bool,
     pub resign_pub : HashMap<String,bool>,
     pub resign_open : HashMap<String,bool>,
     pub cache : HashMap<String, u64>,

@@ -550,7 +550,7 @@ pub async fn get_season(req: &HttpRequest,_is_app: bool,_is_th: bool) -> impl Re
         }
     };
     
-    let (_,white) = match auth_user(pool,&user_info.uid,&access_key,&config).await {
+    let (_,_) = match auth_user(pool,&user_info.uid,&access_key,&config).await {
         Ok(value) => value,
         Err(_) => (false,false)
     };
@@ -567,10 +567,6 @@ pub async fn get_season(req: &HttpRequest,_is_app: bool,_is_th: bool) -> impl Re
         ("s_locale","zh_SG"),
         ("ts",&ts_string),
     ];
-
-    if white {
-        // TODO: resign
-    }
 
     query_vec.sort_by_key(|v| v.0);
     //let unsigned_url = qstring::QString::new(query_vec);
@@ -672,7 +668,18 @@ pub async fn get_season(req: &HttpRequest,_is_app: bool,_is_th: bool) -> impl Re
             }
             index_of_replace_json += 1;
         }
+
+        if config.aid_replace_open {
+            let len_of_episodes = body_data_json["result"]["modules"][0]["data"]["episodes"].as_array().unwrap().len();
+            let mut index = 0;
+            while index < len_of_episodes {
+                body_data_json["result"]["modules"][0]["data"]["episodes"][index].as_object_mut().unwrap().insert("aid".to_string(), serde_json::json!(&config.aid));
+                index += 1;
+            }
+        }
+
         let body_data = body_data_json.to_string();
+
         return HttpResponse::Ok()
             .content_type(ContentType::json())
             .insert_header(("From", "biliroaming-rust-server"))
