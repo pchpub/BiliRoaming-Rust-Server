@@ -748,7 +748,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> impl 
                 .as_str()
                 .unwrap();
             if is_result {
-                let element = format!("{{\"id\":{index_of_replace_json},\"key\":\"{key}\",\"title\":\"[非官方] {lang} {}\",\"url\":\"{url}\"}}",config.th_app_season_sub_name);
+                let element = format!("{{\"id\":{index_of_replace_json},\"key\":\"{key}\",\"title\":\"[非官方] {lang} {}\",\"url\":\"https://{url}\"}}",config.th_app_season_sub_name);
                 body_data_json["result"]["modules"][0]["data"]["episodes"][ep]["subtitles"]
                     .as_array_mut()
                     .unwrap()
