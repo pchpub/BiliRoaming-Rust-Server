@@ -770,8 +770,8 @@ async fn get_accesskey_from_token_th(redis: &Pool,user_agent: &str,config: &Bili
     let getpost_json: serde_json::Value = serde_json::from_str(&getpost_string).unwrap();
     let resign_info = ResignInfo {
         area_num : 4,
-        access_key : getpost_json["data"]["token_info"]["access_token"].to_string(),
-        refresh_token : getpost_json["data"]["token_info"]["refresh_token"].to_string(),
+        access_key : getpost_json["data"]["token_info"]["access_token"].as_str().unwrap().to_string(),
+        refresh_token : getpost_json["data"]["token_info"]["refresh_token"].as_str().unwrap().to_string(),
         expire_time: getpost_json["data"]["token_info"]["expires_in"].as_u64().unwrap() + ts,
     };
     redis_set(redis, "a41101", &resign_info.to_json(), 0).await;
@@ -827,8 +827,8 @@ async fn get_accesskey_from_token_cn(redis: &Pool,user_agent: &str,config: &Bili
     let getpost_json: serde_json::Value = serde_json::from_str(&getpost_string).unwrap();
     let resign_info = ResignInfo {
         area_num : 1,
-        access_key : getpost_json["data"]["token_info"]["access_token"].to_string(),
-        refresh_token : getpost_json["data"]["token_info"]["refresh_token"].to_string(),
+        access_key : getpost_json["data"]["token_info"]["access_token"].as_str().unwrap().to_string(),
+        refresh_token : getpost_json["data"]["token_info"]["refresh_token"].as_str().unwrap().to_string(),
         expire_time: getpost_json["data"]["token_info"]["expires_in"].as_u64().unwrap() + ts,
     };
     redis_set(redis, "a11101", &resign_info.to_json(), 0).await;
