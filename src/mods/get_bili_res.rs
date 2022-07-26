@@ -45,7 +45,7 @@ pub async fn get_playurl(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Res
     };
 
     let area = match query.get("area") {
-        Option::Some(area) => area.clone(),
+        Option::Some(area) => area,
         _ => {
             if is_th {
                 "th"
@@ -64,12 +64,12 @@ pub async fn get_playurl(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Res
     };
 
     let ep_id = match query.get("ep_id") {
-        Option::Some(key) => Some(key.clone()),
+        Option::Some(key) => Some(key),
         _ => None,
     };
 
     let cid = match query.get("cid") {
-        Option::Some(key) => Some(key.clone()),
+        Option::Some(key) => Some(key),
         _ => None,
     };
 
@@ -246,13 +246,13 @@ pub async fn get_playurl(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Res
         };
         let body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
         let expire_time = match config.cache.get(&body_data_json["code"].as_i64().unwrap().to_string()) {
-            Some(value) => value.clone(),
+            Some(value) => value,
             None => {
-                config.cache.get("other").unwrap().clone()
+                config.cache.get("other").unwrap()
             },
         };
         let value = format!("{}{body_data}",ts+expire_time*1000);
-        let _: () = redis_set(&pool, &key, &value, expire_time).await.unwrap_or_default();
+        let _: () = redis_set(&pool, &key, &value, *expire_time).await.unwrap_or_default();
         response_body = body_data;
     }else{
         response_body = redis_get_data;
@@ -281,7 +281,7 @@ pub async fn get_search(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Resp
     let query = QString::from(req.query_string());
 
     let access_key = match query.get("access_key") {
-      Option::Some(key) => key.clone(),
+      Option::Some(key) => key,
       _ => {
         return HttpResponse::Ok()
             .content_type(ContentType::plaintext())
@@ -295,12 +295,12 @@ pub async fn get_search(req: &HttpRequest,is_app: bool,is_th: bool) -> impl Resp
     };
 
     let keyword = match query.get("keyword") {
-        Option::Some(key) => key.clone(),
+        Option::Some(key) => key,
         _ => ""
     };
 
     let area = match query.get("area") {
-        Option::Some(area) => area.clone(),
+        Option::Some(area) => area,
         _ => {
             if is_th {
                 "th"
@@ -533,7 +533,7 @@ pub async fn get_season(req: &HttpRequest,_is_app: bool,_is_th: bool) -> impl Re
     let query = QString::from(req.query_string());
 
     let access_key = match query.get("access_key") {
-      Option::Some(key) => key.clone(),
+      Option::Some(key) => key,
       _ => {
         return HttpResponse::Ok()
             .content_type(ContentType::plaintext())
