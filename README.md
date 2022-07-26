@@ -12,13 +12,15 @@
 * /x/intl/passport-login/oauth2/refresh_token?
 * local black&white list
 
-## [TODO] 带有删除线的api不知道哪里会用到（
+## [TODO] 
 
-* ~~/intl/gateway/v2/app/search/v2?~~
-* ~~/intl/gateway/v2/app/subtitle?~~
-* ~~/intl/gateway/v2/ogv/view/app/season2?~~
-* ~~/intl/gateway/v2/ogv/view/app/episode?~~
-* ~~/pgc/view/web/season?~~
+* /intl/gateway/v2/app/search/v2?
+* /intl/gateway/v2/app/subtitle?
+* /intl/gateway/v2/ogv/view/app/season2?
+* /intl/gateway/v2/ogv/view/app/episode?
+* /pgc/view/web/season?
+* check sign
+* to be faster
 
 ## [使用说明]
 
