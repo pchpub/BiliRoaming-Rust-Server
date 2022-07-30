@@ -260,10 +260,10 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
             },
         };
 
-        let body_data = match getwebpage(
+        let mut body_data = match getwebpage(
             &format!("{api}?{signed_url}"),
             proxy_open,
-            &proxy_url,
+            proxy_url,
             &user_agent,
         ) {
             Ok(data) => data,
@@ -274,9 +274,49 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
             }
         };
         let body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
+        let mut code = body_data_json["code"].as_i64().unwrap().clone();
+        let backup_policy = match area_num {
+            1 => &config.cn_proxy_playurl_backup_policy,
+            2 => &config.hk_proxy_playurl_backup_policy,
+            3 => &config.tw_proxy_playurl_backup_policy,
+            4 => &config.th_proxy_playurl_backup_policy,
+            _ => &false,
+        };
+        if code == -10500 as i64 && *backup_policy{
+            let proxy_open = match area_num {
+                1 => &config.cn_proxy_playurl_backup_open,
+                2 => &config.hk_proxy_playurl_backup_open,
+                3 => &config.tw_proxy_playurl_backup_open,
+                4 => &config.th_proxy_playurl_backup_open,
+                _ => &config.tw_proxy_playurl_backup_open,
+            };
+            let proxy_url = match area_num {
+                1 => &config.cn_proxy_playurl_backup_url,
+                2 => &config.hk_proxy_playurl_backup_url,
+                3 => &config.tw_proxy_playurl_backup_url,
+                4 => &config.th_proxy_playurl_backup_url,
+                _ => &config.tw_proxy_playurl_backup_url,
+            };
+            body_data = match getwebpage(
+                &format!("{api}?{signed_url}"),
+                proxy_open,
+                proxy_url,
+                &user_agent,
+            ) {
+                Ok(data) => data,
+                Err(_) => {
+                    return HttpResponse::Ok()
+                        .content_type(ContentType::plaintext())
+                        .body("{\"code\":-23382,\"message\":\"获取播放地址失败喵\"}");
+                }
+            };
+            let body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
+            code = body_data_json["code"].as_i64().unwrap();
+        }
+
         let expire_time = match config
             .cache
-            .get(&body_data_json["code"].as_i64().unwrap().to_string())
+            .get(&code.to_string())
         {
             Some(value) => value,
             None => config.cache.get("other").unwrap(),
