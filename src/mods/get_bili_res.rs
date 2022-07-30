@@ -315,16 +315,22 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
     );
     let query = QString::from(req.query_string());
 
-    let access_key = match query.get("access_key") {
-        Option::Some(key) => key,
-        _ => {
-            return HttpResponse::Ok()
-                .content_type(ContentType::plaintext())
-                .body(
-                    "{\"code\":-2332,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}",
-                );
-        }
-    };
+    let access_key: &str;
+    if is_app {
+        access_key = match query.get("access_key") {
+            Option::Some(key) => key,
+            _ => {
+                return HttpResponse::Ok()
+                    .content_type(ContentType::plaintext())
+                    .body(
+                        "{\"code\":-2332,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}",
+                    );
+            }
+        };
+    }else{
+        access_key = "";
+    }
+    
 
     let mut appkey = match query.get("appkey") {
         Option::Some(key) => key,
@@ -367,22 +373,21 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
         }
     };
 
-    let user_info = match getuser_list(pool, access_key, appkey, &appsec, &user_agent).await {
-        Ok(value) => value,
-        Err(value) => {
-            return HttpResponse::Ok()
-                .content_type(ContentType::plaintext())
-                .body(format!("{{\"code\":-2337,\"message\":\"{value}\"}}"));
-        }
-    };
-
-    let (_, white) = match auth_user(pool, &user_info.uid, &access_key, &config).await {
-        Ok(value) => value,
-        Err(_) => (false, false),
-    };
-
-    if white {
-        // TODO: resign
+    if is_app {
+        let user_info = match getuser_list(pool, access_key, appkey, &appsec, &user_agent).await {
+            Ok(value) => value,
+            Err(value) => {
+                return HttpResponse::Ok()
+                    .content_type(ContentType::plaintext())
+                    .body(format!("{{\"code\":-2337,\"message\":\"{value}\"}}"));
+            }
+        };
+    
+        let (_, _) = match auth_user(pool, &user_info.uid, &access_key, &config).await {
+            Ok(value) => value,
+            Err(_) => (false, false),
+        };
+    
     }
 
     let dt = Local::now();
