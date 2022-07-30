@@ -449,70 +449,74 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let ts_string = ts.to_string();
-    let mut query_vec: Vec<(&str, &str)>;
+    let mut query_vec: Vec<(String, String)>;
     if is_th {
         query_vec = vec![
-            ("access_key", access_key),
-            ("appkey", appkey),
-            ("build", query.get("build").unwrap_or("1080003")),
-            ("c_locale", "zh_SG"),
-            ("channel", "master"),
-            ("device", query.get("device").unwrap_or("android")),
-            ("disable_rcmd", "0"),
-            ("fnval", query.get("fnval").unwrap_or("976")),
-            ("fnver", "0"),
-            ("fourk", "1"),
-            ("highlight", "1"),
-            ("keyword", keyword),
-            ("lang", "hans"),
-            ("mobi_app", "bstar_a"),
-            ("platform", "android"),
-            ("pn", "1"),
-            ("ps", "20"),
-            ("qn", "120"),
-            ("s_locale", "zh_SG"),
-            ("sim_code", "52004"),
-            ("ts", &ts_string),
-            ("type", "7"),
+            ("access_key".to_string(), access_key.to_string()),
+            ("appkey".to_string(), appkey.to_string()),
+            ("build".to_string(), query.get("build").unwrap_or("1080003").to_string()),
+            ("c_locale".to_string(), "zh_SG".to_string()),
+            ("channel".to_string(), "master".to_string()),
+            ("device".to_string(), query.get("device").unwrap_or("android").to_string()),
+            ("disable_rcmd".to_string(), "0".to_string()),
+            ("fnval".to_string(), query.get("fnval").unwrap_or("976").to_string()),
+            ("fnver".to_string(), "0".to_string()),
+            ("fourk".to_string(), "1".to_string()),
+            ("highlight".to_string(), "1".to_string()),
+            ("keyword.to_string()".to_string(), keyword.to_string()),
+            ("lang".to_string(), "hans".to_string()),
+            ("mobi_app".to_string(), "bstar_a".to_string()),
+            ("platform".to_string(), "android".to_string()),
+            ("pn".to_string(), "1".to_string()),
+            ("ps".to_string(), "20".to_string()),
+            ("qn".to_string(), "120".to_string()),
+            ("s_locale".to_string(), "zh_SG".to_string()),
+            ("sim_code".to_string(), "52004".to_string()),
+            ("ts".to_string(), ts_string.to_string()),
+            ("type".to_string(), "7".to_string()),
         ];
         match query.get("statistics") {
             Some(value) => {
-                query_vec.push(("statistics", value));
+                query_vec.push(("statistics".to_string(), value.to_string()));
             }
             _ => (),
         }
     } else {
-        query_vec = vec![
-            ("access_key", access_key),
-            ("appkey", appkey),
-            ("build", query.get("build").unwrap_or("6400000")),
-            ("c_locale", "zh_CN"),
-            ("channel", "master"),
-            ("device", query.get("device").unwrap_or("android")),
-            ("disable_rcmd", "0"),
-            ("fnval", "4048"),
-            ("fnver", "0"),
-            ("fourk", "1"),
-            ("highlight", "1"),
-            ("keyword", keyword),
-            ("mobi_app", "android"),
-            ("platform", "android"),
-            ("pn", "1"),
-            ("ps", "20"),
-            ("qn", "120"),
-            ("s_locale", "zh_CN"),
-            ("ts", &ts_string),
-            ("type", "7"),
-        ];
-        match query.get("statistics") {
-            Some(value) => {
-                query_vec.push(("statistics", value));
+        if is_app {
+            query_vec = vec![
+                ("access_key".to_string(), access_key.to_string()),
+                ("appkey".to_string(), appkey.to_string()),
+                ("build".to_string(), query.get("build").unwrap_or("6400000").to_string()),
+                ("c_locale".to_string(), "zh_CN".to_string()),
+                ("channel".to_string(), "master".to_string()),
+                ("device".to_string(), query.get("device").unwrap_or("android").to_string()),
+                ("disable_rcmd".to_string(), "0".to_string()),
+                ("fnval".to_string(), "4048".to_string()),
+                ("fnver".to_string(), "0".to_string()),
+                ("fourk".to_string(), "1".to_string()),
+                ("highlight".to_string(), "1".to_string()),
+                ("keyword".to_string(), keyword.to_string()),
+                ("mobi_app".to_string(), "android".to_string()),
+                ("platform".to_string(), "android".to_string()),
+                ("pn".to_string(), "1".to_string()),
+                ("ps".to_string(), "20".to_string()),
+                ("qn".to_string(), "120".to_string()),
+                ("s_locale".to_string(), "zh_CN".to_string()),
+                ("ts".to_string(), ts_string.to_string()),
+                ("type".to_string(), "7".to_string()),
+            ];
+            match query.get("statistics") {
+                Some(value) => {
+                    query_vec.push(("statistics".to_string(), value.to_string()));
+                }
+                _ => (),
             }
-            _ => (),
-        }
+        }else{ 
+            query_vec = query.into_pairs();
+        } 
     }
 
-    query_vec.sort_by_key(|v| v.0);
+    query_vec.sort_by_key(|v| v.0.clone());
     //let unsigned_url = qstring::QString::new(query_vec);
     let unsigned_url = format!("{}", qstring::QString::new(query_vec));
     let signed_url = format!(
