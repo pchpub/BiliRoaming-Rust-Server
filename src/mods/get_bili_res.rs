@@ -283,6 +283,22 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
             _ => &false,
         };
         if code == -10500 as i64 && *backup_policy{
+            let api = match is_app {
+                true => match area_num {
+                    1 => &config.cn_app_playurl_backup_api,
+                    2 => &config.hk_app_playurl_backup_api,
+                    3 => &config.tw_app_playurl_backup_api,
+                    4 => &config.th_app_playurl_backup_api,
+                    _ => &config.tw_app_playurl_backup_api,
+                },
+                false => match area_num {
+                    1 => &config.cn_web_playurl_backup_api,
+                    2 => &config.hk_web_playurl_backup_api,
+                    3 => &config.tw_web_playurl_backup_api,
+                    4 => &config.th_web_playurl_backup_api,
+                    _ => &config.tw_web_playurl_backup_api,
+                },
+            };
             let proxy_open = match area_num {
                 1 => &config.cn_proxy_playurl_backup_open,
                 2 => &config.hk_proxy_playurl_backup_open,
