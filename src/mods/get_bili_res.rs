@@ -372,7 +372,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
     let query = QString::from(req.query_string());
 
     let access_key: &str;
-    if is_app {
+    if is_app && (! is_th) {
         access_key = match query.get("access_key") {
             Option::Some(key) => key,
             _ => {
@@ -452,7 +452,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
     let mut query_vec: Vec<(String, String)>;
     if is_th {
         query_vec = vec![
-            ("access_key".to_string(), access_key.to_string()),
+            // ("access_key".to_string(), access_key.to_string()),
             ("appkey".to_string(), appkey.to_string()),
             ("build".to_string(), query.get("build").unwrap_or("1080003").to_string()),
             ("c_locale".to_string(), "zh_SG".to_string()),
@@ -475,6 +475,12 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
             ("ts".to_string(), ts_string.to_string()),
             ("type".to_string(), "7".to_string()),
         ];
+        match query.get("access_key") {
+            Option::Some(value) => {
+                query_vec.push(("access_key".to_string(), value.to_string()));
+            },
+            _ => (),
+        };
         match query.get("statistics") {
             Some(value) => {
                 query_vec.push(("statistics".to_string(), value.to_string()));
