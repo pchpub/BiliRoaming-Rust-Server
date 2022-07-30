@@ -463,7 +463,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
             ("fnver".to_string(), "0".to_string()),
             ("fourk".to_string(), "1".to_string()),
             ("highlight".to_string(), "1".to_string()),
-            ("keyword.to_string()".to_string(), keyword.to_string()),
+            ("keyword".to_string(), keyword.to_string()),
             ("lang".to_string(), "hans".to_string()),
             ("mobi_app".to_string(), "bstar_a".to_string()),
             ("platform".to_string(), "android".to_string()),
