@@ -429,7 +429,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
         }
     };
 
-    if is_app {
+    if is_app && (! is_th) {
         let user_info = match getuser_list(pool, access_key, appkey, &appsec, &user_agent).await {
             Ok(value) => value,
             Err(value) => {
@@ -629,7 +629,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
 }
 
 pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> impl Responder {
-    let (pool, config) = req.app_data::<(Pool, BiliConfig)>().unwrap();
+    let (_pool, config) = req.app_data::<(Pool, BiliConfig)>().unwrap();
     match req.headers().get("user-agent") {
         Option::Some(_ua) => (),
         _ => {
@@ -656,27 +656,27 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> impl 
         }
     };
 
-    let user_info = match getuser_list(
-        pool,
-        access_key,
-        "1d8b6e7d45233436",
-        &appkey_to_sec("1d8b6e7d45233436").unwrap(),
-        &user_agent,
-    )
-    .await
-    {
-        Ok(value) => value,
-        Err(value) => {
-            return HttpResponse::Ok()
-                .content_type(ContentType::plaintext())
-                .body(format!("{{\"code\":-2337,\"message\":\"{value}\"}}"));
-        }
-    };
+    // let user_info = match getuser_list(
+    //     pool,
+    //     access_key,
+    //     "1d8b6e7d45233436",
+    //     &appkey_to_sec("1d8b6e7d45233436").unwrap(),
+    //     &user_agent,
+    // )
+    // .await
+    // {
+    //     Ok(value) => value,
+    //     Err(value) => {
+    //         return HttpResponse::Ok()
+    //             .content_type(ContentType::plaintext())
+    //             .body(format!("{{\"code\":-2337,\"message\":\"{value}\"}}"));
+    //     }
+    // };
 
-    let (_, _) = match auth_user(pool, &user_info.uid, &access_key, &config).await {
-        Ok(value) => value,
-        Err(_) => (false, false),
-    };
+    // let (_, _) = match auth_user(pool, &user_info.uid, &access_key, &config).await {
+    //     Ok(value) => value,
+    //     Err(_) => (false, false),
+    // }; //为了让不带access key 的web搜索脚本能用(不带用户信息，这是极坏的)
 
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
