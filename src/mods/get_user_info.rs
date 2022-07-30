@@ -18,7 +18,7 @@ pub async fn getuser_list(redis: &Pool,access_key: &str,appkey:&str,appsec:&str,
             let output = match getwebpage(&url,&false,"",user_agent){
                 Ok(data) => data,
                 Err(_) => {
-                    println!("getuser_list函数寄了 url:{}",url);
+                    // println!("getuser_list函数寄了 url:{}",url);
                     return Err("emmmm解析服务器的网络问题".to_string());
                 }
             };
@@ -120,7 +120,6 @@ pub async fn getusercer_list(redis: &Pool,uid: &u64,access_key: &str) -> Result<
             Err(_) => {return Err(())}
         };
         let getwebpage_json = json::parse(&getwebpage_data).unwrap();
-        //{"code":0,"message":"0","data":{"uid":35828134,"is_blacklist":false,"is_whitelist":false,"reason":""}}
         if getwebpage_json["code"].as_i16().unwrap_or(233) == 0 {
             let return_data = UserCerinfo {
                 uid: getwebpage_json["data"]["uid"].as_u64().unwrap(),
