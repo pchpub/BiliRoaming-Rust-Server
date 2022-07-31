@@ -603,7 +603,6 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
                     value2.insert(0, serde_json::from_str(&value).unwrap());
                 }
                 None => {
-                    //body_data_json["data"]["items"]
                     return HttpResponse::Ok() //TODO: fix bug
                         .content_type(ContentType::json())
                         .insert_header(("From", "biliroaming-rust-server"))
@@ -1054,4 +1053,106 @@ async fn get_accesskey_from_token_cn(
 
 async fn to_resign_info(resin_info_str: &str) -> ResignInfo {
     serde_json::from_str(resin_info_str).unwrap()
+}
+
+pub async fn get_subtitle_th(req: &HttpRequest, _: bool, _: bool) -> impl Responder {
+    let (pool, config) = req.app_data::<(Pool, BiliConfig)>().unwrap();
+    match req.headers().get("user-agent") {
+        Option::Some(_ua) => (),
+        _ => {
+            return HttpResponse::Ok()
+                .content_type(ContentType::plaintext())
+                .body("{\"code\":-2331,\"message\":\"草,没ua你看个der\"}");
+        }
+    }
+    let user_agent = format!(
+        "{}",
+        req.headers().get("user-agent").unwrap().to_str().unwrap()
+    );
+    let mut query = QString::from(req.query_string());
+    let ep_id = query.get("ep_id").unwrap();
+    let dt = Local::now();
+    let ts = dt.timestamp() as u64;
+    //查询数据+地区（1位）+类型（2位）+版本（2位）
+    //地区 cn 1
+    //     hk 2
+    //     tw 3
+    //     th 4 （不打算支持，切割泰区，没弹幕我为什么不看nc-raw?）
+    //     default 2
+    //类型 app playurl 01
+    //     app search 02
+    //     app subtitle 03
+    //     app season 04 (留着备用)
+    //     user_info 05
+    //     user_cerinfo 06
+    //     web playurl 07
+    //     web search 08
+    //     web subtitle 09
+    //     web season 10
+    //     token 11
+    //     th subtitle 12
+    //版本 ：用于处理版本更新后导致的格式变更
+    //     now 01
+    let key = format!("e{ep_id}41201");
+    let is_expire: bool;
+    let mut redis_get_data = String::new();
+    match redis_get(&pool, &key).await {
+        Some(value) => {
+            if &value[..13].parse::<u64>().unwrap() < &(ts * 1000) {
+                is_expire = true;
+            } else {
+                redis_get_data = value[13..].to_string();
+                is_expire = false;
+            }
+        }
+        None => {
+            is_expire = true;
+        }
+    };
+    if is_expire {
+        query.add_str(&format!("&appkey=7d089525d3611b1c&mobi_app=bstar_a&s_locale=zh_SG&ts={ts}"));
+        let mut query_vec = query.to_pairs();
+        query_vec.sort_by_key(|v| v.0);
+        let appsec = appkey_to_sec("7d089525d3611b1c").unwrap();
+        let proxy_open = &config.th_proxy_subtitle_open;
+        let proxy_url = &config.th_proxy_subtitle_url;
+        let unsigned_url = qstring::QString::new(query_vec);
+        let unsigned_url = format!("{unsigned_url}");
+        let signed_url = format!(
+            "{unsigned_url}&sign={:x}",
+            md5::compute(format!("{unsigned_url}{appsec}"))
+        );
+        let api = "https://app.biliintl.com/intl/gateway/v2/app/subtitle";
+        let body_data = match getwebpage(
+            &format!("{api}?{signed_url}"),
+            proxy_open,
+            proxy_url,
+            &user_agent,
+        ) {
+            Ok(data) => data,
+            Err(_) => {
+                return HttpResponse::Ok()
+                    .content_type(ContentType::plaintext())
+                    .body("{\"code\":-23382,\"message\":\"获取字幕失败喵\"}");
+            }
+        };
+        let expire_time = config.cache.get("thsub").unwrap_or(&14400);
+        let value = format!("{}{body_data}", (ts + expire_time) * 1000);
+        redis_set(pool, &key, &value, *expire_time).await;
+        return HttpResponse::Ok()
+            .content_type(ContentType::json())
+            .insert_header(("From", "biliroaming-rust-server"))
+            .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+            .insert_header(("Access-Control-Allow-Credentials", "true"))
+            .insert_header(("Access-Control-Allow-Methods", "GET"))
+            .body(body_data);
+    }else{
+        return HttpResponse::Ok()
+            .content_type(ContentType::json())
+            .insert_header(("From", "biliroaming-rust-server"))
+            .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+            .insert_header(("Access-Control-Allow-Credentials", "true"))
+            .insert_header(("Access-Control-Allow-Methods", "GET"))
+            .body(redis_get_data);
+    }
 }

@@ -67,6 +67,8 @@ pub async fn getuser_list(redis: &Pool,access_key: &str,appkey:&str,appsec:&str,
             //     web search 08
             //     web subtitle 09
             //     web season 10
+            //     token 11
+            //     th subtitle 12
             //版本 ：用于处理版本更新后导致的格式变更
             //     now 01
             return Ok(output_struct);

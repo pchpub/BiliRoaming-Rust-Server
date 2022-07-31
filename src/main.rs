@@ -1,4 +1,4 @@
-use biliroaming_rust_server::mods::get_bili_res::{get_playurl, get_search,get_season};
+use biliroaming_rust_server::mods::get_bili_res::{get_playurl, get_search,get_season,get_subtitle_th};
 use biliroaming_rust_server::mods::types::BiliConfig;
 use deadpool_redis::{Config, Runtime};
 use actix_web::{get, App, HttpResponse, HttpServer, Responder, HttpRequest};
@@ -48,6 +48,11 @@ async fn thsearch_app(req:HttpRequest) -> impl Responder {
 #[get("/intl/gateway/v2/ogv/view/app/season")]
 async fn thseason_app(req:HttpRequest) -> impl Responder {
     get_season(&req, true,true).await
+}
+
+#[get("/intl/gateway/v2/app/subtitle")]
+async fn thsubtitle_web(req:HttpRequest) -> impl Responder {
+    get_subtitle_th(&req, false,true).await
 }
 
 #[actix_web::main]
