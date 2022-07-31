@@ -79,14 +79,6 @@ pub async fn getuser_list(redis: &Pool,access_key: &str,appkey:&str,appsec:&str,
 
 pub fn to_usercer_info(usercer_info_str: &str) -> UserCerinfo {
     serde_json::from_str(usercer_info_str).unwrap()
-    //println!("{}", user_info_str);
-    // let usercer_info = json::parse(usercer_info_str).unwrap();
-    // UserCerinfo{
-    //     uid: usercer_info["uid"].as_u64().unwrap(),
-    //     black: usercer_info["black"].as_bool().unwrap_or(false),
-    //     white: usercer_info["white"].as_bool().unwrap_or(false),
-    //     status_expire_time: usercer_info["status_expire_time"].as_u64().unwrap_or(0),
-    // }
 }
 
 pub async fn getusercer_list(redis: &Pool,uid: &u64,access_key: &str) -> Result<UserCerinfo,()> {

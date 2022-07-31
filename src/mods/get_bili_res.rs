@@ -282,7 +282,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
             4 => &config.th_proxy_playurl_backup_policy,
             _ => &false,
         };
-        if code == -10500 as i64 && *backup_policy{
+        if code == -10500 as i64 && *backup_policy {
             let api = match is_app {
                 true => match area_num {
                     1 => &config.cn_app_playurl_backup_api,
@@ -330,10 +330,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
             code = body_data_json["code"].as_i64().unwrap();
         }
 
-        let expire_time = match config
-            .cache
-            .get(&code.to_string())
-        {
+        let expire_time = match config.cache.get(&code.to_string()) {
             Some(value) => value,
             None => config.cache.get("other").unwrap(),
         };
@@ -372,21 +369,20 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
     let query = QString::from(req.query_string());
 
     let access_key: &str;
-    if is_app && (! is_th) {
+    if is_app && (!is_th) {
         access_key = match query.get("access_key") {
             Option::Some(key) => key,
             _ => {
                 return HttpResponse::Ok()
                     .content_type(ContentType::plaintext())
                     .body(
-                        "{\"code\":-2332,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}",
-                    );
+                    "{\"code\":-2332,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}",
+                );
             }
         };
-    }else{
+    } else {
         access_key = "";
     }
-    
 
     let mut appkey = match query.get("appkey") {
         Option::Some(key) => key,
@@ -429,7 +425,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
         }
     };
 
-    if is_app && (! is_th) {
+    if is_app && (!is_th) {
         let user_info = match getuser_list(pool, access_key, appkey, &appsec, &user_agent).await {
             Ok(value) => value,
             Err(value) => {
@@ -438,12 +434,11 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
                     .body(format!("{{\"code\":-2337,\"message\":\"{value}\"}}"));
             }
         };
-    
+
         let (_, _) = match auth_user(pool, &user_info.uid, &access_key, &config).await {
             Ok(value) => value,
             Err(_) => (false, false),
         };
-    
     }
 
     let dt = Local::now();
@@ -454,12 +449,21 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
         query_vec = vec![
             // ("access_key".to_string(), access_key.to_string()),
             ("appkey".to_string(), appkey.to_string()),
-            ("build".to_string(), query.get("build").unwrap_or("1080003").to_string()),
+            (
+                "build".to_string(),
+                query.get("build").unwrap_or("1080003").to_string(),
+            ),
             ("c_locale".to_string(), "zh_SG".to_string()),
             ("channel".to_string(), "master".to_string()),
-            ("device".to_string(), query.get("device").unwrap_or("android").to_string()),
+            (
+                "device".to_string(),
+                query.get("device").unwrap_or("android").to_string(),
+            ),
             ("disable_rcmd".to_string(), "0".to_string()),
-            ("fnval".to_string(), query.get("fnval").unwrap_or("976").to_string()),
+            (
+                "fnval".to_string(),
+                query.get("fnval").unwrap_or("976").to_string(),
+            ),
             ("fnver".to_string(), "0".to_string()),
             ("fourk".to_string(), "1".to_string()),
             ("highlight".to_string(), "1".to_string()),
@@ -478,7 +482,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
         match query.get("access_key") {
             Option::Some(value) => {
                 query_vec.push(("access_key".to_string(), value.to_string()));
-            },
+            }
             _ => (),
         };
         match query.get("statistics") {
@@ -492,10 +496,16 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
             query_vec = vec![
                 ("access_key".to_string(), access_key.to_string()),
                 ("appkey".to_string(), appkey.to_string()),
-                ("build".to_string(), query.get("build").unwrap_or("6400000").to_string()),
+                (
+                    "build".to_string(),
+                    query.get("build").unwrap_or("6400000").to_string(),
+                ),
                 ("c_locale".to_string(), "zh_CN".to_string()),
                 ("channel".to_string(), "master".to_string()),
-                ("device".to_string(), query.get("device").unwrap_or("android").to_string()),
+                (
+                    "device".to_string(),
+                    query.get("device").unwrap_or("android").to_string(),
+                ),
                 ("disable_rcmd".to_string(), "0".to_string()),
                 ("fnval".to_string(), "4048".to_string()),
                 ("fnver".to_string(), "0".to_string()),
@@ -517,9 +527,9 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
                 }
                 _ => (),
             }
-        }else{ 
+        } else {
             query_vec = query.into_pairs();
-        } 
+        }
     }
 
     query_vec.sort_by_key(|v| v.0.clone());
@@ -1110,7 +1120,9 @@ pub async fn get_subtitle_th(req: &HttpRequest, _: bool, _: bool) -> impl Respon
         }
     };
     if is_expire {
-        query.add_str(&format!("&appkey=7d089525d3611b1c&mobi_app=bstar_a&s_locale=zh_SG&ts={ts}"));
+        query.add_str(&format!(
+            "&appkey=7d089525d3611b1c&mobi_app=bstar_a&s_locale=zh_SG&ts={ts}"
+        ));
         let mut query_vec = query.to_pairs();
         query_vec.sort_by_key(|v| v.0);
         let appsec = appkey_to_sec("7d089525d3611b1c").unwrap();
@@ -1146,7 +1158,7 @@ pub async fn get_subtitle_th(req: &HttpRequest, _: bool, _: bool) -> impl Respon
             .insert_header(("Access-Control-Allow-Credentials", "true"))
             .insert_header(("Access-Control-Allow-Methods", "GET"))
             .body(body_data);
-    }else{
+    } else {
         return HttpResponse::Ok()
             .content_type(ContentType::json())
             .insert_header(("From", "biliroaming-rust-server"))
