@@ -62,6 +62,8 @@
     "th_proxy_token_url" : "127.0.0.1:7890",
     "cn_proxy_token_open" : false,
     "th_proxy_token_open" : true,
+    "th_proxy_subtitle_url" : "127.0.0.1:7890",
+    "th_proxy_subtitle_open" : true,
     "aid" : 127001,
     "aid_replace_open" : true,
     "resign_pub" :{
@@ -80,6 +82,8 @@
         "-412" : 0,
         "0" : 6480,
         "-404" : 180,
+        "-10403" : 6480,
+        "thsub" : 14400,
         "other" : 180
     },
     "local_wblist" :{
