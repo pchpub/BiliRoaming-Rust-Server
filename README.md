@@ -10,12 +10,12 @@
 * /x/web-interface/search/type?
 * /intl/gateway/v2/ogv/view/app/season?
 * /x/intl/passport-login/oauth2/refresh_token?
+* /intl/gateway/v2/app/subtitle?
 * local black&white list
 
 ## [TODO] 
 
 * /intl/gateway/v2/app/search/v2?
-* /intl/gateway/v2/app/subtitle?
 * /intl/gateway/v2/ogv/view/app/season2?
 * /intl/gateway/v2/ogv/view/app/episode?
 * /pgc/view/web/season?
