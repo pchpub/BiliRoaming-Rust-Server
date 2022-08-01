@@ -18,7 +18,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
         _ => {
             return HttpResponse::Ok()
                 .content_type(ContentType::plaintext())
-                .body("{\"code\":-2331,\"message\":\"草,没ua你看个der\"}");
+                .body("{\"code\":-1403,\"message\":\"草,没ua你看个der\"}");
         }
     }
     let user_agent = format!(
@@ -33,19 +33,14 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
             return HttpResponse::Ok()
                 .content_type(ContentType::plaintext())
                 .body(
-                    "{\"code\":-2332,\"message\":\"草,没登陆你看个der,让我凭空拿到你账号是吧\"}",
+                    "{\"code\":-2403,\"message\":\"草,没登陆你看个der,让我凭空拿到你账号是吧\"}",
                 );
         }
     };
 
     let mut appkey = match query.get("appkey") {
         Option::Some(key) => key,
-        _ => "1d8b6e7d45233436", //为了应对新的appkey,应该设定默认值
-                                 // _ => {
-                                 //     return HttpResponse::Ok()
-                                 //         .content_type(ContentType::plaintext())
-                                 //         .body("{\"code\":-2333,\"message\":\"差不多得了,appkey都没\"}");
-                                 // }
+        _ => "1d8b6e7d45233436",
     };
 
     let area = match query.get("area") {
@@ -82,7 +77,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
         Err(()) => {
             return HttpResponse::Ok()
                 .content_type(ContentType::plaintext())
-                .body("{\"code\":-2336,\"message\":\"未知设备\"}");
+                .body("{\"code\":-3403,\"message\":\"未知设备\"}");
         }
     };
 
@@ -91,7 +86,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
         Err(value) => {
             return HttpResponse::Ok()
                 .content_type(ContentType::plaintext())
-                .body(format!("{{\"code\":-2337,\"message\":\"{value}\"}}"));
+                .body(format!("{{\"code\":-4403,\"message\":\"{value}\"}}"));
         }
     };
 
@@ -135,7 +130,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
                     Err(value) => {
                         return HttpResponse::Ok()
                             .content_type(ContentType::plaintext())
-                            .body(format!("{{\"code\":-23372,\"message\":\"{value}\"}}"));
+                            .body(format!("{{\"code\":-5403,\"message\":\"{value}\"}}"));
                     }
                 };
             if user_info.vip_expire_time >= ts {
@@ -270,7 +265,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
             Err(_) => {
                 return HttpResponse::Ok()
                     .content_type(ContentType::plaintext())
-                    .body("{\"code\":-2338,\"message\":\"获取播放地址失败喵\"}");
+                    .body("{\"code\":-6404,\"message\":\"获取播放地址失败喵\"}");
             }
         };
         let body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
@@ -323,7 +318,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
                 Err(_) => {
                     return HttpResponse::Ok()
                         .content_type(ContentType::plaintext())
-                        .body("{\"code\":-23382,\"message\":\"获取播放地址失败喵\"}");
+                        .body("{\"code\":-7404,\"message\":\"获取播放地址失败喵\"}");
                 }
             };
             let body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
@@ -358,7 +353,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
         _ => {
             return HttpResponse::Ok()
                 .content_type(ContentType::plaintext())
-                .body("{\"code\":-2331,\"message\":\"草,没ua你看个der\"}");
+                .body("{\"code\":-1403,\"message\":\"草,没ua你看个der\"}");
         }
     }
 
@@ -376,7 +371,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
                 return HttpResponse::Ok()
                     .content_type(ContentType::plaintext())
                     .body(
-                    "{\"code\":-2332,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}",
+                    "{\"code\":-2403,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}",
                 );
             }
         };
@@ -421,7 +416,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
         Err(()) => {
             return HttpResponse::Ok()
                 .content_type(ContentType::plaintext())
-                .body("{\"code\":-2336,\"message\":\"未知设备\"}");
+                .body("{\"code\":-3403,\"message\":\"未知设备\"}");
         }
     };
 
@@ -431,7 +426,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
             Err(value) => {
                 return HttpResponse::Ok()
                     .content_type(ContentType::plaintext())
-                    .body(format!("{{\"code\":-2337,\"message\":\"{value}\"}}"));
+                    .body(format!("{{\"code\":-4403,\"message\":\"{value}\"}}"));
             }
         };
 
@@ -577,7 +572,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
         Err(_) => {
             return HttpResponse::Ok()
                 .content_type(ContentType::plaintext())
-                .body("{\"code\":-2338,\"message\":\"获取失败喵\"}");
+                .body("{\"code\":-5404,\"message\":\"获取失败喵\"}");
         }
     };
 
@@ -605,7 +600,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
             if body_data_json["code"].as_i64().unwrap_or(233) != 0 {
                 return HttpResponse::Ok()
                     .content_type(ContentType::plaintext())
-                    .body("{\"code\":-2338,\"message\":\"获取失败喵\"}");
+                    .body("{\"code\":-6404,\"message\":\"获取失败喵\"}");
             }
 
             match body_data_json["data"]["items"].as_array_mut() {
@@ -650,7 +645,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> impl 
         _ => {
             return HttpResponse::Ok()
                 .content_type(ContentType::plaintext())
-                .body("{\"code\":-2331,\"message\":\"草,没ua你看个der\"}");
+                .body("{\"code\":-1403,\"message\":\"草,没ua你看个der\"}");
         }
     }
 
@@ -666,7 +661,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> impl 
             return HttpResponse::Ok()
                 .content_type(ContentType::plaintext())
                 .body(
-                    "{\"code\":-2332,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}",
+                    "{\"code\":-2403,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}",
                 );
         }
     };
@@ -715,7 +710,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> impl 
             return HttpResponse::Ok()
                 .content_type(ContentType::plaintext())
                 .body(format!(
-                    "{{\"code\":-2338,\"message\":\"没有对应的appsec\"}}"
+                    "{{\"code\":-3403,\"message\":\"没有对应的appsec\"}}"
                 ));
         }
     };
@@ -736,7 +731,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> impl 
         Err(_) => {
             return HttpResponse::Ok()
                 .content_type(ContentType::plaintext())
-                .body("{\"code\":-2338,\"message\":\"获取失败喵\"}");
+                .body("{\"code\":-4404,\"message\":\"获取失败喵\"}");
         }
     };
     if config.th_app_season_sub_open {
@@ -1072,7 +1067,7 @@ pub async fn get_subtitle_th(req: &HttpRequest, _: bool, _: bool) -> impl Respon
         _ => {
             return HttpResponse::Ok()
                 .content_type(ContentType::plaintext())
-                .body("{\"code\":-2331,\"message\":\"草,没ua你看个der\"}");
+                .body("{\"code\":-1403,\"message\":\"草,没ua你看个der\"}");
         }
     }
     let user_agent = format!(
@@ -1145,7 +1140,7 @@ pub async fn get_subtitle_th(req: &HttpRequest, _: bool, _: bool) -> impl Respon
             Err(_) => {
                 return HttpResponse::Ok()
                     .content_type(ContentType::plaintext())
-                    .body("{\"code\":-23382,\"message\":\"获取字幕失败喵\"}");
+                    .body("{\"code\":-2404,\"message\":\"获取字幕失败喵\"}");
             }
         };
         let expire_time = config.cache.get("thsub").unwrap_or(&14400);
