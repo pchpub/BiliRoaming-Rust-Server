@@ -12,6 +12,7 @@
 * /x/intl/passport-login/oauth2/refresh_token?
 * /intl/gateway/v2/app/subtitle?
 * local black&white list
+* check sign
 
 ## [TODO] 
 
@@ -19,7 +20,6 @@
 * ~~/intl/gateway/v2/ogv/view/app/season2?~~ web脚本已弃用
 * ~~/intl/gateway/v2/ogv/view/app/episode?~~ web脚本已弃用
 * ~~/pgc/view/web/season?~~ web脚本已弃用
-* check sign
 * to be faster
 
 ## [使用说明]
