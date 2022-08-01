@@ -15,10 +15,10 @@
 
 ## [TODO] 
 
-* /intl/gateway/v2/app/search/v2?
-* /intl/gateway/v2/ogv/view/app/season2?
-* /intl/gateway/v2/ogv/view/app/episode?
-* /pgc/view/web/season?
+* ~~/intl/gateway/v2/app/search/v2?~~ web脚本已弃用
+* ~~/intl/gateway/v2/ogv/view/app/season2?~~ web脚本已弃用
+* ~~~~/intl/gateway/v2/ogv/view/app/episode?~~ web脚本已弃用
+* ~~/pgc/view/web/season?~~ web脚本已弃用
 * check sign
 * to be faster
 
