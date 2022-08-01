@@ -25,8 +25,28 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
         "{}",
         req.headers().get("user-agent").unwrap().to_str().unwrap()
     );
-    let query = QString::from(req.query_string());
+    let query_string = req.query_string();
+    let query = QString::from(query_string);
 
+    let mut appkey = match query.get("appkey") {
+        Option::Some(key) => key,
+        _ => "1d8b6e7d45233436",
+    };
+
+    let mut appsec = match appkey_to_sec(appkey) {
+        Ok(value) => value,
+        Err(()) => {
+            return HttpResponse::Ok()
+                .content_type(ContentType::plaintext())
+                .body("{\"code\":-3403,\"message\":\"未知设备\"}");
+        }
+    };
+
+    if format!("{:x}",md5::compute(format!("{}{appsec}",&query_string[..query_string.len()-38]))) != &query_string[query_string.len()-32..] {
+        return HttpResponse::Ok()
+                .content_type(ContentType::plaintext())
+                .body("{\"code\":-0403,\"message\":\"校验失败\"}");
+    }
     let mut access_key = match query.get("access_key") {
         Option::Some(key) => key.to_string(),
         _ => {
@@ -36,11 +56,6 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
                     "{\"code\":-2403,\"message\":\"草,没登陆你看个der,让我凭空拿到你账号是吧\"}",
                 );
         }
-    };
-
-    let mut appkey = match query.get("appkey") {
-        Option::Some(key) => key,
-        _ => "1d8b6e7d45233436",
     };
 
     let area = match query.get("area") {
@@ -70,15 +85,6 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
     let cid = match query.get("cid") {
         Option::Some(key) => Some(key),
         _ => None,
-    };
-
-    let mut appsec = match appkey_to_sec(appkey) {
-        Ok(value) => value,
-        Err(()) => {
-            return HttpResponse::Ok()
-                .content_type(ContentType::plaintext())
-                .body("{\"code\":-3403,\"message\":\"未知设备\"}");
-        }
     };
 
     let user_info = match getuser_list(pool, &access_key, appkey, &appsec, &user_agent).await {
