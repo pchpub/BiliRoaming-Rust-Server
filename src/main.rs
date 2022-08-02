@@ -9,12 +9,17 @@ use std::fs::{self, File};
 
 #[get("/")]
 async fn hello() -> impl Responder {
-    //println!("{:?}",req.headers().get("Host").unwrap());
-    let response_body = match fs::read_to_string("index.html") {
-        Ok(value) => value,
-        Err(_) => "Rust server is online. Powered by BiliRoaming-Rust-Server".to_string(),
-    };
-    HttpResponse::Ok().body(response_body)
+    match fs::read_to_string("index.html") {
+        Ok(value) => {
+            return HttpResponse::Ok()
+                .content_type(ContentType::html())
+                .body(value);
+        }
+        Err(_) => {
+            return HttpResponse::Ok()
+                .body("Rust server is online. Powered by BiliRoaming-Rust-Server");
+        }
+    }
 }
 
 #[get("/pgc/player/api/playurl")]
