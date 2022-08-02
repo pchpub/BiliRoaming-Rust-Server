@@ -1,4 +1,5 @@
 use actix_web::{get, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::http::header::ContentType;
 use biliroaming_rust_server::mods::get_bili_res::{
     get_playurl, get_search, get_season, get_subtitle_th,
 };
