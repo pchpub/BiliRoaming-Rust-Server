@@ -1,6 +1,6 @@
 [package]
 name = "biliroaming_rust_server"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 author = "P CH"
 
@@ -15,7 +15,7 @@ serde_json = "1.0.82"
 serde = {version ="1.0.139",features = ["derive"]}
 deadpool = "0.9.5"
 deadpool-redis = "0.10.2"
-#openssl = { version = "0.10", features = ["vendored"] }
+async-channel = "1.6.1"
 
 [profile.fast]
 inherits = "release"
