@@ -125,3 +125,12 @@ impl ResignInfo {
         format!("{{\"area_num\":{},\"access_key\":\"{}\",\"refresh_token\":\"{}\",\"expire_time\":{}}}",self.area_num,self.access_key,self.refresh_token,self.expire_time)
     }
 }
+
+pub struct SendData {
+    pub key : String,
+    pub url : String,
+    pub proxy_open : bool,
+    pub user_agent : String,
+    pub proxy_url: String,
+
+}

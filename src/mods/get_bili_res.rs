@@ -1,8 +1,9 @@
 use super::get_user_info::{appkey_to_sec, auth_user, getuser_list};
 use super::request::{getwebpage, redis_get, redis_set};
-use super::types::{BiliConfig, ResignInfo};
+use super::types::{BiliConfig, ResignInfo, SendData};
 use actix_web::http::header::ContentType;
 use actix_web::{HttpRequest, HttpResponse, Responder};
+use async_channel::Sender;
 use chrono::prelude::*;
 use curl::easy::{Easy, List};
 use deadpool_redis::Pool;
@@ -10,9 +11,12 @@ use md5;
 use qstring::QString;
 use serde_json::{self};
 use std::io::Read;
+use std::sync::Arc;
+use std::thread::spawn;
 
-pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Responder {
-    let (pool, config) = req.app_data::<(Pool, BiliConfig)>().unwrap();
+pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Responder{
+    let (pool, config,bilisender) = req.app_data::<(Pool, BiliConfig,Arc<Sender<SendData>>)>().unwrap();
+    let bilisender_cl = Arc::clone(bilisender);
     match req.headers().get("user-agent") {
         Option::Some(_ua) => (),
         _ => {
@@ -41,8 +45,8 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
                 .body("{\"code\":-3403,\"message\":\"未知设备\"}");
         }
     };
-    
-    if is_app && (format!("{:x}",md5::compute(format!("{}{appsec}",&query_string[..query_string.len()-38]))) != &query_string[query_string.len()-32..]) {
+
+    if format!("{:x}",md5::compute(format!("{}{appsec}",&query_string[..query_string.len()-38]))) != &query_string[query_string.len()-32..] {
         return HttpResponse::Ok()
                 .content_type(ContentType::plaintext())
                 .body("{\"code\":-0403,\"message\":\"校验失败\"}");
@@ -177,22 +181,31 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
     //版本 ：用于处理版本更新后导致的格式变更
     //     now 01
     let is_expire: bool;
+    let need_flash: bool;
     let mut redis_get_data = String::new();
     match redis_get(&pool, &key).await {
         Some(value) => {
-            if &value[..13].parse::<u64>().unwrap() < &ts {
-                is_expire = true;
-            } else {
-                redis_get_data = value[13..].to_string();
+            let redis_get_data_expire_time = &value[..13].parse::<u64>().unwrap();
+            if redis_get_data_expire_time - 1200000 > ts {
+                need_flash = false;
                 is_expire = false;
+                redis_get_data = value[13..].to_string();
+            }else if redis_get_data_expire_time < &ts {
+                need_flash = true;
+                is_expire = true;
+            }else{
+                need_flash = true;
+                is_expire = false;
+                redis_get_data = value[13..].to_string();
             }
         }
         None => {
+            need_flash = true;
             is_expire = true;
         }
     };
     let response_body: String;
-    if is_expire {
+    if is_expire || need_flash {
         //println!("is_expire");
         let ts_string = ts.to_string();
         let mut query_vec = vec![
@@ -260,61 +273,8 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
                 _ => &config.tw_web_playurl_api,
             },
         };
-
-        let mut body_data = match getwebpage(
-            &format!("{api}?{signed_url}"),
-            proxy_open,
-            proxy_url,
-            &user_agent,
-        ) {
-            Ok(data) => data,
-            Err(_) => {
-                return HttpResponse::Ok()
-                    .content_type(ContentType::plaintext())
-                    .body("{\"code\":-6404,\"message\":\"获取播放地址失败喵\"}");
-            }
-        };
-        let body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
-        let mut code = body_data_json["code"].as_i64().unwrap().clone();
-        let backup_policy = match area_num {
-            1 => &config.cn_proxy_playurl_backup_policy,
-            2 => &config.hk_proxy_playurl_backup_policy,
-            3 => &config.tw_proxy_playurl_backup_policy,
-            4 => &config.th_proxy_playurl_backup_policy,
-            _ => &false,
-        };
-        if code == -10500 as i64 && *backup_policy {
-            let api = match is_app {
-                true => match area_num {
-                    1 => &config.cn_app_playurl_backup_api,
-                    2 => &config.hk_app_playurl_backup_api,
-                    3 => &config.tw_app_playurl_backup_api,
-                    4 => &config.th_app_playurl_backup_api,
-                    _ => &config.tw_app_playurl_backup_api,
-                },
-                false => match area_num {
-                    1 => &config.cn_web_playurl_backup_api,
-                    2 => &config.hk_web_playurl_backup_api,
-                    3 => &config.tw_web_playurl_backup_api,
-                    4 => &config.th_web_playurl_backup_api,
-                    _ => &config.tw_web_playurl_backup_api,
-                },
-            };
-            let proxy_open = match area_num {
-                1 => &config.cn_proxy_playurl_backup_open,
-                2 => &config.hk_proxy_playurl_backup_open,
-                3 => &config.tw_proxy_playurl_backup_open,
-                4 => &config.th_proxy_playurl_backup_open,
-                _ => &config.tw_proxy_playurl_backup_open,
-            };
-            let proxy_url = match area_num {
-                1 => &config.cn_proxy_playurl_backup_url,
-                2 => &config.hk_proxy_playurl_backup_url,
-                3 => &config.tw_proxy_playurl_backup_url,
-                4 => &config.th_proxy_playurl_backup_url,
-                _ => &config.tw_proxy_playurl_backup_url,
-            };
-            body_data = match getwebpage(
+        if is_expire {
+            let mut body_data = match getwebpage(
                 &format!("{api}?{signed_url}"),
                 proxy_open,
                 proxy_url,
@@ -324,22 +284,88 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
                 Err(_) => {
                     return HttpResponse::Ok()
                         .content_type(ContentType::plaintext())
-                        .body("{\"code\":-7404,\"message\":\"获取播放地址失败喵\"}");
+                        .body("{\"code\":-6404,\"message\":\"获取播放地址失败喵\"}");
                 }
             };
             let body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
-            code = body_data_json["code"].as_i64().unwrap();
+            let mut code = body_data_json["code"].as_i64().unwrap().clone();
+            let backup_policy = match area_num {
+                1 => &config.cn_proxy_playurl_backup_policy,
+                2 => &config.hk_proxy_playurl_backup_policy,
+                3 => &config.tw_proxy_playurl_backup_policy,
+                4 => &config.th_proxy_playurl_backup_policy,
+                _ => &false,
+            };
+            if code == -10500 as i64 && *backup_policy {
+                let api = match is_app {
+                    true => match area_num {
+                        1 => &config.cn_app_playurl_backup_api,
+                        2 => &config.hk_app_playurl_backup_api,
+                        3 => &config.tw_app_playurl_backup_api,
+                        4 => &config.th_app_playurl_backup_api,
+                        _ => &config.tw_app_playurl_backup_api,
+                    },
+                    false => match area_num {
+                        1 => &config.cn_web_playurl_backup_api,
+                        2 => &config.hk_web_playurl_backup_api,
+                        3 => &config.tw_web_playurl_backup_api,
+                        4 => &config.th_web_playurl_backup_api,
+                        _ => &config.tw_web_playurl_backup_api,
+                    },
+                };
+                let proxy_open = match area_num {
+                    1 => &config.cn_proxy_playurl_backup_open,
+                    2 => &config.hk_proxy_playurl_backup_open,
+                    3 => &config.tw_proxy_playurl_backup_open,
+                    4 => &config.th_proxy_playurl_backup_open,
+                    _ => &config.tw_proxy_playurl_backup_open,
+                };
+                let proxy_url = match area_num {
+                    1 => &config.cn_proxy_playurl_backup_url,
+                    2 => &config.hk_proxy_playurl_backup_url,
+                    3 => &config.tw_proxy_playurl_backup_url,
+                    4 => &config.th_proxy_playurl_backup_url,
+                    _ => &config.tw_proxy_playurl_backup_url,
+                };
+                body_data = match getwebpage(
+                    &format!("{api}?{signed_url}"),
+                    proxy_open,
+                    proxy_url,
+                    &user_agent,
+                ) {
+                    Ok(data) => data,
+                    Err(_) => {
+                        return HttpResponse::Ok()
+                            .content_type(ContentType::plaintext())
+                            .body("{\"code\":-7404,\"message\":\"获取播放地址失败喵\"}");
+                    }
+                };
+                let body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
+                code = body_data_json["code"].as_i64().unwrap();
+            }
+    
+            let expire_time = match config.cache.get(&code.to_string()) {
+                Some(value) => value,
+                None => config.cache.get("other").unwrap(),
+            };
+            let value = format!("{}{body_data}", ts + expire_time * 1000);
+            let _: () = redis_set(&pool, &key, &value, *expire_time)
+                .await
+                .unwrap_or_default();
+            response_body = body_data;
+        }else{
+            let senddata = SendData {
+                key,
+                url: format!("{api}?{signed_url}"),
+                proxy_open: proxy_open.clone(),
+                proxy_url: proxy_url.to_string(),
+                user_agent,
+            };
+            spawn(move||async move {
+                bilisender_cl.send(senddata).await.unwrap();
+            });
+            response_body = redis_get_data;
         }
-
-        let expire_time = match config.cache.get(&code.to_string()) {
-            Some(value) => value,
-            None => config.cache.get("other").unwrap(),
-        };
-        let value = format!("{}{body_data}", ts + expire_time * 1000);
-        let _: () = redis_set(&pool, &key, &value, *expire_time)
-            .await
-            .unwrap_or_default();
-        response_body = body_data;
     } else {
         response_body = redis_get_data;
     }
