@@ -116,8 +116,14 @@ pub async fn getusercer_list(redis: &Pool,uid: &u64,access_key: &str) -> Result<
         let getwebpage_json = match json::parse(&getwebpage_data){
             Ok(value) => value,
             Err(_) => {
+                let return_data = UserCerinfo {
+                    uid: uid.clone(),
+                    black: true,
+                    white: false,
+                    status_expire_time: 0,
+                };
                 println!("[Error] 请接入在线黑名单");
-                return Err(())
+                return Ok(return_data);
             },
         };
         if getwebpage_json["code"].as_i16().unwrap_or(233) == 0 {
