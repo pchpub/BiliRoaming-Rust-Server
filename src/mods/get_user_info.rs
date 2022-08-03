@@ -113,7 +113,13 @@ pub async fn getusercer_list(redis: &Pool,uid: &u64,access_key: &str) -> Result<
             Ok(data) => data,
             Err(_) => {return Err(())}
         };
-        let getwebpage_json = json::parse(&getwebpage_data).unwrap();
+        let getwebpage_json = match json::parse(&getwebpage_data){
+            Ok(value) => value,
+            Err(_) => {
+                println!("[Error] 请接入在线黑名单");
+                return Err(())
+            },
+        };
         if getwebpage_json["code"].as_i16().unwrap_or(233) == 0 {
             let return_data = UserCerinfo {
                 uid: getwebpage_json["data"]["uid"].as_u64().unwrap(),
@@ -149,6 +155,7 @@ pub async fn auth_user(redis: &Pool,uid: &u64,access_key: &str,config: &BiliConf
             return Err("鉴权失败了喵".to_string());
         }
     };
+
 }
 
 pub fn appkey_to_sec(appkey:&str) -> Result<String, ()> {
