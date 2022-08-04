@@ -379,7 +379,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
 }
 
 pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Responder {
-    let (pool, config,bilisender) = req.app_data::<(Pool, BiliConfig,Arc<Sender<SendData>>)>().unwrap();
+    let (pool, config,_bilisender) = req.app_data::<(Pool, BiliConfig,Arc<Sender<SendData>>)>().unwrap();
     match req.headers().get("user-agent") {
         Option::Some(_ua) => (),
         _ => {
@@ -671,7 +671,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
 }
 
 pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> impl Responder {
-    let (pool, config,bilisender) = req.app_data::<(Pool, BiliConfig,Arc<Sender<SendData>>)>().unwrap();
+    let (_pool, config,_bilisender) = req.app_data::<(Pool, BiliConfig,Arc<Sender<SendData>>)>().unwrap();
     match req.headers().get("user-agent") {
         Option::Some(_ua) => (),
         _ => {
@@ -1093,7 +1093,7 @@ async fn to_resign_info(resin_info_str: &str) -> ResignInfo {
 }
 
 pub async fn get_subtitle_th(req: &HttpRequest, _: bool, _: bool) -> impl Responder {
-    let (pool, config,bilisender) = req.app_data::<(Pool, BiliConfig,Arc<Sender<SendData>>)>().unwrap();
+    let (pool, config,_bilisender) = req.app_data::<(Pool, BiliConfig,Arc<Sender<SendData>>)>().unwrap();
     match req.headers().get("user-agent") {
         Option::Some(_ua) => (),
         _ => {
