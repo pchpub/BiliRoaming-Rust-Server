@@ -126,11 +126,7 @@ async fn main() -> std::io::Result<()> {
                     &receive_data.user_agent,
                 ) {
                     Ok(data) => data,
-                    Err(_) => {
-                        return HttpResponse::Ok()
-                            .content_type(ContentType::plaintext())
-                            .body("{\"code\":-6404,\"message\":\"获取播放地址失败喵\"}");
-                    }
+                    Err(_) => continue,
                 };
                 let body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
                 let expire_time = match anti_speedtest_cfg.cache.get(&body_data_json["code"].as_i64().unwrap().to_string()) {
