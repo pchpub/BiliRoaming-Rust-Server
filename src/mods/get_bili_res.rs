@@ -9,7 +9,7 @@ use curl::easy::{Easy, List};
 use deadpool_redis::Pool;
 use md5;
 use qstring::QString;
-use serde_json::{self};
+use serde_json::{self, json};
 use std::io::Read;
 use std::sync::Arc;
 use std::thread::spawn;
@@ -640,13 +640,9 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
                     value2.insert(0, serde_json::from_str(&value).unwrap());
                 }
                 None => {
-                    return HttpResponse::Ok() //TODO: fix bug
-                        .content_type(ContentType::json())
-                        .insert_header(("From", "biliroaming-rust-server"))
-                        .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-                        .insert_header(("Access-Control-Allow-Credentials", "true"))
-                        .insert_header(("Access-Control-Allow-Methods", "GET"))
-                        .body(body_data);
+                    body_data_json["data"]["items"] = json!([]);
+                    // Bad design! 好像找不到其他办法 寄
+                    body_data_json["data"]["items"].as_array_mut().unwrap().insert(0, serde_json::from_str(&value).unwrap());
                 }
             }
             let body_data = body_data_json.to_string();
