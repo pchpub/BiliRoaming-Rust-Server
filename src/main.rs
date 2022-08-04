@@ -12,6 +12,7 @@ use serde_json;
 use std::fs::{self, File};
 use std::sync::Arc;
 use std::thread::spawn;
+use std::path::Path;
 
 #[get("/")]
 async fn hello() -> impl Responder {
@@ -73,14 +74,38 @@ async fn thsubtitle_web(req: HttpRequest) -> impl Responder {
 async fn main() -> std::io::Result<()> {
     println!("你好喵~");
     let config_file: File;
-    match File::open("config.json") {
-        Ok(value) => config_file = value,
-        Err(_) => {
-            println!("缺少配置文件喵");
-            std::process::exit(78);
+    let mut config_type: Option<&str> = None;
+    let config_suffix = ["json","yaml"];
+    for suffix in config_suffix {
+        if Path::new(&format!("config.{suffix}")).exists() {
+            config_type = Some(suffix);
         }
     }
-    let config: BiliConfig = serde_json::from_reader(config_file).unwrap();
+    let config: BiliConfig;
+    match config_type {
+        None => {
+            println!("[error] 无配置文件");
+            std::process::exit(78);
+        },
+        Some(value) => {
+            match File::open(format!("config.{}",value)) {
+                Ok(value) => {config_file = value;},
+                Err(_) => {
+                    println!("[error] 配置文件打开失败");
+                    std::process::exit(78);
+                },
+            }
+            match value {
+                "json" => config = serde_json::from_reader(config_file).unwrap(),
+                "yaml" => config = serde_yaml::from_reader(config_file).unwrap(),
+                _ => {
+                    println!("[error] 未预期的错误-1");
+                    std::process::exit(78);
+                }
+            }
+        },
+    }
+
     let anti_speedtest_cfg = config.clone();
     let woker_num = config.woker_num;
     let port = config.port.clone();

@@ -1,0 +1,92 @@
+redis: redis://:password@host:6379
+woker_num: 8
+port: 2662
+cn_app_playurl_api: https://api.bilibili.com/pgc/player/api/playurl
+tw_app_playurl_api: https://api.bilibili.com/pgc/player/api/playurl
+hk_app_playurl_api: https://api.bilibili.com/pgc/player/api/playurl
+th_app_playurl_api: https://app.biliintl.com/intl/gateway/v2/ogv/playurl
+cn_web_playurl_api: https://api.bilibili.com/pgc/player/web/playurl
+tw_web_playurl_api: https://api.bilibili.com/pgc/player/web/playurl
+hk_web_playurl_api: https://api.bilibili.com/pgc/player/web/playurl
+th_web_playurl_api: https://app.biliintl.com/intl/gateway/v2/ogv/playurl
+cn_app_playurl_backup_api: https://api.bilibili.com/pgc/player/api/playurl
+tw_app_playurl_backup_api: https://api.bilibili.com/pgc/player/api/playurl
+hk_app_playurl_backup_api: https://api.bilibili.com/pgc/player/api/playurl
+th_app_playurl_backup_api: https://app.biliintl.com/intl/gateway/v2/ogv/playurl
+cn_web_playurl_backup_api: https://api.bilibili.com/pgc/player/web/playurl
+tw_web_playurl_backup_api: https://api.bilibili.com/pgc/player/web/playurl
+hk_web_playurl_backup_api: https://api.bilibili.com/pgc/player/web/playurl
+th_web_playurl_backup_api: https://app.biliintl.com/intl/gateway/v2/ogv/playurl
+cn_app_search_api: https://app.bilibili.com/x/v2/search/type
+tw_app_search_api: https://app.bilibili.com/x/v2/search/type
+hk_app_search_api: https://app.bilibili.com/x/v2/search/type
+th_app_search_api: https://app.biliintl.com/intl/gateway/v2/app/search/type
+cn_web_search_api: https://api.bilibili.com/x/web-interface/search/type
+tw_web_search_api: https://api.bilibili.com/x/web-interface/search/type
+hk_web_search_api: https://api.bilibili.com/x/web-interface/search/type
+th_web_search_api: https://app.biliintl.com/intl/gateway/v2/app/search/type
+th_app_season_api: https://app.biliintl.com/intl/gateway/v2/ogv/view/app/season
+th_app_season_sub_api: https://示例.永雏塔菲.我爱你/?season_id=
+th_app_season_sub_name: 示例永雏塔菲字幕组
+th_app_season_sub_open: false
+cn_proxy_playurl_url: 127.0.0.1:7890
+hk_proxy_playurl_url: 127.0.0.1:7890
+tw_proxy_playurl_url: 127.0.0.1:7890
+th_proxy_playurl_url: 127.0.0.1:7890
+cn_proxy_playurl_open: false
+hk_proxy_playurl_open: false
+tw_proxy_playurl_open: false
+th_proxy_playurl_open: false
+cn_proxy_playurl_backup_policy: false
+hk_proxy_playurl_backup_policy: false
+tw_proxy_playurl_backup_policy: false
+th_proxy_playurl_backup_policy: false
+cn_proxy_playurl_backup_url: 127.0.0.1:7890
+hk_proxy_playurl_backup_url: 127.0.0.1:7890
+tw_proxy_playurl_backup_url: 127.0.0.1:7890
+th_proxy_playurl_backup_url: 127.0.0.1:7890
+cn_proxy_playurl_backup_open: false
+hk_proxy_playurl_backup_open: false
+tw_proxy_playurl_backup_open: false
+th_proxy_playurl_backup_open: false
+cn_proxy_search_url: 127.0.0.1:7890
+hk_proxy_search_url: 127.0.0.1:7890
+tw_proxy_search_url: 127.0.0.1:7890
+th_proxy_search_url: 127.0.0.1:7890
+cn_proxy_search_open: false
+hk_proxy_search_open: false
+tw_proxy_search_open: false
+th_proxy_search_open: false
+cn_proxy_token_url: 127.0.0.1:7890
+th_proxy_token_url: 127.0.0.1:7890
+cn_proxy_token_open: false
+th_proxy_token_open: true
+th_proxy_subtitle_url: 127.0.0.1:7890
+th_proxy_subtitle_open: true
+aid: 127001
+aid_replace_open: true
+resign_pub:
+  '1': false
+  '3': false
+  '4': false
+  '2': false
+resign_open:
+  '4': false
+  '2': false
+  '3': false
+  '1': false
+cache:
+  '-10403': 6480
+  thsub: 14400
+  '0': 6480
+  '-404': 180
+  other: 180
+  '-412': 0
+local_wblist:
+  '114514':
+  - false
+  - false
+one_click_run: false
+search_remake:
+  your_host: "{\"title\":\"服务器提供者：\\u003cem class\\u003d\\\"keyword\\\"\\u003eXXX\\u003c/em\\u003e\",\"cover\":\"https://示例.永雏塔菲.我爱你/src/fuck_search.jpg\",\"uri\":\"https://bili.pch.pub\",\"param\":\"1\",\"goto\":\"bangumi\",\"ptime\":1500000000,\"season_id\":1,\"season_type\":1,\"season_type_name\":\"番剧\",\"media_type\":1,\"style\":\"切勿宣扬，发现拉黑！\",\"styles\":\"切勿宣扬，发现拉黑！\",\"cv\":\"\",\"rating\":114.514,\"vote\":1919.810,\"area\":\"漫游\",\"staff\":\"无\",\"is_selection\":1,\"badge\":\"公告\",\"episodes\":[{\"position\":1,\"uri\":\"https://www.bilibili.com/video/av928861104\",\"param\":\"1\",\"index\":\"1\"}],\"label\":\"勿谓言之不预也\",\"watch_button\":{\"title\":\"\U0001F605\",\"link\":\"https://bili.pch.pub/\"},\"follow_button\":{\"icon\":\"http://i0.hdslb.com/bfs/bangumi/154b6898d2b2c20c21ccef9e41fcf809b518ebb4.png\",\"texts\":{\"0\":\"别点\",\"1\":\"你好闲啊\"},\"status_report\":\"bangumi\"},\"selection_style\":\"horizontal\",\"episodes_new\":[{\"title\":\"教程\",\"uri\":\"https://github.com/yujincheng08/BiliRoaming/wiki#使用方法\"},{\"title\":\"联系方式\",\"uri\":\"https://t.me/chenzerocheng\",\"badges\":[{\"text\":\"tg\",\"text_color\":\"#FFFFFF\",\"text_color_night\":\"#E5E5E5\",\"bg_color\":\"#58DCF9\",\"bg_color_night\":\"#58DCF9\",\"border_color\":\"#58DCF9\",\"border_color_night\":\"#58DCF9\",\"bg_style\":1}]},{\"title\":\"投喂\",\"uri\":\"https://示例.永雏塔菲.我爱你/@pinkchen\",\"badges\":[{\"text\":\"爱发电\",\"text_color\":\"#FFFFFF\",\"text_color_night\":\"#E5E5E5\",\"bg_color\":\"#B85DFF\",\"bg_color_night\":\"#A634FF\",\"border_color\":\"#B85DFF\",\"border_color_night\":\"#A634FF\",\"bg_style\":1}]},{\"title\":\"这里没东西\",\"uri\":\"https://www.bilibili.com/video/av928861104\",\"badges\":[{\"text\":\"愿者上勾\",\"text_color\":\"#FFFFFF\",\"text_color_night\":\"#E5E5E5\",\"bg_color\":\"#FB7299\",\"bg_color_night\":\"#BB5B76\",\"border_color\":\"#FB7299\",\"border_color_night\":\"#BB5B76\",\"bg_style\":1}]}],\"badges\":[{\"text\":\"萨日朗\",\"text_color\":\"#FFFFFF\",\"text_color_night\":\"#E5E5E5\",\"bg_color\":\"#00C0FF\",\"bg_color_night\":\"#0B91BE\",\"bg_style\":1}]}"
+  your_another_host: "{\"title\":\"服务器提供者：\\u003cem class\\u003d\\\"keyword\\\"\\u003eXXX\\u003c/em\\u003e\",\"cover\":\"https://示例.永雏塔菲.我爱你/src/fuck_search.jpg\",\"uri\":\"https://bili.pch.pub\",\"param\":\"1\",\"goto\":\"bangumi\",\"ptime\":1500000000,\"season_id\":1,\"season_type\":1,\"season_type_name\":\"番剧\",\"media_type\":1,\"style\":\"切勿宣扬，发现拉黑！\",\"styles\":\"切勿宣扬，发现拉黑！\",\"cv\":\"\",\"rating\":114.514,\"vote\":1919.810,\"area\":\"漫游\",\"staff\":\"无\",\"is_selection\":1,\"badge\":\"公告\",\"episodes\":[{\"position\":1,\"uri\":\"https://www.bilibili.com/video/av928861104\",\"param\":\"1\",\"index\":\"1\"}],\"label\":\"勿谓言之不预也\",\"watch_button\":{\"title\":\"\U0001F605\",\"link\":\"https://bili.pch.pub/\"},\"follow_button\":{\"icon\":\"http://i0.hdslb.com/bfs/bangumi/154b6898d2b2c20c21ccef9e41fcf809b518ebb4.png\",\"texts\":{\"0\":\"别点\",\"1\":\"你好闲啊\"},\"status_report\":\"bangumi\"},\"selection_style\":\"horizontal\",\"episodes_new\":[{\"title\":\"教程\",\"uri\":\"https://github.com/yujincheng08/BiliRoaming/wiki#使用方法\"},{\"title\":\"联系方式\",\"uri\":\"https://t.me/chenzerocheng\",\"badges\":[{\"text\":\"tg\",\"text_color\":\"#FFFFFF\",\"text_color_night\":\"#E5E5E5\",\"bg_color\":\"#58DCF9\",\"bg_color_night\":\"#58DCF9\",\"border_color\":\"#58DCF9\",\"border_color_night\":\"#58DCF9\",\"bg_style\":1}]},{\"title\":\"投喂\",\"uri\":\"https://示例.永雏塔菲.我爱你/@pinkchen\",\"badges\":[{\"text\":\"爱发电\",\"text_color\":\"#FFFFFF\",\"text_color_night\":\"#E5E5E5\",\"bg_color\":\"#B85DFF\",\"bg_color_night\":\"#A634FF\",\"border_color\":\"#B85DFF\",\"border_color_night\":\"#A634FF\",\"bg_style\":1}]},{\"title\":\"这里没东西\",\"uri\":\"https://www.bilibili.com/video/av928861104\",\"badges\":[{\"text\":\"愿者上勾\",\"text_color\":\"#FFFFFF\",\"text_color_night\":\"#E5E5E5\",\"bg_color\":\"#FB7299\",\"bg_color_night\":\"#BB5B76\",\"border_color\":\"#FB7299\",\"border_color_night\":\"#BB5B76\",\"bg_style\":1}]}],\"badges\":[{\"text\":\"萨日朗\",\"text_color\":\"#FFFFFF\",\"text_color_night\":\"#E5E5E5\",\"bg_color\":\"#00C0FF\",\"bg_color_night\":\"#0B91BE\",\"bg_style\":1}]}"
