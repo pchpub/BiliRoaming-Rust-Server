@@ -29,7 +29,7 @@
     "th_app_season_api" : "https://app.biliintl.com/intl/gateway/v2/ogv/view/app/season",
     "th_app_season_sub_api" : "https://示例.永雏塔菲.我爱你/?season_id=",
     "th_app_season_sub_name" : "示例永雏塔菲字幕组",
-    "th_app_season_sub_open" : true,
+    "th_app_season_sub_open" : false,
     "cn_proxy_playurl_url" : "127.0.0.1:7890",
     "hk_proxy_playurl_url" : "127.0.0.1:7890",
     "tw_proxy_playurl_url" : "127.0.0.1:7890", 
