@@ -1,3 +1,4 @@
+use actix_files::Files;
 use actix_web::http::header::ContentType;
 use actix_web::{get, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use async_channel::{Receiver, Sender};
@@ -17,8 +18,7 @@ use futures::executor::block_on;
 
 #[get("/")]
 async fn hello() -> impl Responder {
-    //println!("{:?}",req.headers().get("Host").unwrap());
-    match fs::read_to_string("index.html") {
+    match fs::read_to_string("./web/index.html") {
         Ok(value) => {
             return HttpResponse::Ok()
                 .content_type(ContentType::html())
@@ -26,7 +26,8 @@ async fn hello() -> impl Responder {
         }
         Err(_) => {
             return HttpResponse::Ok()
-                .body("Rust server is online. Powered by BiliRoaming-Rust-Server")
+                .content_type(ContentType::html())
+                .body(r#"<html><head><meta charset="utf-8"><title>200 OK</title></head><body><div style="margin:0px auto;text-align:center;"><h1>BiliRoaming-Rust-Server</h1><p>[online] 200 OK</p><br>Powered by<a href="https://github.com/pchpub/BiliRoaming-Rust-Server">BiliRoaming-Rust-Server</a></div></body></html>"#)
         }
     }
 }
@@ -155,6 +156,7 @@ async fn main() -> std::io::Result<()> {
             .service(thsearch_app)
             .service(thseason_app)
             .service(thsubtitle_web)
+            .service(Files::new("/", "./web/"))
     })
     .bind(("0.0.0.0", port))?
     .workers(woker_num)
