@@ -45,12 +45,15 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
                 .body("{\"code\":-3403,\"message\":\"未知设备\"}");
         }
     };
-
-    if format!("{:x}",md5::compute(format!("{}{appsec}",&query_string[..query_string.len()-38]))) != &query_string[query_string.len()-32..] {
-        return HttpResponse::Ok()
-                .content_type(ContentType::plaintext())
-                .body("{\"code\":-0403,\"message\":\"校验失败\"}");
+    
+    if is_app || is_th {
+        if format!("{:x}",md5::compute(format!("{}{appsec}",&query_string[..query_string.len()-38]))) != &query_string[query_string.len()-32..] {
+            return HttpResponse::Ok()
+                    .content_type(ContentType::plaintext())
+                    .body("{\"code\":-0403,\"message\":\"校验失败\"}");
+        }
     }
+    
     let mut access_key = match query.get("access_key") {
         Option::Some(key) => key.to_string(),
         _ => {
