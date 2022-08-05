@@ -33,19 +33,19 @@ pub async fn getuser_list(redis: &Pool,access_key: &str,appkey:&str,appsec:&str,
                     expire_time: ts+25*24*60*60*1000,//用户状态25天强制更新
                 };
             }else if output_json["code"].as_i32().unwrap() == -400{
-                println!("getuser_list函数寄了 output_json:{}",output_json);
+                //println!("getuser_list函数寄了 output_json:{}",output_json);
                 return Err("可能你用的不是手机".to_string());
             }else if output_json["code"].as_i32().unwrap() == -101{
-                println!("getuser_list函数寄了 output_json:{}",output_json);
+                //println!("getuser_list函数寄了 output_json:{}",output_json);
                 return Err("账号未登录喵(b站api说的,估计你access_key过期了)".to_string());
             }else if output_json["code"].as_i32().unwrap() == -3{
-                println!("getuser_list函数寄了 output_json:{}",output_json);
+                //println!("getuser_list函数寄了 output_json:{}",output_json);
                 return Err("可能我sign参数算错了,非常抱歉喵".to_string());
             }else if output_json["code"].as_i32().unwrap() == -412{
-                println!("getuser_list函数寄了 output_json:{}",output_json);
+                //println!("getuser_list函数寄了 output_json:{}",output_json);
                 return Err("被草到风控了.....".to_string());
             }else{
-                println!("getuser_list函数寄了 output_json:{}",output_json);
+                //println!("getuser_list函数寄了 output_json:{}",output_json);
                 return Err(format!("鼠鼠说:{}",output_json["code"].as_i32().unwrap()));
             }
             let key  = format!("{access_key}20501");

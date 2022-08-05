@@ -13,6 +13,7 @@ use std::fs::{self, File};
 use std::sync::Arc;
 use std::thread::spawn;
 use std::path::Path;
+use futures::executor::block_on;
 
 #[get("/")]
 async fn hello() -> impl Responder {
@@ -113,10 +114,10 @@ async fn main() -> std::io::Result<()> {
     let (s, r): (Sender<SendData>, Receiver<SendData>) = async_channel::unbounded();
     let bilisender = Arc::new(s);
     let anti_speedtest_redis_cfg = Config::from_url(&config.redis);
-    spawn(move || async move{
+    spawn(move || {
         let pool = anti_speedtest_redis_cfg.create_pool(Some(Runtime::Tokio1)).unwrap();
         loop {
-            if let Ok(receive_data) = r.recv().await {
+            if let Ok(receive_data) = block_on(r.recv()) {
                 let dt = Local::now();
                 let ts = dt.timestamp_millis() as u64;
                 let body_data = match getwebpage(
@@ -134,9 +135,9 @@ async fn main() -> std::io::Result<()> {
                     None => anti_speedtest_cfg.cache.get("other").unwrap(),
                 };
                 let value = format!("{}{body_data}", ts + expire_time * 1000);
-                let _: () = redis_set(&pool, &receive_data.key, &value, *expire_time)
-                    .await
+                let _: () = block_on(redis_set(&pool, &receive_data.key, &value, *expire_time))
                     .unwrap_or_default();
+                println!("[Test] cache Ok");
             }
         }   
     });
