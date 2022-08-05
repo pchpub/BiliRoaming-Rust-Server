@@ -156,7 +156,7 @@ async fn main() -> std::io::Result<()> {
             .service(thsearch_app)
             .service(thseason_app)
             .service(thsubtitle_web)
-            .service(Files::new("/", "./web/"))
+            .service(Files::new("/", "./web/").index_file("index.html"))
     })
     .bind(("0.0.0.0", port))?
     .workers(woker_num)
