@@ -383,7 +383,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
         .body(response_body)
 }
 
-pub async fn get_playurl_background(redis: &Pool,receive_data: &SendData,anti_speedtest_cfg: &BiliConfig) -> Result<(),()>{
+pub fn get_playurl_background(redis: &Pool,receive_data: &SendData,anti_speedtest_cfg: &BiliConfig) -> Result<(),()>{
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let body_data = match getwebpage(
