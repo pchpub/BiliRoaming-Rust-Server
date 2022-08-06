@@ -122,7 +122,7 @@ async fn main() -> std::io::Result<()> {
             if let Ok(receive_data) = block_on(r.recv()) {
                 match receive_data.data_type {
                     1 => {
-                        get_playurl_background(&pool, &receive_data, &anti_speedtest_cfg).unwrap_or_default();
+                        block_on(get_playurl_background(&pool, &receive_data, &anti_speedtest_cfg)).unwrap_or_default();
                     },
                     // 2 => { 
                     // TODO: add another data cache

@@ -383,7 +383,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
         .body(response_body)
 }
 
-pub fn get_playurl_background(redis: &Pool,receive_data: &SendData,anti_speedtest_cfg: &BiliConfig) -> Result<(),()>{
+pub async fn get_playurl_background(redis: &Pool,receive_data: &SendData,anti_speedtest_cfg: &BiliConfig) -> Result<(),()>{
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let body_data = match getwebpage(
@@ -401,7 +401,7 @@ pub fn get_playurl_background(redis: &Pool,receive_data: &SendData,anti_speedtes
         None => anti_speedtest_cfg.cache.get("other").unwrap(),
     };
     let value = format!("{}{body_data}", ts + expire_time * 1000);
-    match block_on(redis_set(&redis, &receive_data.key, &value, *expire_time)) {
+    match redis_set(&redis, &receive_data.key, &value, *expire_time).await {
         Some(_) => return Ok(()),
         None => return Err(()),
     }
