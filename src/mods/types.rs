@@ -127,10 +127,10 @@ impl ResignInfo {
 }
 
 pub struct SendData {
+    pub data_type : u8,
     pub key : String,
     pub url : String,
     pub proxy_open : bool,
     pub user_agent : String,
     pub proxy_url: String,
-
 }

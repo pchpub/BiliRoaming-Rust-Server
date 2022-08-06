@@ -7,6 +7,7 @@ use async_channel::Sender;
 use chrono::prelude::*;
 use curl::easy::{Easy, List};
 use deadpool_redis::Pool;
+use futures::executor::block_on;
 use md5;
 use qstring::QString;
 use serde_json::{self, json};
@@ -358,14 +359,15 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
             response_body = body_data;
         }else{
             let senddata = SendData {
+                data_type: 1,
                 key,
                 url: format!("{api}?{signed_url}"),
                 proxy_open: proxy_open.clone(),
                 proxy_url: proxy_url.to_string(),
                 user_agent,
             };
-            spawn(move||async move {
-                bilisender_cl.send(senddata).await.unwrap();
+            spawn(move|| {
+                block_on(bilisender_cl.send(senddata)).unwrap();
             });
             response_body = redis_get_data;
         }
@@ -379,6 +381,30 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
         .insert_header(("Access-Control-Allow-Credentials", "true"))
         .insert_header(("Access-Control-Allow-Methods", "GET"))
         .body(response_body)
+}
+
+pub async fn get_playurl_background(redis: &Pool,receive_data: &SendData,anti_speedtest_cfg: &BiliConfig) -> Result<(),()>{
+    let dt = Local::now();
+    let ts = dt.timestamp_millis() as u64;
+    let body_data = match getwebpage(
+        &receive_data.url,
+        &receive_data.proxy_open,
+        &receive_data.proxy_url,
+        &receive_data.user_agent,
+    ) {
+        Ok(data) => data,
+        Err(_) => return Err(()),
+    };
+    let body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
+    let expire_time = match anti_speedtest_cfg.cache.get(&body_data_json["code"].as_i64().unwrap().to_string()) {
+        Some(value) => value,
+        None => anti_speedtest_cfg.cache.get("other").unwrap(),
+    };
+    let value = format!("{}{body_data}", ts + expire_time * 1000);
+    match block_on(redis_set(&redis, &receive_data.key, &value, *expire_time)) {
+        Some(_) => return Ok(()),
+        None => return Err(()),
+    }
 }
 
 pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Responder {

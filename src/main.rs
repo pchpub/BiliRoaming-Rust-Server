@@ -3,11 +3,9 @@ use actix_web::http::header::ContentType;
 use actix_web::{get, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use async_channel::{Receiver, Sender};
 use biliroaming_rust_server::mods::get_bili_res::{
-    get_playurl, get_search, get_season, get_subtitle_th,
+    get_playurl, get_search, get_season, get_subtitle_th, get_playurl_background,
 };
-use biliroaming_rust_server::mods::request::{getwebpage, redis_set};
 use biliroaming_rust_server::mods::types::{BiliConfig, SendData};
-use chrono::Local;
 use deadpool_redis::{Config, Runtime};
 use serde_json;
 use std::fs::{self, File};
@@ -119,26 +117,20 @@ async fn main() -> std::io::Result<()> {
         let pool = anti_speedtest_redis_cfg.create_pool(Some(Runtime::Tokio1)).unwrap();
         loop {
             if let Ok(receive_data) = block_on(r.recv()) {
-                let dt = Local::now();
-                let ts = dt.timestamp_millis() as u64;
-                let body_data = match getwebpage(
-                    &receive_data.url,
-                    &receive_data.proxy_open,
-                    &receive_data.proxy_url,
-                    &receive_data.user_agent,
-                ) {
-                    Ok(data) => data,
-                    Err(_) => continue,
-                };
-                let body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
-                let expire_time = match anti_speedtest_cfg.cache.get(&body_data_json["code"].as_i64().unwrap().to_string()) {
-                    Some(value) => value,
-                    None => anti_speedtest_cfg.cache.get("other").unwrap(),
-                };
-                let value = format!("{}{body_data}", ts + expire_time * 1000);
-                let _: () = block_on(redis_set(&pool, &receive_data.key, &value, *expire_time))
-                    .unwrap_or_default();
-                println!("[Test] cache Ok");
+                match receive_data.data_type {
+                    1 => {
+                        if let Ok(_) = block_on(get_playurl_background(&pool, &receive_data, &anti_speedtest_cfg)) {
+                            println!("[Test] cache Ok");
+                        }else {
+                            println!("[Test] cache Err");
+                        }
+                    },
+                    // 2 => { 
+                    // TODO: add another data cache
+                    // },
+                    _ => {},
+                }
+                
             }
         }   
     });
