@@ -25,7 +25,7 @@
 
 ## [使用说明]
 
-### 1. 使用已编译的二进制文件
+### 1. 使用已编译的二进制文件(通常比方法2和3旧,并不推荐)
 * 从[Release](https://github.com/pchpub/BiliRoaming-Rust-Server/releases)中下载二进制文件及 config.json
 * 安装 Redis
   * 使用宝塔安装 Redis
