@@ -12,7 +12,8 @@ use std::fs::{self, File};
 use std::sync::Arc;
 use std::thread::spawn;
 use std::path::Path;
-use futures::executor::block_on;
+//use futures::executor::block_on;
+use tokio::runtime::Handle;
 
 #[get("/")]
 async fn hello() -> impl Responder {
@@ -111,18 +112,19 @@ async fn main() -> std::io::Result<()> {
     let port = config.port.clone();
 
     let (s, r): (Sender<SendData>, Receiver<SendData>) = async_channel::unbounded();
-    let bilisender_alive = s.clone();
+    //let bilisender_alive = s.clone();
     let bilisender = Arc::new(s);
     let anti_speedtest_redis_cfg = Config::from_url(&config.redis);
+    let handle = Handle::current();
     spawn(move || {
-        let _ = bilisender_alive.clone();
+        //let _ = bilisender_alive.clone();
         let pool = anti_speedtest_redis_cfg.create_pool(Some(Runtime::Tokio1)).unwrap();
         loop {
             //println!("1");
-            if let Ok(receive_data) = block_on(r.recv()) {
+            if let Ok(receive_data) = handle.block_on(r.recv()) {
                 match receive_data.data_type {
                     1 => {
-                        block_on(get_playurl_background(&pool, &receive_data, &anti_speedtest_cfg)).unwrap_or_default();
+                        handle.block_on(get_playurl_background(&pool, &receive_data, &anti_speedtest_cfg)).unwrap_or_default();
                     },
                     // 2 => { 
                     // TODO: add another data cache
