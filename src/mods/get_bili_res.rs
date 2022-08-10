@@ -383,7 +383,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
         .body(response_body)
 }
 
-pub async fn get_playurl_background(redis: &Pool,receive_data: &SendData,anti_speedtest_cfg: &BiliConfig) -> Result<(),()>{
+pub async fn get_playurl_background(redis: &Pool,receive_data: &SendData,anti_speedtest_cfg: &BiliConfig) -> Result<(),String>{
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let body_data = match getwebpage(
@@ -393,9 +393,12 @@ pub async fn get_playurl_background(redis: &Pool,receive_data: &SendData,anti_sp
         &receive_data.user_agent,
     ) {
         Ok(data) => data,
-        Err(_) => return Err(()),
+        Err(_) => return Err("[Error] fn get_playurl_background getwebpage error".to_string()),
     };
-    let body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
+    let body_data_json: serde_json::Value = match serde_json::from_str(&body_data){
+        Ok(value) => value,
+        Err(_) => return Err("[Error] fn get_playurl_background serde_json::from_str error".to_string()),
+    };
     let expire_time = match anti_speedtest_cfg.cache.get(&body_data_json["code"].as_i64().unwrap().to_string()) {
         Some(value) => value,
         None => anti_speedtest_cfg.cache.get("other").unwrap(),
@@ -403,7 +406,7 @@ pub async fn get_playurl_background(redis: &Pool,receive_data: &SendData,anti_sp
     let value = format!("{}{body_data}", ts + expire_time * 1000);
     match redis_set(&redis, &receive_data.key, &value, *expire_time).await {
         Some(_) => return Ok(()),
-        None => return Err(()),
+        None => return Err("[Error] fn get_playurl_background redis set error".to_string()),
     }
 }
 
