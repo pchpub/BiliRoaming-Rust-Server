@@ -34,7 +34,7 @@ async fn hello() -> impl Responder {
 async fn web_default(req: HttpRequest) -> impl Responder {
     let path = format!("{}",req.path());
     if path.len() >= 7 && &path[..7] == "/donate" {
-        println!("{}",&path[7..]);
+        //println!("{}",&path[7..]);
         HttpResponse::Found()
             .insert_header(("Location", format!("https://{}{}?{}",req.headers().get("Host").unwrap().to_str().unwrap(),&path[7..],req.query_string())))
             .body("")
