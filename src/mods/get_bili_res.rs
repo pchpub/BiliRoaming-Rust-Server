@@ -48,10 +48,10 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
     };
     
     if is_app || is_th {
-        if format!("{:x}",md5::compute(format!("{}{appsec}",&query_string[..query_string.len()-38]))) != &query_string[query_string.len()-32..] {
+        if query_string.len() <= 39 || (format!("{:x}",md5::compute(format!("{}{appsec}",&query_string[..query_string.len()-38]))) != &query_string[query_string.len()-32..]) {
             return HttpResponse::Ok()
-                    .content_type(ContentType::plaintext())
-                    .body("{\"code\":-0403,\"message\":\"校验失败\"}");
+                .content_type(ContentType::plaintext())
+                .body("{\"code\":-0403,\"message\":\"校验失败\"}");
         }
     }
     
@@ -685,7 +685,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
         }
     };
     let mut body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
-    if body_data_json["code"].as_i64().unwrap_or(233) != 0 {
+    if body_data_json["code"].as_i64().unwrap_or(233) != 0 && body_data_json["code"].as_str().unwrap_or("233") != "0"{
         return HttpResponse::Ok()
             .content_type(ContentType::plaintext())
             .body("{\"code\":-6404,\"message\":\"获取失败喵\"}");

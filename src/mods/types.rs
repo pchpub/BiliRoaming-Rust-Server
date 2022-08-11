@@ -83,6 +83,7 @@ pub struct BiliConfig {
     pub one_click_run : bool,
     pub appsearch_remake : HashMap<String, String>,
     pub websearch_remake : HashMap<String, String>,
+    pub donate_url : String,
 }
 
 #[derive(Serialize, Deserialize,Clone)]
