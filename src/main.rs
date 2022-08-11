@@ -146,8 +146,6 @@ async fn main() -> std::io::Result<()> {
         }
     });
 
-    
-
     HttpServer::new(move || {
         let rediscfg = Config::from_url(&config.redis);
         let pool = rediscfg.create_pool(Some(Runtime::Tokio1)).unwrap();
