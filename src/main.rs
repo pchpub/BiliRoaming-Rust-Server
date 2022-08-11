@@ -3,15 +3,15 @@ use actix_web::http::header::ContentType;
 use actix_web::{get, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use async_channel::{Receiver, Sender};
 use biliroaming_rust_server::mods::get_bili_res::{
-    get_playurl, get_search, get_season, get_subtitle_th, get_playurl_background,
+    get_playurl, get_playurl_background, get_search, get_season, get_subtitle_th,
 };
 use biliroaming_rust_server::mods::types::{BiliConfig, SendData};
 use deadpool_redis::{Config, Runtime};
 use serde_json;
 use std::fs::{self, File};
-use std::sync::Arc;
-use std::thread::spawn;
 use std::path::Path;
+use std::sync::Arc;
+use std::thread;
 //use futures::executor::block_on;
 use tokio::runtime::Handle;
 
@@ -26,7 +26,7 @@ async fn hello() -> impl Responder {
         Err(_) => {
             return HttpResponse::Ok()
                 .content_type(ContentType::html())
-                .body(r#"<html><head><meta charset="utf-8"><title>200 OK</title></head><body><div style="margin:0px auto;text-align:center;"><h1>BiliRoaming-Rust-Server</h1><p>[online] 200 OK</p><br>Powered by<a href="https://github.com/pchpub/BiliRoaming-Rust-Server">BiliRoaming-Rust-Server</a></div></body></html>"#)
+                .body(r#"<html><head><meta charset="utf-8"><title>200 OK</title></head><body><div style="margin:0px auto;text-align:center;"><h1>BiliRoaming-Rust-Server</h1><p>[online] 200 OK</p><br>Powered by <a href="https://github.com/pchpub/BiliRoaming-Rust-Server">BiliRoaming-Rust-Server</a></div></body></html>"#)
         }
     }
 }
@@ -76,7 +76,7 @@ async fn main() -> std::io::Result<()> {
     println!("你好喵~");
     let config_file: File;
     let mut config_type: Option<&str> = None;
-    let config_suffix = ["json","yaml"];
+    let config_suffix = ["json", "yml"];
     for suffix in config_suffix {
         if Path::new(&format!("config.{suffix}")).exists() {
             config_type = Some(suffix);
@@ -87,54 +87,67 @@ async fn main() -> std::io::Result<()> {
         None => {
             println!("[error] 无配置文件");
             std::process::exit(78);
-        },
+        }
         Some(value) => {
-            match File::open(format!("config.{}",value)) {
-                Ok(value) => {config_file = value;},
+            match File::open(format!("config.{}", value)) {
+                Ok(value) => {
+                    config_file = value;
+                }
                 Err(_) => {
                     println!("[error] 配置文件打开失败");
                     std::process::exit(78);
-                },
+                }
             }
             match value {
                 "json" => config = serde_json::from_reader(config_file).unwrap(),
-                "yaml" => config = serde_yaml::from_reader(config_file).unwrap(),
+                "yml" => config = serde_yaml::from_reader(config_file).unwrap(),
                 _ => {
                     println!("[error] 未预期的错误-1");
                     std::process::exit(78);
                 }
             }
-        },
+        }
     }
+
+    //fs::write("config.example.yml", serde_yaml::to_string(&config).unwrap()).unwrap(); //Debug 方便生成示例配置
 
     let anti_speedtest_cfg = config.clone();
     let woker_num = config.woker_num;
     let port = config.port.clone();
 
     let (s, r): (Sender<SendData>, Receiver<SendData>) = async_channel::unbounded();
-    //let bilisender_alive = s.clone();
     let bilisender = Arc::new(s);
     let anti_speedtest_redis_cfg = Config::from_url(&config.redis);
     let handle = Handle::current();
-    spawn(move || {
-        //let _ = bilisender_alive.clone();
-        let pool = anti_speedtest_redis_cfg.create_pool(Some(Runtime::Tokio1)).unwrap();
+    thread::spawn(move || {
+        //a thread try to update cache
+        let pool = anti_speedtest_redis_cfg
+            .create_pool(Some(Runtime::Tokio1))
+            .unwrap();
         loop {
-            //println!("1");
-            if let Ok(receive_data) = handle.block_on(r.recv()) {
-                match receive_data.data_type {
-                    1 => {
-                        handle.block_on(get_playurl_background(&pool, &receive_data, &anti_speedtest_cfg)).unwrap_or_default();
-                    },
-                    // 2 => { 
-                    // TODO: add another data cache
-                    // },
-                    _ => {},
+            let receive_data = match handle.block_on(r.recv()) {
+                Ok(it) => it,
+                _ => continue,
+            };
+            match receive_data.data_type {
+                1 => {
+                    match handle.block_on(get_playurl_background(
+                        &pool,
+                        &receive_data,
+                        &anti_speedtest_cfg,
+                    )) {
+                        Ok(_) => (),
+                        Err(value) => println!("{value}"),
+                    };
                 }
+                // 2 => {
+                // TODO: add another data cache
+                // },
+                _ => {}
             }
-            //println!("2");
-        }   
+        }
     });
+
     HttpServer::new(move || {
         let rediscfg = Config::from_url(&config.redis);
         let pool = rediscfg.create_pool(Some(Runtime::Tokio1)).unwrap();

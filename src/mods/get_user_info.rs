@@ -22,6 +22,7 @@ pub async fn getuser_list(redis: &Pool,access_key: &str,appkey:&str,appsec:&str,
                     return Err("emmmm解析服务器的网络问题".to_string());
                 }
             };
+            
             //println!("{}",output);
             let output_json = json::parse(&output).unwrap();
             let output_struct: UserInfo;
@@ -144,7 +145,6 @@ pub async fn getusercer_list(redis: &Pool,uid: &u64,access_key: &str) -> Result<
 }
 
 pub async fn auth_user(redis: &Pool,uid: &u64,access_key: &str,config: &BiliConfig) -> Result<(bool,bool),String> {
-    //TODO: local white&black list
     match config.local_wblist.get(&uid.to_string()) {
         Some(value) => {return Ok((value.0, value.1));},
         None => (),
