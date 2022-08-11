@@ -1,12 +1,12 @@
 use actix_files::Files;
 use actix_web::http::header::ContentType;
-use actix_web::{get, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::{get, App, HttpRequest, HttpResponse, HttpServer, Responder, web};
 use async_channel::{Receiver, Sender};
 use biliroaming_rust_server::mods::get_bili_res::{
     get_playurl, get_playurl_background, get_search, get_season, get_subtitle_th,
 };
 use biliroaming_rust_server::mods::types::{BiliConfig, SendData};
-use deadpool_redis::{Config, Runtime};
+use deadpool_redis::{Config, Runtime, Pool};
 use serde_json;
 use std::fs::{self, File};
 use std::path::Path;
@@ -29,6 +29,32 @@ async fn hello() -> impl Responder {
                 .body(r#"<html><head><meta charset="utf-8"><title>200 OK</title></head><body><div style="margin:0px auto;text-align:center;"><h1>BiliRoaming-Rust-Server</h1><p>[online] 200 OK</p><br>Powered by <a href="https://github.com/pchpub/BiliRoaming-Rust-Server">BiliRoaming-Rust-Server</a></div></body></html>"#)
         }
     }
+}
+
+async fn web_default(req: HttpRequest) -> impl Responder {
+    let path = format!("{}",req.path());
+    if &path[..7] == "/donate" {
+        println!("{}",&path[7..]);
+        HttpResponse::Found()
+            .insert_header(("Location", format!("https://{}{}?{}",req.headers().get("Host").unwrap().to_str().unwrap(),&path[7..],req.query_string())))
+            .body("")
+    }else{
+        HttpResponse::Ok()
+            .content_type(ContentType::json())
+            .insert_header(("From", "biliroaming-rust-server"))
+            .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+            .insert_header(("Access-Control-Allow-Credentials", "true"))
+            .insert_header(("Access-Control-Allow-Methods", "GET"))
+            .body("{\"code\":-404,\"message\":\"请检查填入的服务器地址是否有效\"}")
+    }
+}
+
+#[get("/donate")]
+async fn donate(req: HttpRequest) -> impl Responder {
+    let (_, config,_) = req.app_data::<(Pool, BiliConfig,Arc<Sender<SendData>>)>().unwrap();
+    return HttpResponse::Found()
+        .insert_header(("Location", &config.donate_url[..]))
+        .body("");
 }
 
 #[get("/pgc/player/api/playurl")]
@@ -162,7 +188,9 @@ async fn main() -> std::io::Result<()> {
             .service(thsearch_app)
             .service(thseason_app)
             .service(thsubtitle_web)
+            .service(donate)
             .service(Files::new("/", "./web/").index_file("index.html"))
+            .default_service(web::route().to(web_default))
     })
     .bind(("0.0.0.0", port))?
     .workers(woker_num)
