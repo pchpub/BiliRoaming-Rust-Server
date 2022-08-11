@@ -22,6 +22,7 @@ pub async fn getuser_list(redis: &Pool,access_key: &str,appkey:&str,appsec:&str,
                     return Err("emmmm解析服务器的网络问题".to_string());
                 }
             };
+            
             //println!("{}",output);
             let output_json = json::parse(&output).unwrap();
             let output_struct: UserInfo;

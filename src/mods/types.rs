@@ -81,7 +81,8 @@ pub struct BiliConfig {
     pub cache : HashMap<String, u64>,
     pub local_wblist : HashMap<String, (bool, bool)>,
     pub one_click_run : bool,
-    pub search_remake : HashMap<String, String>,
+    pub appsearch_remake : HashMap<String, String>,
+    pub websearch_remake : HashMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize,Clone)]

@@ -26,7 +26,7 @@ async fn hello() -> impl Responder {
         Err(_) => {
             return HttpResponse::Ok()
                 .content_type(ContentType::html())
-                .body(r#"<html><head><meta charset="utf-8"><title>200 OK</title></head><body><div style="margin:0px auto;text-align:center;"><h1>BiliRoaming-Rust-Server</h1><p>[online] 200 OK</p><br>Powered by<a href="https://github.com/pchpub/BiliRoaming-Rust-Server">BiliRoaming-Rust-Server</a></div></body></html>"#)
+                .body(r#"<html><head><meta charset="utf-8"><title>200 OK</title></head><body><div style="margin:0px auto;text-align:center;"><h1>BiliRoaming-Rust-Server</h1><p>[online] 200 OK</p><br>Powered by <a href="https://github.com/pchpub/BiliRoaming-Rust-Server">BiliRoaming-Rust-Server</a></div></body></html>"#)
         }
     }
 }
@@ -76,7 +76,7 @@ async fn main() -> std::io::Result<()> {
     println!("你好喵~");
     let config_file: File;
     let mut config_type: Option<&str> = None;
-    let config_suffix = ["json", "yaml"];
+    let config_suffix = ["json", "yml"];
     for suffix in config_suffix {
         if Path::new(&format!("config.{suffix}")).exists() {
             config_type = Some(suffix);
@@ -100,7 +100,7 @@ async fn main() -> std::io::Result<()> {
             }
             match value {
                 "json" => config = serde_json::from_reader(config_file).unwrap(),
-                "yaml" => config = serde_yaml::from_reader(config_file).unwrap(),
+                "yml" => config = serde_yaml::from_reader(config_file).unwrap(),
                 _ => {
                     println!("[error] 未预期的错误-1");
                     std::process::exit(78);
@@ -108,6 +108,8 @@ async fn main() -> std::io::Result<()> {
             }
         }
     }
+
+    //fs::write("config.example.yml", serde_yaml::to_string(&config).unwrap()).unwrap(); //Debug 方便生成示例配置
 
     let anti_speedtest_cfg = config.clone();
     let woker_num = config.woker_num;

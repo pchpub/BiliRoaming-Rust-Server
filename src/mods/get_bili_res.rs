@@ -640,15 +640,15 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
         }
     };
 
-    if !is_app {
-        return HttpResponse::Ok()
-            .content_type(ContentType::json())
-            .insert_header(("From", "biliroaming-rust-server"))
-            .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-            .insert_header(("Access-Control-Allow-Credentials", "true"))
-            .insert_header(("Access-Control-Allow-Methods", "GET"))
-            .body(body_data);
-    }
+    // if !is_app {
+    //     return HttpResponse::Ok()
+    //         .content_type(ContentType::json())
+    //         .insert_header(("From", "biliroaming-rust-server"))
+    //         .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+    //         .insert_header(("Access-Control-Allow-Credentials", "true"))
+    //         .insert_header(("Access-Control-Allow-Methods", "GET"))
+    //         .body(body_data);
+    // }
 
     let host = match req.headers().get("Host") {
         Some(host) => host.to_str().unwrap(),
@@ -657,45 +657,71 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
             _ => "",
         },
     };
-
-    match config.search_remake.get(host) {
-        Some(value) => {
-            let mut body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
-            if body_data_json["code"].as_i64().unwrap_or(233) != 0 {
+    let search_remake_date = {
+        if is_app {
+            if let Some(value) = config.appsearch_remake.get(host) {
+                value
+            }else{
                 return HttpResponse::Ok()
-                    .content_type(ContentType::plaintext())
-                    .body("{\"code\":-6404,\"message\":\"获取失败喵\"}");
+                    .content_type(ContentType::json())
+                    .insert_header(("From", "biliroaming-rust-server"))
+                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                    .insert_header(("Access-Control-Allow-Credentials", "true"))
+                    .insert_header(("Access-Control-Allow-Methods", "GET"))
+                    .body(body_data);
             }
-
-            match body_data_json["data"]["items"].as_array_mut() {
-                Some(value2) => {
-                    value2.insert(0, serde_json::from_str(&value).unwrap());
-                }
-                None => {
-                    body_data_json["data"]["items"] = json!([]);
-                    // Bad design! 好像找不到其他办法 寄
-                    body_data_json["data"]["items"].as_array_mut().unwrap().insert(0, serde_json::from_str(&value).unwrap());
-                }
+        }else{
+            if let Some(value) = config.websearch_remake.get(host) {
+                value
+            }else{
+                return HttpResponse::Ok()
+                    .content_type(ContentType::json())
+                    .insert_header(("From", "biliroaming-rust-server"))
+                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                    .insert_header(("Access-Control-Allow-Credentials", "true"))
+                    .insert_header(("Access-Control-Allow-Methods", "GET"))
+                    .body(body_data);
             }
-            let body_data = body_data_json.to_string();
-            return HttpResponse::Ok()
-                .content_type(ContentType::json())
-                .insert_header(("From", "biliroaming-rust-server"))
-                .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-                .insert_header(("Access-Control-Allow-Credentials", "true"))
-                .insert_header(("Access-Control-Allow-Methods", "GET"))
-                .body(body_data);
-        }
-        _ => {
-            return HttpResponse::Ok()
-                .content_type(ContentType::json())
-                .insert_header(("From", "biliroaming-rust-server"))
-                .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-                .insert_header(("Access-Control-Allow-Credentials", "true"))
-                .insert_header(("Access-Control-Allow-Methods", "GET"))
-                .body(body_data);
         }
     };
+    let mut body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
+    if body_data_json["code"].as_i64().unwrap_or(233) != 0 {
+        return HttpResponse::Ok()
+            .content_type(ContentType::plaintext())
+            .body("{\"code\":-6404,\"message\":\"获取失败喵\"}");
+    }
+    if is_app {
+        match body_data_json["data"]["items"].as_array_mut() {
+            Some(value2) => {
+                value2.insert(0, serde_json::from_str(&search_remake_date).unwrap());
+            }
+            None => {
+                body_data_json["data"]["items"] = json!([]);
+                // Bad design! 好像找不到其他办法 寄
+                body_data_json["data"]["items"].as_array_mut().unwrap().insert(0, serde_json::from_str(&search_remake_date).unwrap());
+            }
+        }
+    }else{
+        match body_data_json["data"]["result"].as_array_mut() {
+            Some(value2) => {
+                value2.insert(0, serde_json::from_str(&search_remake_date).unwrap());
+            }
+            None => {
+                body_data_json["data"]["result"] = json!([]);
+                body_data_json["data"]["result"].as_array_mut().unwrap().insert(0, serde_json::from_str(&search_remake_date).unwrap());
+            }
+        }
+    }
+    
+    let body_data = body_data_json.to_string();
+    return HttpResponse::Ok()
+        .content_type(ContentType::json())
+        .insert_header(("From", "biliroaming-rust-server"))
+        .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+        .insert_header(("Access-Control-Allow-Credentials", "true"))
+        .insert_header(("Access-Control-Allow-Methods", "GET"))
+        .body(body_data);
+
 }
 
 pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> impl Responder {
