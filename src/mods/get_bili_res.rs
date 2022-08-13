@@ -66,6 +66,14 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
         }
     };
 
+    if access_key.len() == 0 {
+        return HttpResponse::Ok()
+            .content_type(ContentType::plaintext())
+            .body(
+                "{\"code\":-2403,\"message\":\"没有accesskey,你b站和漫游需要换个版本\"}",
+            );
+    }
+
     let area = match query.get("area") {
         Option::Some(area) => area,
         _ => {

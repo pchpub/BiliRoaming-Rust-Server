@@ -1,6 +1,7 @@
 use curl::easy::Easy;
 use deadpool_redis::{redis::cmd, Pool};
 use std::string::String;
+use std::time::Duration;
 
 pub fn getwebpage(url: &str,proxy_open: &bool,proxy_url: &str,user_agent: &str) -> Result<String, ()> {
     let mut data = Vec::new();
@@ -10,6 +11,7 @@ pub fn getwebpage(url: &str,proxy_open: &bool,proxy_url: &str,user_agent: &str) 
     handle.ssl_verify_peer(false).unwrap();
     handle.post(false).unwrap();
     handle.useragent(user_agent).unwrap();
+    handle.connect_timeout(Duration::new(10, 0)).unwrap();
     
     if *proxy_open { 
         handle.proxy_type(curl::easy::ProxyType::Socks5Hostname).unwrap();
