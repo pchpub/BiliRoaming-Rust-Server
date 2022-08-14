@@ -7,13 +7,13 @@ use async_channel::Sender;
 use chrono::prelude::*;
 use curl::easy::{Easy, List};
 use deadpool_redis::Pool;
-use futures::executor::block_on;
 use md5;
 use qstring::QString;
 use serde_json::{self, json};
 use std::io::Read;
 use std::sync::Arc;
 use std::thread::spawn;
+use async_channel::TrySendError;
 
 pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Responder{
     let (pool, config,bilisender) = req.app_data::<(Pool, BiliConfig,Arc<Sender<SendData>>)>().unwrap();
@@ -375,7 +375,15 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl R
                 user_agent,
             };
             spawn(move|| {
-                block_on(bilisender_cl.send(senddata)).unwrap();
+                match bilisender_cl.try_send(senddata) {
+                    Ok(_) => (),
+                    Err(TrySendError::Full(_)) => {
+                        println!("[Error] channel is full");
+                    },
+                    Err(TrySendError::Closed(_)) => {
+                        println!("[Error] channel is closed");
+                    },
+                };
             });
             response_body = redis_get_data;
         }
