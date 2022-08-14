@@ -141,7 +141,7 @@ async fn main() -> std::io::Result<()> {
     let woker_num = config.woker_num;
     let port = config.port.clone();
 
-    let (s, r): (Sender<SendData>, Receiver<SendData>) = async_channel::unbounded();
+    let (s, r): (Sender<SendData>, Receiver<SendData>) = async_channel::bounded(30);
     let bilisender = Arc::new(s);
     let anti_speedtest_redis_cfg = Config::from_url(&config.redis);
     let handle = Handle::current();
