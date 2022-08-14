@@ -7,13 +7,12 @@ use biliroaming_rust_server::mods::get_bili_res::{
 };
 use biliroaming_rust_server::mods::types::{BiliConfig, SendData};
 use deadpool_redis::{Config, Runtime, Pool};
+//use futures::future::join;
 use serde_json;
 use std::fs::{self, File};
 use std::path::Path;
 use std::sync::Arc;
-use std::thread;
-//use futures::executor::block_on;
-use tokio::runtime::Handle;
+use futures::join;
 
 #[get("/")]
 async fn hello() -> impl Responder {
@@ -143,24 +142,23 @@ async fn main() -> std::io::Result<()> {
     let (s, r): (Sender<SendData>, Receiver<SendData>) = async_channel::bounded(30);
     let bilisender = Arc::new(s);
     let anti_speedtest_redis_cfg = Config::from_url(&config.redis);
-    let handle = Handle::current();
-    thread::spawn(move || {
+    let web_background = actix_web::rt::spawn(async move{ 
         //a thread try to update cache
         let pool = anti_speedtest_redis_cfg
             .create_pool(Some(Runtime::Tokio1))
             .unwrap();
         loop {
-            let receive_data = match handle.block_on(r.recv()) {
+            let receive_data = match r.recv().await {
                 Ok(it) => it,
                 _ => continue,
             };
             match receive_data.data_type {
                 1 => {
-                    match handle.block_on(get_playurl_background(
+                    match get_playurl_background(
                         &pool,
                         &receive_data,
                         &anti_speedtest_cfg,
-                    )) {
+                    ).await {
                         Ok(_) => (),
                         Err(value) => println!("{value}"),
                     };
@@ -173,7 +171,7 @@ async fn main() -> std::io::Result<()> {
         }
     });
 
-    HttpServer::new(move || {
+    let web_main = HttpServer::new(move || {
         let rediscfg = Config::from_url(&config.redis);
         let pool = rediscfg.create_pool(Some(Runtime::Tokio1)).unwrap();
         App::new()
@@ -191,9 +189,9 @@ async fn main() -> std::io::Result<()> {
             .service(Files::new("/", "./web/").index_file("index.html"))
             .default_service(web::route().to(web_default))
     })
-    .bind(("0.0.0.0", port))?
+    .bind(("0.0.0.0", port)).unwrap()
     .workers(woker_num)
     .keep_alive(None)
-    .run()
-    .await
+    .run();
+    join!(web_background,web_main).1
 }
