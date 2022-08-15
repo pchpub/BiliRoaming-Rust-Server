@@ -26,7 +26,9 @@
 ## [使用说明]
 
 ### 1. 使用已编译的二进制文件
-* 从[Release](https://github.com/pchpub/BiliRoaming-Rust-Server/releases)中下载二进制文件及 config.json
+* 下载二进制文件(使用Action编译的较新)
+  * 从[Release](https://github.com/pchpub/BiliRoaming-Rust-Server/releases)中下载二进制文件及 config.json
+  * 从[Action](https://github.com/pchpub/BiliRoaming-Rust-Server/actions/workflows/ci.yml)中下载二进制文件,从仓库中下载config.json
 * 安装 Redis
   * 使用宝塔安装 Redis
   * `apt install redis` #Ubuntu&Debian
