@@ -2,7 +2,7 @@ use super::get_user_info::{appkey_to_sec, auth_user, getuser_list};
 use super::request::{getwebpage, redis_get, redis_set};
 use super::types::{BiliConfig, ResignInfo, SendData};
 use actix_web::http::header::ContentType;
-use actix_web::{HttpRequest, HttpResponse, Responder};
+use actix_web::{HttpRequest, HttpResponse};
 use async_channel::Sender;
 use chrono::prelude::*;
 use curl::easy::{Easy, List};
@@ -14,8 +14,10 @@ use std::io::Read;
 use std::sync::Arc;
 use std::thread::spawn;
 use async_channel::TrySendError;
+use pcre2::bytes::Regex;
 
-pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Responder{
+
+pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpResponse {
     let (pool, config,bilisender) = req.app_data::<(Pool, BiliConfig,Arc<Sender<SendData>>)>().unwrap();
     let bilisender_cl = Arc::clone(bilisender);
     match req.headers().get("user-agent") {
@@ -426,7 +428,7 @@ pub async fn get_playurl_background(redis: &Pool,receive_data: &SendData,anti_sp
     }
 }
 
-pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Responder {
+pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpResponse {
     let (pool, config,_bilisender) = req.app_data::<(Pool, BiliConfig,Arc<Sender<SendData>>)>().unwrap();
     match req.headers().get("user-agent") {
         Option::Some(_ua) => (),
@@ -740,7 +742,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> impl Re
 
 }
 
-pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> impl Responder {
+pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpResponse {
     let (_pool, config,_bilisender) = req.app_data::<(Pool, BiliConfig,Arc<Sender<SendData>>)>().unwrap();
     match req.headers().get("user-agent") {
         Option::Some(_ua) => (),
@@ -1162,7 +1164,7 @@ async fn to_resign_info(resin_info_str: &str) -> ResignInfo {
     serde_json::from_str(resin_info_str).unwrap()
 }
 
-pub async fn get_subtitle_th(req: &HttpRequest, _: bool, _: bool) -> impl Responder {
+pub async fn get_subtitle_th(req: &HttpRequest, _: bool, _: bool) -> HttpResponse {
     let (pool, config,_bilisender) = req.app_data::<(Pool, BiliConfig,Arc<Sender<SendData>>)>().unwrap();
     match req.headers().get("user-agent") {
         Option::Some(_ua) => (),
@@ -1263,5 +1265,29 @@ pub async fn get_subtitle_th(req: &HttpRequest, _: bool, _: bool) -> impl Respon
             .insert_header(("Access-Control-Allow-Credentials", "true"))
             .insert_header(("Access-Control-Allow-Methods", "GET"))
             .body(redis_get_data);
+    }
+}
+
+pub async fn errorurl_reg(url: &str) -> Option<u8>{
+    let re = if let Ok(value) = Regex::new(r"(/pgc/player/api/playurl)|(/pgc/player/web/playurl)|(/intl/gateway/v2/ogv/playurl)|(/x/v2/search/type)|(/x/web-interface/search/type)|(/intl/gateway/v2/app/search/type)|(/intl/gateway/v2/ogv/view/app/season)|(/intl/gateway/v2/app/subtitle)") {
+        value
+    } else {
+        return None
+    };
+    let caps = match re.captures(url.as_bytes()).unwrap(){
+        Some(value) => value,
+        None => return None,
+    };
+    let res_url = std::str::from_utf8(&caps[1]).unwrap();
+    match res_url {
+        "/pgc/player/api/playurl" => Some(1),
+        "/pgc/player/web/playurl" => Some(2),
+        "/intl/gateway/v2/ogv/playurl" => Some(3),
+        "/x/v2/search/type" => Some(4),
+        "/x/web-interface/search/type" => Some(5),
+        "/intl/gateway/v2/app/search/type" => Some(6),
+        "/intl/gateway/v2/ogv/view/app/season" => Some(7),
+        "/intl/gateway/v2/app/subtitle" => Some(8),
+        _ => None,
     }
 }
