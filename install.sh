@@ -41,4 +41,5 @@ WorkingDirectory=/root/rust
 ExecStart=/root/rust/biliroaming_rust_server
 Restart=always
 TEXT
-systemctl enable biliroaming_rust_server
+systemctl enable biliroaming_rust_server.service
+systemctl start biliroaming_rust_server.service
