@@ -21,6 +21,7 @@ async-channel = "1.6.1"
 futures = "0.3.21"
 tokio = "1.20.1"
 pcre2 = "0.2.3"
+ctrlc = "3.2.3"
 
 [profile.fast]
 inherits = "release"

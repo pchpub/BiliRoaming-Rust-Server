@@ -118,6 +118,10 @@ async fn thsubtitle_web(req: HttpRequest) -> impl Responder {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     println!("你好喵~");
+    ctrlc::set_handler(move || {
+        println!("已关闭 biliroaming_rust_server");
+        std::process::exit(0);
+    }).unwrap();
     let config_file: File;
     let mut config_type: Option<&str> = None;
     let config_suffix = ["json", "yml"];
@@ -162,12 +166,12 @@ async fn main() -> std::io::Result<()> {
     let (s, r): (Sender<SendData>, Receiver<SendData>) = async_channel::bounded(30);
     let bilisender = Arc::new(s);
     let anti_speedtest_redis_cfg = Config::from_url(&config.redis);
+    let pool_background = anti_speedtest_redis_cfg
+            .create_pool(Some(Runtime::Tokio1))
+            .unwrap();
     let web_background = actix_web::rt::spawn(async move {
         //a thread try to update cache
         println!("1-创建");//Debug
-        let pool = anti_speedtest_redis_cfg
-            .create_pool(Some(Runtime::Tokio1))
-            .unwrap();
         loop {
             println!("1-循环前");//Debug
             let receive_data = match r.recv().await {
@@ -177,7 +181,7 @@ async fn main() -> std::io::Result<()> {
             println!("1-循环中");//Debug
             match receive_data.data_type {
                 1 => {
-                    match get_playurl_background(&pool, &receive_data, &anti_speedtest_cfg).await {
+                    match get_playurl_background(&pool_background, &receive_data, &anti_speedtest_cfg).await {
                         Ok(_) => (),
                         Err(value) => println!("{value}"),
                     };
@@ -189,7 +193,7 @@ async fn main() -> std::io::Result<()> {
             }
         }
     });
-
+    
     let web_main = HttpServer::new(move || {
         let rediscfg = Config::from_url(&config.redis);
         let pool = rediscfg.create_pool(Some(Runtime::Tokio1)).unwrap();
