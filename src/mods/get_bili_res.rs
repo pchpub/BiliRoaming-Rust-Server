@@ -1274,10 +1274,10 @@ pub async fn errorurl_reg(url: &str) -> Option<u8>{
     } else {
         return None
     };
-    let caps = match re.captures(url.as_bytes()){
-        Ok(value) => value,
-        Err(_) => return None,
-    }.unwrap();
+    let caps = match re.captures(url.as_bytes()).unwrap(){
+        Some(value) => value,
+        None => return None,
+    };
     let res_url = std::str::from_utf8(&caps[1]).unwrap();
     match res_url {
         "/pgc/player/api/playurl" => Some(1),
