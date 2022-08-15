@@ -1272,7 +1272,7 @@ pub async fn errorurl_reg(url: &str) -> Option<u8>{
     let re = if let Ok(value) = Regex::new(r"(/pgc/player/api/playurl)|(/pgc/player/web/playurl)|(/intl/gateway/v2/ogv/playurl)|(/x/v2/search/type)|(/x/web-interface/search/type)|(/intl/gateway/v2/app/search/type)|(/intl/gateway/v2/ogv/view/app/season)|(/intl/gateway/v2/app/subtitle)") {
         value
     } else {
-        return None
+        return None;
     };
     let caps = if let Ok(value) = re.captures(url.as_bytes()) {
         match value {
@@ -1280,10 +1280,22 @@ pub async fn errorurl_reg(url: &str) -> Option<u8>{
             None => return None,
         }
     } else {
-        return None
+        return None;
     };
-    println!("{:?}",caps);
-    let res_url = std::str::from_utf8(&caps[1]).unwrap();
+    //println!("{:?}",caps);
+    let mut res_url: &str = "";
+    let mut index = 1;
+    while index <= 8 {
+        match &caps.get(index) {
+            Some(value) => {
+                res_url = std::str::from_utf8(value.as_bytes()).unwrap();
+                break;
+            },
+            None => (),
+        }
+        index += 1;
+    }
+    
     match res_url {
         "/pgc/player/api/playurl" => Some(1),
         "/pgc/player/web/playurl" => Some(2),
