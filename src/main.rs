@@ -32,49 +32,35 @@ async fn hello() -> impl Responder {
 
 async fn web_default(req: HttpRequest) -> impl Responder {
     let path = format!("{}", req.path());
-    if path.len() >= 7 && &path[..7] == "/donate" {
-        HttpResponse::Found()
-            .insert_header((
-                "Location",
-                format!(
-                    "https://{}{}?{}",
-                    req.headers().get("Host").unwrap().to_str().unwrap(),
-                    &path[7..],
-                    req.query_string()
-                ),
-            ))
-            .body("")
+    let res_type = if let Some(value) = errorurl_reg(&path).await {
+        value
     } else {
-        let res_type = if let Some(value) = errorurl_reg(&path).await {
-            value
-        } else {
-            return HttpResponse::Ok()
+        return HttpResponse::Ok()
+            .content_type(ContentType::json())
+            .insert_header(("From", "biliroaming-rust-server"))
+            .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+            .insert_header(("Access-Control-Allow-Credentials", "true"))
+            .insert_header(("Access-Control-Allow-Methods", "GET"))
+            .body("{\"code\":-404,\"message\":\"请检查填入的服务器地址是否有效\"}");
+    };
+    match res_type {
+        1 => get_playurl(&req, true, false).await,
+        2 => get_playurl(&req, false, false).await,
+        3 => get_playurl(&req, true, true).await,
+        4 => get_search(&req, true, false).await,
+        5 => get_search(&req, false, false).await,
+        6 => get_search(&req, true, true).await,
+        7 => get_season(&req, true, true).await,
+        8 => get_subtitle_th(&req, false, true).await,
+        _ => {
+            println!("[Error] 未预期的行为 match res_type");
+            HttpResponse::Ok()
                 .content_type(ContentType::json())
                 .insert_header(("From", "biliroaming-rust-server"))
                 .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
                 .insert_header(("Access-Control-Allow-Credentials", "true"))
                 .insert_header(("Access-Control-Allow-Methods", "GET"))
-                .body("{\"code\":-404,\"message\":\"请检查填入的服务器地址是否有效\"}");
-        };
-        match res_type {
-            1 => get_playurl(&req, true, false).await,
-            2 => get_playurl(&req, false, false).await,
-            3 => get_playurl(&req, true, true).await,
-            4 => get_search(&req, true, false).await,
-            5 => get_search(&req, false, false).await,
-            6 => get_search(&req, true, true).await,
-            7 => get_season(&req, true, true).await,
-            8 => get_subtitle_th(&req, false, true).await,
-            _ => {
-                println!("[Error] 未预期的行为 match res_type");
-                HttpResponse::Ok()
-                    .content_type(ContentType::json())
-                    .insert_header(("From", "biliroaming-rust-server"))
-                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-                    .insert_header(("Access-Control-Allow-Credentials", "true"))
-                    .insert_header(("Access-Control-Allow-Methods", "GET"))
-                    .body("{\"code\":-500,\"message\":\"未预期的行为\"}")
-            }
+                .body("{\"code\":-500,\"message\":\"未预期的行为\"}")
         }
     }
 }
