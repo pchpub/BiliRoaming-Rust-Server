@@ -40,6 +40,8 @@ Type=simple
 WorkingDirectory=/root/rust
 ExecStart=/root/rust/biliroaming_rust_server
 Restart=always
+ExecStop=/usr/bin/kill -2 $MAINPID
+StandardOutput=file:/root/rust/biliroaming_rust_server.log
 TEXT
 systemctl enable biliroaming_rust_server.service
 systemctl start biliroaming_rust_server.service
