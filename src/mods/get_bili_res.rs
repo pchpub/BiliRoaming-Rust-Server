@@ -1274,9 +1274,13 @@ pub async fn errorurl_reg(url: &str) -> Option<u8>{
     } else {
         return None
     };
-    let caps = match re.captures(url.as_bytes()).unwrap(){
-        Some(value) => value,
-        None => return None,
+    let caps = if let Ok(value) = re.captures(url.as_bytes()) {
+        match value {
+            Some(cap) => cap,
+            None => return None,
+        }
+    } else {
+        return None
     };
     let res_url = std::str::from_utf8(&caps[1]).unwrap();
     match res_url {
