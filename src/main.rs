@@ -164,14 +164,17 @@ async fn main() -> std::io::Result<()> {
     let anti_speedtest_redis_cfg = Config::from_url(&config.redis);
     let web_background = actix_web::rt::spawn(async move {
         //a thread try to update cache
+        println!("1-创建");//Debug
         let pool = anti_speedtest_redis_cfg
             .create_pool(Some(Runtime::Tokio1))
             .unwrap();
         loop {
+            println!("1-循环前");//Debug
             let receive_data = match r.recv().await {
                 Ok(it) => it,
                 _ => continue,
             };
+            println!("1-循环中");//Debug
             match receive_data.data_type {
                 1 => {
                     match get_playurl_background(&pool, &receive_data, &anti_speedtest_cfg).await {
