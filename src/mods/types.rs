@@ -42,7 +42,7 @@ pub struct BiliConfig {
     pub hk_proxy_playurl_open : bool,
     pub tw_proxy_playurl_open : bool,
     pub th_proxy_playurl_open : bool,
-    pub cn_proxy_playurl_backup_policy : bool,
+    pub cn_proxy_playurl_backup_policy : bool,//打算砍掉
     pub hk_proxy_playurl_backup_policy : bool,
     pub tw_proxy_playurl_backup_policy : bool,
     pub th_proxy_playurl_backup_policy : bool,
@@ -78,12 +78,21 @@ pub struct BiliConfig {
     pub aid_replace_open : bool,
     pub resign_pub : HashMap<String,bool>,
     pub resign_open : HashMap<String,bool>,
+
+    pub resign_api_policy : HashMap<String,bool>,//启用后assesskey从api获取
+    pub resign_api : HashMap<String,String>,
+    pub resign_api_sign : HashMap<String,String>,
+    
     pub cache : HashMap<String, u64>,
     pub local_wblist : HashMap<String, (bool, bool)>,
     pub one_click_run : bool,
     pub appsearch_remake : HashMap<String, String>,
     pub websearch_remake : HashMap<String, String>,
     pub donate_url : String,
+
+    pub api_sign : String, //实验性
+    pub api_assesskey_open : HashMap<String,bool>, //api是否暴露
+    
 }
 
 #[derive(Serialize, Deserialize,Clone)]
