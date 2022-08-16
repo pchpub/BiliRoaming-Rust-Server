@@ -2,6 +2,7 @@ use actix_files::Files;
 use actix_web::http::header::ContentType;
 use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use async_channel::{Receiver, Sender};
+use biliroaming_rust_server::mods::api::get_api_accesskey;
 use biliroaming_rust_server::mods::get_bili_res::{
     errorurl_reg, get_playurl, get_playurl_background, get_search, get_season, get_subtitle_th,
 };
@@ -115,6 +116,11 @@ async fn thsubtitle_web(req: HttpRequest) -> impl Responder {
     get_subtitle_th(&req, false, true).await
 }
 
+#[get("/api/accesskey")]
+async fn api_accesskey(req: HttpRequest) -> impl Responder {
+    get_api_accesskey(&req).await
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     println!("你好喵~");
@@ -212,6 +218,7 @@ async fn main() -> std::io::Result<()> {
             .service(thsearch_app)
             .service(thseason_app)
             .service(thsubtitle_web)
+            .service(api_accesskey)
             .service(donate)
             .service(Files::new("/", "./web/").index_file("index.html"))
             .default_service(web::route().to(web_default))
