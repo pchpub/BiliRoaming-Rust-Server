@@ -22,6 +22,7 @@ futures = "0.3.21"
 tokio = "1.20.1"
 pcre2 = "0.2.3"
 ctrlc = "3.2.3"
+rand = "0.8.5"
 
 [profile.fast]
 inherits = "release"
