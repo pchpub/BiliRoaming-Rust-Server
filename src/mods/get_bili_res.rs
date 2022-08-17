@@ -121,7 +121,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
         }
     };
 
-    let (_, white) = match auth_user(pool, &user_info.uid, &access_key, &config).await {
+    let (black, white) = match auth_user(pool, &user_info.uid, &access_key, &config).await {
         Ok(value) => value,
         Err(value) => {
             return HttpResponse::Ok()
@@ -129,6 +129,11 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 .body(value);
         }
     };
+    if black {
+        return HttpResponse::Ok()
+            .content_type(ContentType::plaintext())
+            .body("{{\"code\":-4403,\"message\":\"黑名单用户,建议换号重开\"}}");
+    }
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let mut is_vip = 0;
