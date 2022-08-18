@@ -188,6 +188,7 @@ async fn main() -> std::io::Result<()> {
                 Ok(it) => it,
                 _ => break,
             };
+            println!("[Deubg] recieve now r len:{}",r.len());
             match receive_data.data_type {
                 1 => {
                     match get_playurl_background(
