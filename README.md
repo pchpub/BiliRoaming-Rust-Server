@@ -14,6 +14,7 @@
 * local black&white list
 * check sign
 * support config.json & config.yaml
+* 向后兼容
 
 ## [TODO] 
 
