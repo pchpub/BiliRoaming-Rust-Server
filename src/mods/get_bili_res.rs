@@ -428,7 +428,16 @@ pub async fn get_playurl_background(
         &receive_data.user_agent,
     ) {
         Ok(data) => data,
-        Err(_) => return Err("[Error] fn get_playurl_background getwebpage error".to_string()),
+        Err(_) => {
+            println!(
+                "[Debug] get_playurl_background getwebpage{},{},{},{}",
+                &receive_data.url,
+                &receive_data.proxy_open,
+                &receive_data.proxy_url,
+                &receive_data.user_agent
+            );
+            return Err("[Error] fn get_playurl_background getwebpage error".to_string());
+        }
     };
     let body_data_json: serde_json::Value = match serde_json::from_str(&body_data) {
         Ok(value) => value,
