@@ -23,6 +23,7 @@
 * ~~/intl/gateway/v2/ogv/view/app/episode?~~ web脚本已弃用
 * ~~/pgc/view/web/season?~~ web脚本已弃用
 * to be faster
+* remove need_vip & need_login
 
 ## [使用说明]
 
