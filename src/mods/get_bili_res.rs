@@ -1050,7 +1050,7 @@ pub async fn get_resign_accesskey(
         };
         let webgetpage_data_json: serde_json::Value =
             serde_json::from_str(&webgetpage_data).unwrap();
-        let access_key = webgetpage_data_json.get("access_key").unwrap().to_string();
+        let access_key = webgetpage_data_json["access_key"].as_str().unwrap().to_string();
         let resign_info = ResignInfo {
             area_num: *area_num as i32,
             access_key: access_key.clone(),
