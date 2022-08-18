@@ -25,7 +25,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
         Option::Some(_ua) => (),
         _ => {
             return HttpResponse::Ok()
-                .content_type(ContentType::plaintext())
+                .content_type(ContentType::json())
                 .body("{\"code\":-1403,\"message\":\"草,没ua你看个der\"}");
         }
     }
@@ -45,7 +45,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
         Ok(value) => value,
         Err(()) => {
             return HttpResponse::Ok()
-                .content_type(ContentType::plaintext())
+                .content_type(ContentType::json())
                 .body("{\"code\":-3403,\"message\":\"未知设备\"}");
         }
     };
@@ -61,7 +61,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
             ) != &query_string[query_string.len() - 32..])
         {
             return HttpResponse::Ok()
-                .content_type(ContentType::plaintext())
+                .content_type(ContentType::json())
                 .body("{\"code\":-0403,\"message\":\"校验失败\"}");
         }
     }
@@ -70,7 +70,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
         Option::Some(key) => key.to_string(),
         _ => {
             return HttpResponse::Ok()
-                .content_type(ContentType::plaintext())
+                .content_type(ContentType::json())
                 .body(
                     "{\"code\":-2403,\"message\":\"草,没登陆你看个der,让我凭空拿到你账号是吧\"}",
                 );
@@ -79,7 +79,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
 
     if access_key.len() == 0 {
         return HttpResponse::Ok()
-            .content_type(ContentType::plaintext())
+            .content_type(ContentType::json())
             .body("{\"code\":-2403,\"message\":\"没有accesskey,你b站和漫游需要换个版本\"}");
     }
 
@@ -116,7 +116,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
         Ok(value) => value,
         Err(value) => {
             return HttpResponse::Ok()
-                .content_type(ContentType::plaintext())
+                .content_type(ContentType::json())
                 .body(format!("{{\"code\":-4403,\"message\":\"{value}\"}}"));
         }
     };
@@ -131,8 +131,8 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
     };
     if black {
         return HttpResponse::Ok()
-            .content_type(ContentType::plaintext())
-            .body("{{\"code\":-4403,\"message\":\"黑名单用户,建议换号重开\"}}");
+            .content_type(ContentType::json())
+            .body("{\"code\":-4403,\"message\":\"黑名单用户,建议换号重开\"}");
     }
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
@@ -165,7 +165,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                     Ok(value) => value,
                     Err(value) => {
                         return HttpResponse::Ok()
-                            .content_type(ContentType::plaintext())
+                            .content_type(ContentType::json())
                             .body(format!("{{\"code\":-5403,\"message\":\"{value}\"}}"));
                     }
                 };
@@ -310,7 +310,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 Ok(data) => data,
                 Err(_) => {
                     return HttpResponse::Ok()
-                        .content_type(ContentType::plaintext())
+                        .content_type(ContentType::json())
                         .body("{\"code\":-6404,\"message\":\"获取播放地址失败喵\"}");
                 }
             };
@@ -363,7 +363,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                     Ok(data) => data,
                     Err(_) => {
                         return HttpResponse::Ok()
-                            .content_type(ContentType::plaintext())
+                            .content_type(ContentType::json())
                             .body("{\"code\":-7404,\"message\":\"获取播放地址失败喵\"}");
                     }
                 };
@@ -428,7 +428,16 @@ pub async fn get_playurl_background(
         &receive_data.user_agent,
     ) {
         Ok(data) => data,
-        Err(_) => return Err("[Error] fn get_playurl_background getwebpage error".to_string()),
+        Err(_) => {
+            println!(
+                "[Debug] get_playurl_background getwebpage{},{},{},{}",
+                &receive_data.url,
+                &receive_data.proxy_open,
+                &receive_data.proxy_url,
+                &receive_data.user_agent
+            );
+            return Err("[Error] fn get_playurl_background getwebpage error".to_string());
+        }
     };
     let body_data_json: serde_json::Value = match serde_json::from_str(&body_data) {
         Ok(value) => value,
@@ -458,7 +467,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
         Option::Some(_ua) => (),
         _ => {
             return HttpResponse::Ok()
-                .content_type(ContentType::plaintext())
+                .content_type(ContentType::json())
                 .body("{\"code\":-1403,\"message\":\"草,没ua你看个der\"}");
         }
     }
@@ -475,7 +484,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
             Option::Some(key) => key,
             _ => {
                 return HttpResponse::Ok()
-                    .content_type(ContentType::plaintext())
+                    .content_type(ContentType::json())
                     .body(
                     "{\"code\":-2403,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}",
                 );
@@ -521,7 +530,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
         Ok(value) => value,
         Err(()) => {
             return HttpResponse::Ok()
-                .content_type(ContentType::plaintext())
+                .content_type(ContentType::json())
                 .body("{\"code\":-3403,\"message\":\"未知设备\"}");
         }
     };
@@ -531,7 +540,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
             Ok(value) => value,
             Err(value) => {
                 return HttpResponse::Ok()
-                    .content_type(ContentType::plaintext())
+                    .content_type(ContentType::json())
                     .body(format!("{{\"code\":-4403,\"message\":\"{value}\"}}"));
             }
         };
@@ -677,7 +686,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
         Ok(data) => data,
         Err(_) => {
             return HttpResponse::Ok()
-                .content_type(ContentType::plaintext())
+                .content_type(ContentType::json())
                 .body("{\"code\":-5404,\"message\":\"获取失败喵\"}");
         }
     };
@@ -731,7 +740,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
         && body_data_json["code"].as_str().unwrap_or("233") != "0"
     {
         return HttpResponse::Ok()
-            .content_type(ContentType::plaintext())
+            .content_type(ContentType::json())
             .body("{\"code\":-6404,\"message\":\"获取失败喵\"}");
     }
     if is_app {
@@ -781,7 +790,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
         Option::Some(_ua) => (),
         _ => {
             return HttpResponse::Ok()
-                .content_type(ContentType::plaintext())
+                .content_type(ContentType::json())
                 .body("{\"code\":-1403,\"message\":\"草,没ua你看个der\"}");
         }
     }
@@ -796,7 +805,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
         Option::Some(key) => key,
         _ => {
             return HttpResponse::Ok()
-                .content_type(ContentType::plaintext())
+                .content_type(ContentType::json())
                 .body(
                     "{\"code\":-2403,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}",
                 );
@@ -815,7 +824,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
     //     Ok(value) => value,
     //     Err(value) => {
     //         return HttpResponse::Ok()
-    //             .content_type(ContentType::plaintext())
+    //             .content_type(ContentType::json())
     //             .body(format!("{{\"code\":-2337,\"message\":\"{value}\"}}"));
     //     }
     // };
@@ -845,7 +854,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
         Ok(value) => value,
         _ => {
             return HttpResponse::Ok()
-                .content_type(ContentType::plaintext())
+                .content_type(ContentType::json())
                 .body(format!(
                     "{{\"code\":-3403,\"message\":\"没有对应的appsec\"}}"
                 ));
@@ -867,7 +876,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
         Ok(data) => data,
         Err(_) => {
             return HttpResponse::Ok()
-                .content_type(ContentType::plaintext())
+                .content_type(ContentType::json())
                 .body("{\"code\":-4404,\"message\":\"获取失败喵\"}");
         }
     };
@@ -1249,7 +1258,7 @@ pub async fn get_subtitle_th(req: &HttpRequest, _: bool, _: bool) -> HttpRespons
         Option::Some(_ua) => (),
         _ => {
             return HttpResponse::Ok()
-                .content_type(ContentType::plaintext())
+                .content_type(ContentType::json())
                 .body("{\"code\":-1403,\"message\":\"草,没ua你看个der\"}");
         }
     }
@@ -1322,7 +1331,7 @@ pub async fn get_subtitle_th(req: &HttpRequest, _: bool, _: bool) -> HttpRespons
             Ok(data) => data,
             Err(_) => {
                 return HttpResponse::Ok()
-                    .content_type(ContentType::plaintext())
+                    .content_type(ContentType::json())
                     .body("{\"code\":-2404,\"message\":\"获取字幕失败喵\"}");
             }
         };

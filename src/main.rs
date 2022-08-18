@@ -8,7 +8,6 @@ use biliroaming_rust_server::mods::get_bili_res::{
 };
 use biliroaming_rust_server::mods::types::{BiliConfig, SendData};
 use deadpool_redis::{Config, Pool, Runtime};
-//use futures::future::join;
 use futures::join;
 use serde_json;
 use std::fs::{self, File};
@@ -158,9 +157,14 @@ async fn main() -> std::io::Result<()> {
             }
         }
     }
-    let config_ctrlc = config.clone();
+    match config_type.unwrap() {
+        "json" => fs::write("config.json", serde_json::to_string_pretty(&config).unwrap()).unwrap(),
+        "yml" => fs::write("config.yml", serde_yaml::to_string(&config).unwrap()).unwrap(),
+        _ => {
+            println!("[error] 未预期的错误-2");
+        }
+    }
     ctrlc::set_handler(move || {
-        fs::write("config.json", serde_json::to_string_pretty(&config_ctrlc).unwrap()).unwrap();
         println!("\n已关闭 biliroaming_rust_server");
         std::process::exit(0);
     })
@@ -182,7 +186,7 @@ async fn main() -> std::io::Result<()> {
         loop {
             let receive_data = match r.recv().await {
                 Ok(it) => it,
-                _ => continue,
+                _ => break,
             };
             match receive_data.data_type {
                 1 => {
