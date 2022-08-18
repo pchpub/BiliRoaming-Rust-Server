@@ -124,11 +124,6 @@ async fn api_accesskey(req: HttpRequest) -> impl Responder {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     println!("你好喵~");
-    ctrlc::set_handler(move || {
-        println!("\n已关闭 biliroaming_rust_server");
-        std::process::exit(0);
-    })
-    .unwrap();
     let config_file: File;
     let mut config_type: Option<&str> = None;
     let config_suffix = ["json", "yml"];
@@ -163,8 +158,14 @@ async fn main() -> std::io::Result<()> {
             }
         }
     }
-
-    fs::write("config.example.yml", serde_yaml::to_string(&config).unwrap()).unwrap(); //Debug 方便生成示例配置
+    let config_ctrlc = config.clone();
+    ctrlc::set_handler(move || {
+        fs::write("config.json", serde_json::to_string_pretty(&config_ctrlc).unwrap()).unwrap();
+        println!("\n已关闭 biliroaming_rust_server");
+        std::process::exit(0);
+    })
+    .unwrap();
+    //fs::write("config.example.yml", serde_yaml::to_string(&config).unwrap()).unwrap(); //Debug 方便生成示例配置
 
     let anti_speedtest_cfg = config.clone();
     let woker_num = config.woker_num;

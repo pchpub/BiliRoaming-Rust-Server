@@ -1016,17 +1016,17 @@ pub async fn get_resign_accesskey(
         .unwrap_or(&false)
     {
         let key = format!("a{area_num}1201");
-        let resign_info_str = match redis_get(redis, &key).await {
-            Some(value) => value,
-            None => return None,
-        };
-        let resign_info_json: ResignInfo = serde_json::from_str(&resign_info_str).unwrap();
         let dt = Local::now();
         let ts = dt.timestamp() as u64;
-        if resign_info_json.expire_time > ts {
-            return Some(resign_info_json.access_key);
-        }
-
+        match redis_get(redis, &key).await {
+            Some(value) => {
+                let resign_info_json: ResignInfo = serde_json::from_str(&value).unwrap();
+                if resign_info_json.expire_time > ts {
+                    return Some(resign_info_json.access_key);
+                }
+            }
+            None => (),
+        };
         let area_num_str = area_num.to_string();
         let url = format!(
             "https://{}?area_num={}&sign={}",
@@ -1144,7 +1144,8 @@ async fn get_accesskey_from_token_th(
         expire_time: getpost_json["data"]["token_info"]["expires_in"]
             .as_u64()
             .unwrap()
-            + ts,
+            + ts
+            - 3600,
     };
     redis_set(redis, "a41101", &resign_info.to_json(), 0).await;
     Some(getpost_json["data"]["token_info"]["access_token"].to_string())
@@ -1229,7 +1230,8 @@ async fn get_accesskey_from_token_cn(
         expire_time: getpost_json["data"]["token_info"]["expires_in"]
             .as_u64()
             .unwrap()
-            + ts,
+            + ts
+            - 3600,
     };
     redis_set(redis, "a11101", &resign_info.to_json(), 0).await;
     Some(getpost_json["data"]["token_info"]["access_token"].to_string())
