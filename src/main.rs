@@ -157,20 +157,19 @@ async fn main() -> std::io::Result<()> {
             }
         }
     }
-    let config_ctrlc = config.clone();
-    ctrlc::set_handler(move || {
-        match config_type.unwrap() {
-            "json" => fs::write("config.json", serde_json::to_string_pretty(&config_ctrlc).unwrap()).unwrap(),
-            "yml" => fs::write("config.yml", serde_yaml::to_string(&config_ctrlc).unwrap()).unwrap(),
-            _ => {
-                println!("[error] 未预期的错误-2");
-            }
+    match config_type.unwrap() {
+        "json" => fs::write("config.json", serde_json::to_string_pretty(&config).unwrap()).unwrap(),
+        "yml" => fs::write("config.yml", serde_yaml::to_string(&config).unwrap()).unwrap(),
+        _ => {
+            println!("[error] 未预期的错误-2");
         }
+    }
+    ctrlc::set_handler(move || {
         println!("\n已关闭 biliroaming_rust_server");
         std::process::exit(0);
     })
     .unwrap();
-    fs::write("config.example.yml", serde_yaml::to_string(&config).unwrap()).unwrap(); //Debug 方便生成示例配置
+    //fs::write("config.example.yml", serde_yaml::to_string(&config).unwrap()).unwrap(); //Debug 方便生成示例配置
 
     let anti_speedtest_cfg = config.clone();
     let woker_num = config.woker_num;
