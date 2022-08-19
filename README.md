@@ -14,6 +14,7 @@
 * local black&white list
 * check sign
 * support config.json & config.yaml
+* support socks5(socks5://)&http(http://) proxy 
 * 向后兼容
 
 ## [TODO] 
