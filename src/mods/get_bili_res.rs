@@ -1,5 +1,5 @@
 use super::get_user_info::{appkey_to_sec, auth_user, getuser_list};
-use super::request::{getwebpage, redis_get, redis_set};
+use super::request::{async_getwebpage, redis_get, redis_set};
 use super::types::{BiliConfig, ResignInfo, SendData};
 use actix_web::http::header::ContentType;
 use actix_web::{HttpRequest, HttpResponse};
@@ -301,12 +301,12 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
             },
         };
         if is_expire {
-            let mut body_data = match getwebpage(
+            let mut body_data = match async_getwebpage(
                 &format!("{api}?{signed_url}"),
                 proxy_open,
                 proxy_url,
                 &user_agent,
-            ) {
+            ).await {
                 Ok(data) => data,
                 Err(_) => {
                     return HttpResponse::Ok()
@@ -354,12 +354,12 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                     4 => &config.th_proxy_playurl_backup_url,
                     _ => &config.tw_proxy_playurl_backup_url,
                 };
-                body_data = match getwebpage(
+                body_data = match async_getwebpage(
                     &format!("{api}?{signed_url}"),
                     proxy_open,
                     proxy_url,
                     &user_agent,
-                ) {
+                ).await {
                     Ok(data) => data,
                     Err(_) => {
                         return HttpResponse::Ok()
@@ -390,6 +390,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 user_agent,
             };
             spawn(move || {
+                //println!("[Debug] bilisender_cl.len:{}",bilisender_cl.len());
                 match bilisender_cl.try_send(senddata) {
                     Ok(_) => (),
                     Err(TrySendError::Full(_)) => {
@@ -421,21 +422,21 @@ pub async fn get_playurl_background(
 ) -> Result<(), String> {
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
-    let body_data = match getwebpage(
+    let body_data = match async_getwebpage(
         &receive_data.url,
         &receive_data.proxy_open,
         &receive_data.proxy_url,
         &receive_data.user_agent,
-    ) {
+    ).await {
         Ok(data) => data,
         Err(_) => {
-            println!(
-                "[Debug] get_playurl_background getwebpage{},{},{},{}",
-                &receive_data.url,
-                &receive_data.proxy_open,
-                &receive_data.proxy_url,
-                &receive_data.user_agent
-            );
+            // println!(
+            //     "[Debug] get_playurl_background getwebpage {},{},{},{}",
+            //     &receive_data.url,
+            //     &receive_data.proxy_open,
+            //     &receive_data.proxy_url,
+            //     &receive_data.user_agent
+            // );
             return Err("[Error] fn get_playurl_background getwebpage error".to_string());
         }
     };
@@ -677,12 +678,12 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
         _ => &config.hk_proxy_search_url,
     };
 
-    let body_data = match getwebpage(
+    let body_data = match async_getwebpage(
         &format!("{api}?{signed_url}"),
         proxy_open,
         &proxy_url,
         &user_agent,
-    ) {
+    ).await {
         Ok(data) => data,
         Err(_) => {
             return HttpResponse::Ok()
@@ -867,12 +868,12 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
     let proxy_open = &config.th_proxy_playurl_open;
     let proxy_url = &config.th_proxy_playurl_url;
     let api = &config.th_app_season_api;
-    let body_data = match getwebpage(
+    let body_data = match async_getwebpage(
         &format!("{api}?{signed_url}"),
         proxy_open,
         &proxy_url,
         &user_agent,
-    ) {
+    ).await {
         Ok(data) => data,
         Err(_) => {
             return HttpResponse::Ok()
@@ -922,12 +923,12 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
             Some(_) => (),
         }
 
-        let sub_replace_str = match getwebpage(
+        let sub_replace_str = match async_getwebpage(
             &format!("{}{}", &config.th_app_season_sub_api, season_id.unwrap()),
             &false,
             "",
             &user_agent,
-        ) {
+        ).await {
             Ok(value) => value,
             Err(_) => {
                 return HttpResponse::Ok()
@@ -1043,7 +1044,7 @@ pub async fn get_resign_accesskey(
             &area_num,
             &config.resign_api_sign.get(&area_num_str).unwrap()
         );
-        let webgetpage_data = if let Ok(data) = getwebpage(&url, &false, "", "") {
+        let webgetpage_data = if let Ok(data) = async_getwebpage(&url, &false, "", "").await {
             data
         } else {
             return None;
@@ -1322,12 +1323,12 @@ pub async fn get_subtitle_th(req: &HttpRequest, _: bool, _: bool) -> HttpRespons
             md5::compute(format!("{unsigned_url}{appsec}"))
         );
         let api = "https://app.biliintl.com/intl/gateway/v2/app/subtitle";
-        let body_data = match getwebpage(
+        let body_data = match async_getwebpage(
             &format!("{api}?{signed_url}"),
             proxy_open,
             proxy_url,
             &user_agent,
-        ) {
+        ).await {
             Ok(data) => data,
             Err(_) => {
                 return HttpResponse::Ok()

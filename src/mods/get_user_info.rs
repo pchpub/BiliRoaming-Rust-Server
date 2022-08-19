@@ -2,7 +2,7 @@ use deadpool_redis::Pool;
 use std::string::String;
 use md5;
 use chrono::prelude::*;
-use super::request::{redis_get,redis_set,getwebpage};
+use super::request::{redis_get,redis_set,async_getwebpage};
 use super::types::{UserCerinfo, UserInfo, BiliConfig};
 
 pub async fn getuser_list(redis: &Pool,access_key: &str,appkey:&str,appsec:&str,user_agent: &str) -> Result<UserInfo,String> {
@@ -15,7 +15,7 @@ pub async fn getuser_list(redis: &Pool,access_key: &str,appkey:&str,appsec:&str,
             let sign = md5::compute(format!("access_key={}&appkey={}&ts={}{}",access_key,appkey,ts_min,appsec));
             let url:String = format!("https://app.bilibili.com/x/v2/account/myinfo?access_key={}&appkey={}&ts={}&sign={:x}",access_key,appkey,ts_min,sign);
             //println!("{}",url);
-            let output = match getwebpage(&url,&false,"",user_agent){
+            let output = match async_getwebpage(&url,&false,"",user_agent).await {
                 Ok(data) => data,
                 Err(_) => {
                     // println!("getuser_list函数寄了 url:{}",url);
@@ -110,7 +110,7 @@ pub async fn getusercer_list(redis: &Pool,uid: &u64,access_key: &str) -> Result<
     };
     
     if is_expire {
-        let getwebpage_data = match getwebpage(&format!("https://black.qimo.ink/status.php?access_key={access_key}"), &false, "",""){
+        let getwebpage_data = match async_getwebpage(&format!("https://black.qimo.ink/status.php?access_key={access_key}"), &false, "","").await {
             Ok(data) => data,
             Err(_) => {return Err(())}
         };
