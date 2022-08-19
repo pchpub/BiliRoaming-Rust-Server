@@ -15,8 +15,20 @@ pub fn getwebpage(url: String,proxy_open: bool,proxy_url: String,user_agent: Str
     handle.connect_timeout(Duration::new(20, 0)).unwrap();
     
     if proxy_open { 
-        handle.proxy_type(curl::easy::ProxyType::Socks5Hostname).unwrap();
-        handle.proxy(&proxy_url).unwrap();
+        match &proxy_url[..7] {
+            "http://" => {
+                handle.proxy_type(curl::easy::ProxyType::Http).unwrap();
+                handle.proxy(&proxy_url[7..]).unwrap();
+            },
+            "socks5:" => {
+                handle.proxy_type(curl::easy::ProxyType::Socks5Hostname).unwrap();
+                handle.proxy(&proxy_url[9..]).unwrap();
+            },
+            _ => {
+                handle.proxy_type(curl::easy::ProxyType::Socks5Hostname).unwrap();
+                handle.proxy(&proxy_url).unwrap();
+            }
+        }
     }
 
     {
