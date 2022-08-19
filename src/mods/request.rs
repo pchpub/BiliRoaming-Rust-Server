@@ -4,19 +4,19 @@ use tokio::task::spawn_blocking;
 use std::string::String;
 use std::time::Duration;
 
-pub fn getwebpage(url: &str,proxy_open: &bool,proxy_url: &str,user_agent: &str) -> Result<String, ()> {
+pub fn getwebpage(url: String,proxy_open: bool,proxy_url: String,user_agent: String) -> Result<String, ()> {
     let mut data = Vec::new();
     let mut handle = Easy::new();
-    handle.url(url).unwrap();
+    handle.url(&url).unwrap();
     handle.follow_location(true).unwrap();
     handle.ssl_verify_peer(false).unwrap();
     handle.post(false).unwrap();
-    handle.useragent(user_agent).unwrap();
+    handle.useragent(&user_agent).unwrap();
     handle.connect_timeout(Duration::new(10, 0)).unwrap();
     
-    if *proxy_open { 
+    if proxy_open { 
         handle.proxy_type(curl::easy::ProxyType::Socks5Hostname).unwrap();
-        handle.proxy(proxy_url).unwrap();
+        handle.proxy(&proxy_url).unwrap();
     }
 
     {
@@ -48,7 +48,7 @@ pub async fn async_getwebpage(url: &str,proxy_open: &bool,proxy_url: &str,user_a
     let proxy_open = proxy_open.to_owned();
     let proxy_url = proxy_url.to_owned();
     let user_agent = user_agent.to_owned();
-    match spawn_blocking(move || getwebpage(&url,&proxy_open,&proxy_url,&user_agent)).await {
+    match spawn_blocking(move || getwebpage(url,proxy_open,proxy_url,user_agent)).await {
         Ok(value) => value,
         _ => return Err(()),
     }
