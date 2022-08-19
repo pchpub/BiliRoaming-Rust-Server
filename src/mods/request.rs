@@ -12,7 +12,7 @@ pub fn getwebpage(url: String,proxy_open: bool,proxy_url: String,user_agent: Str
     handle.ssl_verify_peer(false).unwrap();
     handle.post(false).unwrap();
     handle.useragent(&user_agent).unwrap();
-    handle.connect_timeout(Duration::new(10, 0)).unwrap();
+    handle.connect_timeout(Duration::new(20, 0)).unwrap();
     
     if proxy_open { 
         handle.proxy_type(curl::easy::ProxyType::Socks5Hostname).unwrap();
