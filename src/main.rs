@@ -184,6 +184,7 @@ async fn main() -> std::io::Result<()> {
     let web_background = actix_web::rt::spawn(async move {
         //a thread try to update cache
         loop {
+            println!("[Debug] spawn web_background");
             let receive_data = match r.recv().await {
                 Ok(it) => it,
                 _ => break,

@@ -1,5 +1,6 @@
 use curl::easy::Easy;
 use deadpool_redis::{redis::cmd, Pool};
+use tokio::task::spawn_blocking;
 use std::string::String;
 use std::time::Duration;
 
@@ -42,7 +43,16 @@ pub fn getwebpage(url: &str,proxy_open: &bool,proxy_url: &str,user_agent: &str) 
 
 }
 
-
+pub async fn async_getwebpage(url: &str,proxy_open: &bool,proxy_url: &str,user_agent: &str) -> Result<String, ()> {
+    let url = url.to_owned();
+    let proxy_open = proxy_open.to_owned();
+    let proxy_url = proxy_url.to_owned();
+    let user_agent = user_agent.to_owned();
+    match spawn_blocking(move || getwebpage(&url,&proxy_open,&proxy_url,&user_agent)).await {
+        Ok(value) => value,
+        _ => return Err(()),
+    }
+}
 
 pub async fn redis_get(redis: &Pool,key: &String) -> Option<String> {
     let mut conn = redis.get().await.unwrap();
