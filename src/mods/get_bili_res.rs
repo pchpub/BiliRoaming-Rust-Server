@@ -121,7 +121,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
         }
     };
 
-    let (black, white) = match auth_user(pool, &user_info.uid, &access_key, &config).await {
+    let (black, white) = match auth_user(pool, &user_info.uid, &config).await {
         Ok(value) => value,
         Err(value) => {
             return HttpResponse::Ok()
@@ -546,7 +546,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
             }
         };
 
-        let (_, _) = match auth_user(pool, &user_info.uid, &access_key, &config).await {
+        let (_, _) = match auth_user(pool, &user_info.uid, &config).await {
             Ok(value) => value,
             Err(_) => (false, false),
         };

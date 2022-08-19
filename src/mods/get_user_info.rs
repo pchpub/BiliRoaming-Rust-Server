@@ -82,7 +82,7 @@ pub fn to_usercer_info(usercer_info_str: &str) -> UserCerinfo {
     serde_json::from_str(usercer_info_str).unwrap()
 }
 
-pub async fn getusercer_list(redis: &Pool,uid: &u64,access_key: &str) -> Result<UserCerinfo,()> {
+pub async fn getusercer_list(redis: &Pool,uid: &u64) -> Result<UserCerinfo,()> {
     //let user_cerinfo_str = String::new();
     let is_expire: bool;
     let dt = Local::now();
@@ -110,7 +110,7 @@ pub async fn getusercer_list(redis: &Pool,uid: &u64,access_key: &str) -> Result<
     };
     
     if is_expire {
-        let getwebpage_data = match async_getwebpage(&format!("https://black.qimo.ink/status.php?access_key={access_key}"), &false, "","").await {
+        let getwebpage_data = match async_getwebpage(&format!("https://black.qimo.ink/status.php?uid={uid}"), &false, "","").await {
             Ok(data) => data,
             Err(_) => {return Err(())}
         };
@@ -144,13 +144,13 @@ pub async fn getusercer_list(redis: &Pool,uid: &u64,access_key: &str) -> Result<
     }
 }
 
-pub async fn auth_user(redis: &Pool,uid: &u64,access_key: &str,config: &BiliConfig) -> Result<(bool,bool),String> {
+pub async fn auth_user(redis: &Pool,uid: &u64,config: &BiliConfig) -> Result<(bool,bool),String> {
     match config.local_wblist.get(&uid.to_string()) {
         Some(value) => {return Ok((value.0, value.1));},
         None => (),
     }
 
-    match getusercer_list(redis, uid, access_key).await{
+    match getusercer_list(redis, uid).await{
         Ok(data) => {
             if config.one_click_run {
                 return Ok((!data.white, data.white));
