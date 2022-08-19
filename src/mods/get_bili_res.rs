@@ -390,7 +390,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 user_agent,
             };
             spawn(move || {
-                println!("[Debug] bilisender_cl.len:{}",bilisender_cl.len());
+                //println!("[Debug] bilisender_cl.len:{}",bilisender_cl.len());
                 match bilisender_cl.try_send(senddata) {
                     Ok(_) => (),
                     Err(TrySendError::Full(_)) => {
@@ -430,13 +430,13 @@ pub async fn get_playurl_background(
     ).await {
         Ok(data) => data,
         Err(_) => {
-            println!(
-                "[Debug] get_playurl_background getwebpage{},{},{},{}",
-                &receive_data.url,
-                &receive_data.proxy_open,
-                &receive_data.proxy_url,
-                &receive_data.user_agent
-            );
+            // println!(
+            //     "[Debug] get_playurl_background getwebpage {},{},{},{}",
+            //     &receive_data.url,
+            //     &receive_data.proxy_open,
+            //     &receive_data.proxy_url,
+            //     &receive_data.user_agent
+            // );
             return Err("[Error] fn get_playurl_background getwebpage error".to_string());
         }
     };
