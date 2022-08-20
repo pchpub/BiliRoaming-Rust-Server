@@ -209,3 +209,9 @@ pub struct SendData {
     pub user_agent: String,
     pub proxy_url: String,
 }
+
+pub enum PlayurlType {
+    Thailand,
+    ChinaNoVip,
+    ChinaWithVip,
+}
