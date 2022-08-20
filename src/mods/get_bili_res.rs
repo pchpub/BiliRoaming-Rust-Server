@@ -394,6 +394,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 proxy_open: proxy_open.clone(),
                 proxy_url: proxy_url.to_string(),
                 user_agent,
+                area_num,
             };
             spawn(move || {
                 //println!("[Debug] bilisender_cl.len:{}",bilisender_cl.len());
@@ -446,12 +447,17 @@ pub async fn get_playurl_background(
             return Err("[Error] fn get_playurl_background getwebpage error".to_string());
         }
     };
-    let body_data_json: serde_json::Value = match serde_json::from_str(&body_data) {
+    let mut body_data_json: serde_json::Value = match serde_json::from_str(&body_data) {
         Ok(value) => value,
         Err(_) => {
             return Err("[Error] fn get_playurl_background serde_json::from_str error".to_string())
         }
     };
+    if receive_data.area_num == 4 {
+        remove_parameters_playurl(PlayurlType::Thailand, &mut body_data_json).unwrap_or_default();
+    }else{
+        remove_parameters_playurl(PlayurlType::China, &mut body_data_json).unwrap_or_default();
+    }
     let expire_time = match anti_speedtest_cfg
         .cache
         .get(&body_data_json["code"].as_i64().unwrap().to_string())
