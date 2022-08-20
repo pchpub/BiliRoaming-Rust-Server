@@ -1,6 +1,7 @@
 use super::get_user_info::{appkey_to_sec, auth_user, getuser_list};
 use super::request::{async_getwebpage, redis_get, redis_set};
-use super::types::{BiliConfig, ResignInfo, SendData};
+use super::tools::remove_parameters_playurl;
+use super::types::{BiliConfig, ResignInfo, SendData, PlayurlType};
 use actix_web::http::header::ContentType;
 use actix_web::{HttpRequest, HttpResponse};
 use async_channel::Sender;
@@ -314,7 +315,12 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                         .body("{\"code\":-6404,\"message\":\"获取播放地址失败喵\"}");
                 }
             };
-            let body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
+            let mut body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
+            if area_num == 4 {
+                remove_parameters_playurl(PlayurlType::Thailand, &mut body_data_json).unwrap_or_default();
+            }else{
+                remove_parameters_playurl(PlayurlType::China, &mut body_data_json).unwrap_or_default();
+            }
             let mut code = body_data_json["code"].as_i64().unwrap().clone();
             let backup_policy = match area_num {
                 1 => &config.cn_proxy_playurl_backup_policy,

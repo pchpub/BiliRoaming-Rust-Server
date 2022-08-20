@@ -212,6 +212,5 @@ pub struct SendData {
 
 pub enum PlayurlType {
     Thailand,
-    ChinaNoVip,
-    ChinaWithVip,
+    China,
 }
