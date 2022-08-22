@@ -15,6 +15,7 @@ use std::path::Path;
 use std::sync::Arc;
 use actix_ratelimit::{RateLimiter, MemoryStore, MemoryStoreActor};
 use std::time::Duration;
+use qstring::QString;
 
 #[get("/")]
 async fn hello() -> impl Responder {
