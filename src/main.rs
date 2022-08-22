@@ -14,6 +14,7 @@ use std::fs::{self, File};
 use std::path::Path;
 use std::sync::Arc;
 use actix_ratelimit::{RateLimiter, MemoryStore, MemoryStoreActor};
+use std::time::Duration;
 
 #[get("/")]
 async fn hello() -> impl Responder {
@@ -217,19 +218,19 @@ async fn main() -> std::io::Result<()> {
     let web_main = HttpServer::new(move || {
         let rediscfg = Config::from_url(&config.redis);
         let pool = rediscfg.create_pool(Some(Runtime::Tokio1)).unwrap();
+        let store = MemoryStore::new();
         App::new()
             .app_data((pool, config.clone(), bilisender.clone()))
             .wrap(
                 RateLimiter::new(
                 MemoryStoreActor::from(store.clone()).start())
                     .with_interval(Duration::from_secs(60))
-                    .with_max_requests(100)
+                    .with_max_requests(30)
                     .with_identifier(|req| {
-                        //let key = req.headers().get("x-api-key").unwrap();
                         let query_string = req.query_string();
-                        let key = match query.get("access_key") {
+                        let key = match QString::from(req.query_string()).get("access_key") {
                             Option::Some(key) => key.to_string(),
-                            _ => format!("{}",req.headers().get("X-Real-IP").unwrap()),
+                            _ => req.headers().get("X-Real-IP").unwrap().to_str().unwrap().to_owned(),
                         };
                         Ok(key)
                     })
