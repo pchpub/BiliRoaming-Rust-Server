@@ -1056,6 +1056,8 @@ pub async fn get_resign_accesskey(
             &area_num,
             &config.resign_api_sign.get(&area_num_str).unwrap()
         );
+        //debug
+        println!("[Debug] url:{}", url);
         let webgetpage_data = if let Ok(data) = async_getwebpage(&url, &false, "", "").await {
             data
         } else {
