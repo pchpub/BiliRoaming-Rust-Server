@@ -1,6 +1,6 @@
 [package]
 name = "biliroaming_rust_server"
-version = "0.2.4"
+version = "0.2.7"
 edition = "2021"
 #author = "P CH"
 
@@ -23,6 +23,8 @@ tokio = "1.20.1"
 pcre2 = "0.2.3"
 ctrlc = "3.2.3"
 rand = "0.8.5"
+actix-governor = "0.3.1"
+governor = "0.4.2"
 
 [profile.fast]
 inherits = "release"
