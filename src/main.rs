@@ -1,11 +1,13 @@
 use actix_files::Files;
+use actix_governor::{GovernorConfigBuilder, Governor};
 use actix_web::http::header::ContentType;
 use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use async_channel::{Receiver, Sender};
-use biliroaming_rust_server::mods::api::get_api_accesskey;
+use biliroaming_rust_server::mods::pub_api::get_api_accesskey;
 use biliroaming_rust_server::mods::get_bili_res::{
     errorurl_reg, get_playurl, get_playurl_background, get_search, get_season, get_subtitle_th,
 };
+use biliroaming_rust_server::mods::rate_limit::BiliUserToken;
 use biliroaming_rust_server::mods::types::{BiliConfig, SendData};
 use deadpool_redis::{Config, Pool, Runtime};
 use futures::join;
@@ -13,9 +15,6 @@ use serde_json;
 use std::fs::{self, File};
 use std::path::Path;
 use std::sync::Arc;
-use actix_ratelimit::{RateLimiter, MemoryStore, MemoryStoreActor};
-use std::time::Duration;
-use qstring::QString;
 
 #[get("/")]
 async fn hello() -> impl Responder {
@@ -216,26 +215,19 @@ async fn main() -> std::io::Result<()> {
         }
     });
 
+    let rate_limit_conf = GovernorConfigBuilder::default()
+        .per_second(12)
+        .burst_size(12)
+        .key_extractor(BiliUserToken)
+        .finish()
+        .unwrap();
+    
     let web_main = HttpServer::new(move || {
         let rediscfg = Config::from_url(&config.redis);
         let pool = rediscfg.create_pool(Some(Runtime::Tokio1)).unwrap();
-        let store = MemoryStore::new();
         App::new()
             .app_data((pool, config.clone(), bilisender.clone()))
-            .wrap(
-                RateLimiter::new(
-                MemoryStoreActor::from(store.clone()).start())
-                    .with_interval(Duration::from_secs(60))
-                    .with_max_requests(30)
-                    .with_identifier(|req| {
-                        let query_string = req.query_string();
-                        let key = match QString::from(req.query_string()).get("access_key") {
-                            Option::Some(key) => key.to_string(),
-                            _ => req.headers().get("X-Real-IP").unwrap().to_str().unwrap().to_owned(),
-                        };
-                        Ok(key)
-                    })
-            )
+            .wrap(Governor::new(&rate_limit_conf))
             .service(hello)
             .service(zhplayurl_app)
             .service(zhplayurl_web)
