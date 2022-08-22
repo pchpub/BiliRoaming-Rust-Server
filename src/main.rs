@@ -13,6 +13,7 @@ use serde_json;
 use std::fs::{self, File};
 use std::path::Path;
 use std::sync::Arc;
+use actix_ratelimit::{RateLimiter, MemoryStore, MemoryStoreActor};
 
 #[get("/")]
 async fn hello() -> impl Responder {
@@ -218,6 +219,21 @@ async fn main() -> std::io::Result<()> {
         let pool = rediscfg.create_pool(Some(Runtime::Tokio1)).unwrap();
         App::new()
             .app_data((pool, config.clone(), bilisender.clone()))
+            .wrap(
+                RateLimiter::new(
+                MemoryStoreActor::from(store.clone()).start())
+                    .with_interval(Duration::from_secs(60))
+                    .with_max_requests(100)
+                    .with_identifier(|req| {
+                        //let key = req.headers().get("x-api-key").unwrap();
+                        let query_string = req.query_string();
+                        let key = match query.get("access_key") {
+                            Option::Some(key) => key.to_string(),
+                            _ => format!("{}",req.headers().get("X-Real-IP").unwrap()),
+                        };
+                        Ok(key)
+                    })
+            )
             .service(hello)
             .service(zhplayurl_app)
             .service(zhplayurl_web)
