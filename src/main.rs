@@ -216,7 +216,7 @@ async fn main() -> std::io::Result<()> {
     });
 
     let rate_limit_conf = GovernorConfigBuilder::default()
-        .per_second(12)
+        .per_second(2)
         .burst_size(12)
         .key_extractor(BiliUserToken)
         .finish()
