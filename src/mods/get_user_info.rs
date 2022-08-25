@@ -24,30 +24,36 @@ pub async fn getuser_list(redis: &Pool,access_key: &str,appkey:&str,appsec:&str,
             };
             
             //println!("{}",output);
-            let output_json = json::parse(&output).unwrap();
+            let output_json: serde_json::Value = serde_json::from_str(&output).unwrap();
             let output_struct: UserInfo;
-            if output_json["code"].as_i32().unwrap() == 0 {
+            let code = if let Some(value) = output_json["code"].as_i64() {
+                value
+            }else{
+                println!("{}",output);
+                return Err("服务器内部错误".to_string());
+            };
+            if code == 0 {
                 output_struct = UserInfo{
                     access_key: String::from(access_key),
                     uid: output_json["data"]["mid"].as_u64().unwrap(),
                     vip_expire_time: output_json["data"]["vip"]["due_date"].as_u64().unwrap(),
                     expire_time: ts+25*24*60*60*1000,//用户状态25天强制更新
                 };
-            }else if output_json["code"].as_i32().unwrap() == -400{
+            }else if code == -400{
                 //println!("getuser_list函数寄了 output_json:{}",output_json);
                 return Err("可能你用的不是手机".to_string());
-            }else if output_json["code"].as_i32().unwrap() == -101{
+            }else if code == -101{
                 //println!("getuser_list函数寄了 output_json:{}",output_json);
                 return Err("账号未登录喵(b站api说的,估计你access_key过期了)".to_string());
-            }else if output_json["code"].as_i32().unwrap() == -3{
+            }else if code == -3{
                 //println!("getuser_list函数寄了 output_json:{}",output_json);
                 return Err("可能我sign参数算错了,非常抱歉喵".to_string());
-            }else if output_json["code"].as_i32().unwrap() == -412{
+            }else if code == -412{
                 //println!("getuser_list函数寄了 output_json:{}",output_json);
                 return Err("被草到风控了.....".to_string());
             }else{
                 //println!("getuser_list函数寄了 output_json:{}",output_json);
-                return Err(format!("鼠鼠说:{}",output_json["code"].as_i32().unwrap()));
+                return Err(format!("鼠鼠说:{}",output_json["code"].as_i64().unwrap()));
             }
             let key  = format!("{access_key}20501");
             let value = output_struct.to_json();
@@ -114,7 +120,7 @@ pub async fn getusercer_list(redis: &Pool,uid: &u64) -> Result<UserCerinfo,()> {
             Ok(data) => data,
             Err(_) => {return Err(())}
         };
-        let getwebpage_json = match json::parse(&getwebpage_data){
+        let getwebpage_json: serde_json::Value = match serde_json::from_str(&getwebpage_data) {
             Ok(value) => value,
             Err(_) => {
                 let return_data = UserCerinfo {
@@ -127,7 +133,7 @@ pub async fn getusercer_list(redis: &Pool,uid: &u64) -> Result<UserCerinfo,()> {
                 return Ok(return_data);
             },
         };
-        if getwebpage_json["code"].as_i16().unwrap_or(233) == 0 {
+        if getwebpage_json["code"].as_i64().unwrap_or(233) == 0 {
             let return_data = UserCerinfo {
                 uid: getwebpage_json["data"]["uid"].as_u64().unwrap(),
                 black: getwebpage_json["data"]["is_blacklist"].as_bool().unwrap_or(false),
