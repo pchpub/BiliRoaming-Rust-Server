@@ -42,11 +42,11 @@ pub async fn get_api_accesskey(req: &HttpRequest) -> HttpResponse {
     
     let user_agent = "User-Agent:Mozilla/5.0 (Linux; Android 4.1.2; Nexus 7 Build/JZ054K) AppleWebKit/535.19 (KHTML, like Gecko) Chrome/18.0.1025.166 Safari/535.19";
 
-    let access_key = get_resign_accesskey(&pool,&area_num,user_agent,&config).await.unwrap();
+    let (access_key,expire_time) = get_resign_accesskey(&pool,&area_num,user_agent,&config).await.unwrap();
 
     HttpResponse::Ok() // Debug
         .content_type(ContentType::json())
         .insert_header(("From", "biliroaming-rust-server"))
-        .body(format!("{{\"code\":0,\"message\":\"\",\"access_key\":\"{access_key}\"}}"))
+        .body(format!(r#"{{"code":0,"message":"","access_key":"{access_key}","expire_time":"{expire_time}}}"#))
 
 }

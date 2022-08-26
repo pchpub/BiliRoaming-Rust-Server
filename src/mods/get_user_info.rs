@@ -58,6 +58,7 @@ pub async fn getuser_list(redis: &Pool,access_key: &str,appkey:&str,appsec:&str,
             let key  = format!("{access_key}20501");
             let value = output_struct.to_json();
             let _ : () = redis_set(&redis,&key, &value,25*24*60*60).await.unwrap_or_default();
+            let _ : () = redis_set(&redis,&format!("u{}20501",output_struct.uid), &access_key.to_owned(),25*24*60*60).await.unwrap_or_default();
             //查询数据+地区（1位）+类型（2位）+版本（2位）
             //地区 cn 1
             //     hk 2
@@ -74,8 +75,8 @@ pub async fn getuser_list(redis: &Pool,access_key: &str,appkey:&str,appsec:&str,
             //     web search 08
             //     web subtitle 09
             //     web season 10
-            //     token 11
-            //     th subtitle 12
+            //     resign_info 11
+            //     api 12
             //版本 ：用于处理版本更新后导致的格式变更
             //     now 01
             return Ok(output_struct);
