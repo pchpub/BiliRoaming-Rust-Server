@@ -1,6 +1,8 @@
 use curl::easy::Easy;
 use deadpool_redis::{redis::cmd, Pool};
 use tokio::task::spawn_blocking;
+use std::fs::OpenOptions;
+use std::path::Path;
 use std::string::String;
 use std::time::Duration;
 
@@ -56,6 +58,49 @@ pub async fn async_getwebpage(url: &str,proxy_open: &bool,proxy_url: &str,user_a
         Ok(value) => value,
         _ => return Err(()),
     }
+}
+
+pub fn download<P: AsRef<Path>>(url: String,proxy_open: bool,proxy_url: String,user_agent: String, file_name: P) -> Result<(), ()> {
+    let mut data = if let Ok(value) = OpenOptions::new().write(true).open(file_name.as_ref()){
+        value
+    }else{
+        println!("[Error] 无法打开文件,无法自动更新,请检查权限");
+        return Err(());
+    };
+    //let mut data = Vec::new();
+    let mut handle = Easy::new();
+    handle.url(&url).unwrap();
+    handle.follow_location(true).unwrap();
+    handle.ssl_verify_peer(false).unwrap();
+    handle.post(false).unwrap();
+    handle.useragent(&user_agent).unwrap();
+    handle.connect_timeout(Duration::new(20, 0)).unwrap();
+    
+    if proxy_open { 
+        if proxy_url.contains("://") {
+            handle.proxy(&proxy_url).unwrap();
+        }else{
+            handle.proxy_type(curl::easy::ProxyType::Socks5Hostname).unwrap();
+            handle.proxy(&proxy_url).unwrap();
+        }
+    }
+
+    {
+        let mut transfer = handle.transfer();
+        transfer.write_function(|new_data| {
+            std::io::Write::write(&mut data, new_data).unwrap();
+            Ok(new_data.len())
+        }).unwrap();
+        match transfer.perform() {
+            Ok(()) => (()),
+            Err(err) => {
+                println!("[Error] download failed: {}", err);
+                return Err(());
+            }
+        }
+    }
+
+    Ok(())
 }
 
 pub async fn redis_get(redis: &Pool,key: &String) -> Option<String> {

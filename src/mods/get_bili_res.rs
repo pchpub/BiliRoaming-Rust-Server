@@ -444,7 +444,7 @@ pub async fn get_playurl_background(
             //     &receive_data.proxy_url,
             //     &receive_data.user_agent
             // );
-            return Err("[Error] fn get_playurl_background getwebpage error".to_string());
+            return Err("[Warning] fn get_playurl_background getwebpage error".to_string());
         }
     };
     let mut body_data_json: serde_json::Value = match serde_json::from_str(&body_data) {
