@@ -15,6 +15,8 @@
 * check sign
 * support config.json & config.yaml
 * support http,https,socks5.. proxy 
+* remove need_vip & need_login
+* support auto_update
 * 向后兼容
 
 ## [TODO] 
@@ -24,7 +26,6 @@
 * ~~/intl/gateway/v2/ogv/view/app/episode?~~ web脚本已弃用
 * ~~/pgc/view/web/season?~~ web脚本已弃用
 * to be faster
-* remove need_vip & need_login
 
 ## [使用说明]
 
