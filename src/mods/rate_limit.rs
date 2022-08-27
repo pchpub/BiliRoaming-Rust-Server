@@ -38,7 +38,7 @@ impl KeyExtractor for BiliUserToken {
             .wait_time_from(DefaultClock::default().now())
             .as_secs();
         let json_response = format!(
-            r#"{{"code":-429,"message":"请求过快,请{wait_time}s后重试"}}"#
+            r#"{{"code":-429,"message":"请求过快,请{wait_time}后重试"}}"#
         );
         (json_response, ContentType::json())
     }
