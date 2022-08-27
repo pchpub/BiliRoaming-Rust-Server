@@ -1,7 +1,7 @@
 use super::get_user_info::{appkey_to_sec, auth_user, getuser_list};
 use super::request::{async_getwebpage, redis_get, redis_set};
 use super::tools::remove_parameters_playurl;
-use super::types::{BiliConfig, ResignInfo, SendData, PlayurlType};
+use super::types::{BiliConfig, PlayurlType, ResignInfo, SendData};
 use actix_web::http::header::ContentType;
 use actix_web::{HttpRequest, HttpResponse};
 use async_channel::Sender;
@@ -70,11 +70,9 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
     let mut access_key = match query.get("access_key") {
         Option::Some(key) => key.to_string(),
         _ => {
-            return HttpResponse::Ok()
-                .content_type(ContentType::json())
-                .body(
-                    "{\"code\":-2403,\"message\":\"草,没登陆你看个der,让我凭空拿到你账号是吧\"}",
-                );
+            return HttpResponse::Ok().content_type(ContentType::json()).body(
+                "{\"code\":-2403,\"message\":\"草,没登陆你看个der,让我凭空拿到你账号是吧\"}",
+            );
         }
     };
 
@@ -143,9 +141,9 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
         if *config.resign_open.get("4").unwrap_or(&false)
             && (white || *config.resign_pub.get("4").unwrap_or(&false))
         {
-            (access_key,_) = get_resign_accesskey(pool, &4, &user_agent, &config)
+            (access_key, _) = get_resign_accesskey(pool, &4, &user_agent, &config)
                 .await
-                .unwrap_or((access_key,1));
+                .unwrap_or((access_key, 1));
             is_vip = 1;
         }
     } else {
@@ -158,9 +156,9 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                     .get(&area_num.to_string())
                     .unwrap_or(&false))
         {
-            (access_key,_) = get_resign_accesskey(pool, &area_num, &user_agent, &config)
+            (access_key, _) = get_resign_accesskey(pool, &area_num, &user_agent, &config)
                 .await
-                .unwrap_or((access_key,1));
+                .unwrap_or((access_key, 1));
             let user_info =
                 match getuser_list(pool, &access_key, appkey, &appsec, &user_agent).await {
                     Ok(value) => value,
@@ -307,7 +305,9 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 proxy_open,
                 proxy_url,
                 &user_agent,
-            ).await {
+            )
+            .await
+            {
                 Ok(data) => data,
                 Err(_) => {
                     return HttpResponse::Ok()
@@ -317,9 +317,11 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
             };
             let mut body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
             if area_num == 4 {
-                remove_parameters_playurl(PlayurlType::Thailand, &mut body_data_json).unwrap_or_default();
-            }else{
-                remove_parameters_playurl(PlayurlType::China, &mut body_data_json).unwrap_or_default();
+                remove_parameters_playurl(PlayurlType::Thailand, &mut body_data_json)
+                    .unwrap_or_default();
+            } else {
+                remove_parameters_playurl(PlayurlType::China, &mut body_data_json)
+                    .unwrap_or_default();
             }
             let mut code = body_data_json["code"].as_i64().unwrap().clone();
             let backup_policy = match area_num {
@@ -365,7 +367,9 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                     proxy_open,
                     proxy_url,
                     &user_agent,
-                ).await {
+                )
+                .await
+                {
                     Ok(data) => data,
                     Err(_) => {
                         return HttpResponse::Ok()
@@ -434,7 +438,9 @@ pub async fn get_playurl_background(
         &receive_data.proxy_open,
         &receive_data.proxy_url,
         &receive_data.user_agent,
-    ).await {
+    )
+    .await
+    {
         Ok(data) => data,
         Err(_) => {
             // println!(
@@ -455,7 +461,7 @@ pub async fn get_playurl_background(
     };
     if receive_data.area_num == 4 {
         remove_parameters_playurl(PlayurlType::Thailand, &mut body_data_json).unwrap_or_default();
-    }else{
+    } else {
         remove_parameters_playurl(PlayurlType::China, &mut body_data_json).unwrap_or_default();
     }
     let expire_time = match anti_speedtest_cfg
@@ -496,9 +502,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
         access_key = match query.get("access_key") {
             Option::Some(key) => key,
             _ => {
-                return HttpResponse::Ok()
-                    .content_type(ContentType::json())
-                    .body(
+                return HttpResponse::Ok().content_type(ContentType::json()).body(
                     "{\"code\":-2403,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}",
                 );
             }
@@ -695,7 +699,9 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
         proxy_open,
         &proxy_url,
         &user_agent,
-    ).await {
+    )
+    .await
+    {
         Ok(data) => data,
         Err(_) => {
             return HttpResponse::Ok()
@@ -817,11 +823,9 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
     let access_key = match query.get("access_key") {
         Option::Some(key) => key,
         _ => {
-            return HttpResponse::Ok()
-                .content_type(ContentType::json())
-                .body(
-                    "{\"code\":-2403,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}",
-                );
+            return HttpResponse::Ok().content_type(ContentType::json()).body(
+                "{\"code\":-2403,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}",
+            );
         }
     };
 
@@ -928,7 +932,9 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
             proxy_open,
             &proxy_url,
             &user_agent,
-        ).await {
+        )
+        .await
+        {
             Ok(data) => data,
             Err(_) => {
                 return HttpResponse::Ok()
@@ -983,7 +989,9 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
                 &false,
                 "",
                 &user_agent,
-            ).await {
+            )
+            .await
+            {
                 Ok(value) => value,
                 Err(_) => {
                     return HttpResponse::Ok()
@@ -995,7 +1003,8 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
                         .body(body_data);
                 }
             };
-            let sub_replace_json: serde_json::Value = serde_json::from_str(&sub_replace_str).unwrap();
+            let sub_replace_json: serde_json::Value =
+                serde_json::from_str(&sub_replace_str).unwrap();
             match sub_replace_json["code"].as_i64().unwrap() {
                 0 => (),
                 _ => {
@@ -1072,7 +1081,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
                 .insert_header(("Access-Control-Allow-Methods", "GET"))
                 .body(body_data);
         }
-    }else{
+    } else {
         return HttpResponse::Ok()
             .content_type(ContentType::json())
             .insert_header(("From", "biliroaming-rust-server"))
@@ -1081,7 +1090,6 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
             .insert_header(("Access-Control-Allow-Methods", "GET"))
             .body(redis_get_data);
     }
-    
 }
 
 pub async fn get_resign_accesskey(
@@ -1089,7 +1097,7 @@ pub async fn get_resign_accesskey(
     area_num: &u8,
     user_agent: &str,
     config: &BiliConfig,
-) -> Option<(String,u64)> {
+) -> Option<(String, u64)> {
     if *config
         .resign_api_policy
         .get(&area_num.to_string())
@@ -1102,14 +1110,14 @@ pub async fn get_resign_accesskey(
             Some(value) => {
                 let resign_info_json: ResignInfo = serde_json::from_str(&value).unwrap();
                 if resign_info_json.expire_time > ts {
-                    return Some((resign_info_json.access_key,resign_info_json.expire_time));
+                    return Some((resign_info_json.access_key, resign_info_json.expire_time));
                 }
             }
             None => (),
         };
         let area_num_str = area_num.to_string();
         let url = format!(
-            "https://{}?area_num={}&sign={}",
+            "{}?area_num={}&sign={}",
             &config.resign_api.get(&area_num_str).unwrap(),
             &area_num,
             &config.resign_api_sign.get(&area_num_str).unwrap()
@@ -1117,36 +1125,35 @@ pub async fn get_resign_accesskey(
         let webgetpage_data = if let Ok(data) = async_getwebpage(&url, &false, "", "").await {
             data
         } else {
+            println!("[Error] 从非官方接口处获取accesskey失败");
             return None;
         };
-        let webgetpage_data_json: serde_json::Value = if let Ok(value) = serde_json::from_str(&webgetpage_data){
-            value
-        }else{
+        let webgetpage_data_json: serde_json::Value =
+            if let Ok(value) = serde_json::from_str(&webgetpage_data) {
+                value
+            } else {
+                println!("[Error] json解析失败: {}", webgetpage_data);
+                return None;
+            };
+        if webgetpage_data_json["code"].as_i64().unwrap() != 0 {
+            println!("err3");
             return None;
-        };
-        let access_key = webgetpage_data_json["access_key"].as_str().unwrap().to_string();
-        let resign_info: ResignInfo;
-        match webgetpage_data_json["expires_time"].as_u64() {
-            Some(value) => {
-                resign_info = ResignInfo {
-                    area_num: *area_num as i32,
-                    access_key: access_key.clone(),
-                    refresh_token: "".to_string(),
-                    expire_time: value,
-                };
-            },
-            None => {
-                resign_info = ResignInfo {
-                    area_num: *area_num as i32,
-                    access_key: access_key.clone(),
-                    refresh_token: "".to_string(),
-                    expire_time: ts + 3600, //缓存60分钟应该没啥大问题
-                };
-            },
         }
-        
+        let access_key = webgetpage_data_json["access_key"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let resign_info = ResignInfo {
+            area_num: *area_num as i32,
+            access_key: access_key.clone(),
+            refresh_token: "".to_string(),
+            expire_time: webgetpage_data_json["expire_time"]
+                .as_u64()
+                .unwrap_or(ts + 3600),
+        };
+
         redis_set(redis, &key, &resign_info.to_json(), 3600).await;
-        return Some((access_key,resign_info.expire_time));
+        return Some((access_key, resign_info.expire_time));
     } else {
         let area_num = match area_num {
             4 => 4,
@@ -1160,7 +1167,7 @@ pub async fn get_resign_accesskey(
         let dt = Local::now();
         let ts = dt.timestamp() as u64;
         if resign_info_json.expire_time > ts {
-            return Some((resign_info_json.access_key,resign_info_json.expire_time));
+            return Some((resign_info_json.access_key, resign_info_json.expire_time));
         } else {
             match area_num {
                 4 => get_accesskey_from_token_th(redis, user_agent, config).await,
@@ -1174,7 +1181,7 @@ async fn get_accesskey_from_token_th(
     redis: &Pool,
     user_agent: &str,
     config: &BiliConfig,
-) -> Option<(String,u64)> {
+) -> Option<(String, u64)> {
     let dt = Local::now();
     let ts = dt.timestamp() as u64;
     let resign_info = to_resign_info(&redis_get(redis, &format!("a41101")).await.unwrap()).await;
@@ -1245,14 +1252,14 @@ async fn get_accesskey_from_token_th(
             - 3600,
     };
     redis_set(redis, "a41101", &resign_info.to_json(), 0).await;
-    Some((resign_info.access_key,resign_info.expire_time))
+    Some((resign_info.access_key, resign_info.expire_time))
 }
 
 async fn get_accesskey_from_token_cn(
     redis: &Pool,
     user_agent: &str,
     config: &BiliConfig,
-) -> Option<(String,u64)> {
+) -> Option<(String, u64)> {
     let dt = Local::now();
     let ts = dt.timestamp() as u64;
     let resign_info = to_resign_info(&redis_get(redis, &format!("a11101")).await.unwrap()).await;
@@ -1331,7 +1338,7 @@ async fn get_accesskey_from_token_cn(
             - 3600,
     };
     redis_set(redis, "a11101", &resign_info.to_json(), 0).await;
-    Some((resign_info.access_key,resign_info.expire_time))
+    Some((resign_info.access_key, resign_info.expire_time))
 }
 
 async fn to_resign_info(resin_info_str: &str) -> ResignInfo {
@@ -1415,7 +1422,9 @@ pub async fn get_subtitle_th(req: &HttpRequest, _: bool, _: bool) -> HttpRespons
             proxy_open,
             proxy_url,
             &user_agent,
-        ).await {
+        )
+        .await
+        {
             Ok(data) => data,
             Err(_) => {
                 return HttpResponse::Ok()
