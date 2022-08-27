@@ -68,7 +68,7 @@ pub fn update_server(is_auto_close: bool){
             for item in releases_json["assets"].as_array().unwrap() {
                 if item["name"].as_str().unwrap() == "biliroaming_rust_server" {
                     let download_url = item["browser_download_url"].as_str().unwrap();
-                    println!("{:?}", env::current_exe().unwrap());
+                    //println!("{:?}", env::current_exe().unwrap());
                     match download(
                         download_url.to_string(),
                         false,
