@@ -1117,11 +1117,13 @@ pub async fn get_resign_accesskey(
         let webgetpage_data = if let Ok(data) = async_getwebpage(&url, &false, "", "").await {
             data
         } else {
+            println!("err1");
             return None;
         };
         let webgetpage_data_json: serde_json::Value = if let Ok(value) = serde_json::from_str(&webgetpage_data){
             value
         }else{
+            println!("err2:{}",&webgetpage_data);
             return None;
         };
         let access_key = webgetpage_data_json["access_key"].as_str().unwrap().to_string();
