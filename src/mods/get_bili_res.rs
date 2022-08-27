@@ -143,9 +143,9 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
         if *config.resign_open.get("4").unwrap_or(&false)
             && (white || *config.resign_pub.get("4").unwrap_or(&false))
         {
-            access_key = get_resign_accesskey(pool, &4, &user_agent, &config)
+            (access_key,_) = get_resign_accesskey(pool, &4, &user_agent, &config)
                 .await
-                .unwrap_or(access_key);
+                .unwrap_or((access_key,1));
             is_vip = 1;
         }
     } else {
@@ -158,9 +158,9 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                     .get(&area_num.to_string())
                     .unwrap_or(&false))
         {
-            access_key = get_resign_accesskey(pool, &area_num, &user_agent, &config)
+            (access_key,_) = get_resign_accesskey(pool, &area_num, &user_agent, &config)
                 .await
-                .unwrap_or(access_key);
+                .unwrap_or((access_key,1));
             let user_info =
                 match getuser_list(pool, &access_key, appkey, &appsec, &user_agent).await {
                     Ok(value) => value,
@@ -444,7 +444,7 @@ pub async fn get_playurl_background(
             //     &receive_data.proxy_url,
             //     &receive_data.user_agent
             // );
-            return Err("[Error] fn get_playurl_background getwebpage error".to_string());
+            return Err("[Warning] fn get_playurl_background getwebpage error".to_string());
         }
     };
     let mut body_data_json: serde_json::Value = match serde_json::from_str(&body_data) {
@@ -796,7 +796,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
 }
 
 pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpResponse {
-    let (_pool, config, _bilisender) = req
+    let (pool, config, _bilisender) = req
         .app_data::<(Pool, BiliConfig, Arc<Sender<SendData>>)>()
         .unwrap();
     match req.headers().get("user-agent") {
@@ -850,180 +850,238 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let ts_string = ts.to_string();
-    let mut query_vec = vec![
-        ("access_key", access_key),
-        ("appkey", "7d089525d3611b1c"),
-        ("build", query.get("build").unwrap_or("1080003")),
-        ("mobi_app", "bstar_a"),
-        ("season_id", query.get("season_id").unwrap_or("114514")),
-        ("s_locale", "zh_SG"),
-        ("ts", &ts_string),
-    ];
 
-    query_vec.sort_by_key(|v| v.0);
-    //let unsigned_url = qstring::QString::new(query_vec);
-    let unsigned_url = format!("{}", qstring::QString::new(query_vec));
-    let appsec = match appkey_to_sec("7d089525d3611b1c") {
-        Ok(value) => value,
-        _ => {
-            return HttpResponse::Ok()
-                .content_type(ContentType::json())
-                .body(format!(
-                    "{{\"code\":-3403,\"message\":\"没有对应的appsec\"}}"
-                ));
+    let season_id = query.get("season_id").unwrap_or("114514");
+    //查询数据+地区（1位）+类型（2位）+版本（2位）
+    //地区 cn 1
+    //     hk 2
+    //     tw 3
+    //     th 4 （不打算支持，切割泰区，没弹幕我为什么不看nc-raw?）
+    //     default 2
+    //类型 app playurl 01
+    //     app search 02
+    //     app subtitle 03
+    //     app season 04 (留着备用)
+    //     user_info 05
+    //     user_cerinfo 06
+    //     web playurl 07
+    //     web search 08
+    //     web subtitle 09
+    //     web season 10
+    //     resign_info 11
+    //     api 12
+    //版本 ：用于处理版本更新后导致的格式变更
+    //     now 01
+    let key = format!("s{}41001", season_id);
+    let is_expire: bool;
+    let redis_get_data: String;
+    match redis_get(&pool, &key).await {
+        Some(value) => {
+            let redis_get_data_expire_time = &value[..13].parse::<u64>().unwrap();
+            if redis_get_data_expire_time > &ts {
+                is_expire = false;
+                redis_get_data = value[13..].to_string();
+            } else {
+                is_expire = true;
+                redis_get_data = "".to_string();
+            }
+        }
+        None => {
+            is_expire = true;
+            redis_get_data = "".to_string();
         }
     };
-    let signed_url = format!(
-        "{unsigned_url}&sign={:x}",
-        md5::compute(format!("{unsigned_url}{appsec}"))
-    );
-    let proxy_open = &config.th_proxy_playurl_open;
-    let proxy_url = &config.th_proxy_playurl_url;
-    let api = &config.th_app_season_api;
-    let body_data = match async_getwebpage(
-        &format!("{api}?{signed_url}"),
-        proxy_open,
-        &proxy_url,
-        &user_agent,
-    ).await {
-        Ok(data) => data,
-        Err(_) => {
-            return HttpResponse::Ok()
-                .content_type(ContentType::json())
-                .body("{\"code\":-4404,\"message\":\"获取失败喵\"}");
-        }
-    };
-    if config.th_app_season_sub_open {
-        let mut body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
-        let season_id: Option<u64>;
-        let is_result: bool;
-        match &body_data_json["result"] {
-            serde_json::Value::Object(value) => {
-                is_result = true;
-                season_id = Some(value["season_id"].as_u64().unwrap());
-            }
-            serde_json::Value::Null => {
-                is_result = false;
-                match &body_data_json["data"] {
-                    serde_json::Value::Null => {
-                        season_id = None;
-                    }
-                    serde_json::Value::Object(value) => {
-                        season_id = Some(value["season_id"].as_u64().unwrap());
-                    }
-                    _ => {
-                        season_id = None;
-                    }
-                }
-            }
+
+    if is_expire {
+        let mut query_vec = vec![
+            ("access_key", access_key),
+            ("appkey", "7d089525d3611b1c"),
+            ("build", query.get("build").unwrap_or("1080003")),
+            ("mobi_app", "bstar_a"),
+            ("season_id", season_id),
+            ("s_locale", "zh_SG"),
+            ("ts", &ts_string),
+        ];
+
+        query_vec.sort_by_key(|v| v.0);
+        //let unsigned_url = qstring::QString::new(query_vec);
+        let unsigned_url = format!("{}", qstring::QString::new(query_vec));
+        let appsec = match appkey_to_sec("7d089525d3611b1c") {
+            Ok(value) => value,
             _ => {
-                is_result = false;
-                season_id = None;
-            }
-        }
-
-        match season_id {
-            None => {
                 return HttpResponse::Ok()
                     .content_type(ContentType::json())
-                    .insert_header(("From", "biliroaming-rust-server"))
-                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-                    .insert_header(("Access-Control-Allow-Credentials", "true"))
-                    .insert_header(("Access-Control-Allow-Methods", "GET"))
-                    .body(body_data);
+                    .body(format!(
+                        "{{\"code\":-3403,\"message\":\"没有对应的appsec\"}}"
+                    ));
             }
-            Some(_) => (),
-        }
-
-        let sub_replace_str = match async_getwebpage(
-            &format!("{}{}", &config.th_app_season_sub_api, season_id.unwrap()),
-            &false,
-            "",
+        };
+        let signed_url = format!(
+            "{unsigned_url}&sign={:x}",
+            md5::compute(format!("{unsigned_url}{appsec}"))
+        );
+        let proxy_open = &config.th_proxy_playurl_open;
+        let proxy_url = &config.th_proxy_playurl_url;
+        let api = &config.th_app_season_api;
+        let body_data = match async_getwebpage(
+            &format!("{api}?{signed_url}"),
+            proxy_open,
+            &proxy_url,
             &user_agent,
         ).await {
-            Ok(value) => value,
+            Ok(data) => data,
             Err(_) => {
                 return HttpResponse::Ok()
                     .content_type(ContentType::json())
-                    .insert_header(("From", "biliroaming-rust-server"))
-                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-                    .insert_header(("Access-Control-Allow-Credentials", "true"))
-                    .insert_header(("Access-Control-Allow-Methods", "GET"))
-                    .body(body_data);
+                    .body("{\"code\":-4404,\"message\":\"获取失败喵\"}");
             }
         };
-        let sub_replace_json: serde_json::Value = serde_json::from_str(&sub_replace_str).unwrap();
-        match sub_replace_json["code"].as_i64().unwrap() {
-            0 => (),
-            _ => {
-                return HttpResponse::Ok()
-                    .content_type(ContentType::json())
-                    .insert_header(("From", "biliroaming-rust-server"))
-                    .insert_header(("Tips", "Failed-to-get-subs"))
-                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-                    .insert_header(("Access-Control-Allow-Credentials", "true"))
-                    .insert_header(("Access-Control-Allow-Methods", "GET"))
-                    .body(body_data);
+        if config.th_app_season_sub_open {
+            let mut body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
+            let season_id: Option<u64>;
+            let is_result: bool;
+            match &body_data_json["result"] {
+                serde_json::Value::Object(value) => {
+                    is_result = true;
+                    season_id = Some(value["season_id"].as_u64().unwrap());
+                }
+                serde_json::Value::Null => {
+                    is_result = false;
+                    match &body_data_json["data"] {
+                        serde_json::Value::Null => {
+                            season_id = None;
+                        }
+                        serde_json::Value::Object(value) => {
+                            season_id = Some(value["season_id"].as_u64().unwrap());
+                        }
+                        _ => {
+                            season_id = None;
+                        }
+                    }
+                }
+                _ => {
+                    is_result = false;
+                    season_id = None;
+                }
             }
-        }
-        let mut index_of_replace_json = 0;
-        let len_of_replace_json = sub_replace_json["data"].as_array().unwrap().len();
-        while index_of_replace_json < len_of_replace_json {
-            let ep: usize = sub_replace_json["data"][index_of_replace_json]["ep"]
-                .as_u64()
-                .unwrap() as usize;
-            let key = sub_replace_json["data"][index_of_replace_json]["key"]
-                .as_str()
-                .unwrap();
-            let lang = sub_replace_json["data"][index_of_replace_json]["lang"]
-                .as_str()
-                .unwrap();
-            let url = sub_replace_json["data"][index_of_replace_json]["url"]
-                .as_str()
-                .unwrap();
-            if is_result {
-                let element = format!("{{\"id\":{index_of_replace_json},\"key\":\"{key}\",\"title\":\"[非官方] {lang} {}\",\"url\":\"https://{url}\"}}",config.th_app_season_sub_name);
-                body_data_json["result"]["modules"][0]["data"]["episodes"][ep]["subtitles"]
-                    .as_array_mut()
+
+            match season_id {
+                None => {
+                    return HttpResponse::Ok()
+                        .content_type(ContentType::json())
+                        .insert_header(("From", "biliroaming-rust-server"))
+                        .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                        .insert_header(("Access-Control-Allow-Credentials", "true"))
+                        .insert_header(("Access-Control-Allow-Methods", "GET"))
+                        .body(body_data);
+                }
+                Some(_) => (),
+            }
+
+            let sub_replace_str = match async_getwebpage(
+                &format!("{}{}", &config.th_app_season_sub_api, season_id.unwrap()),
+                &false,
+                "",
+                &user_agent,
+            ).await {
+                Ok(value) => value,
+                Err(_) => {
+                    return HttpResponse::Ok()
+                        .content_type(ContentType::json())
+                        .insert_header(("From", "biliroaming-rust-server"))
+                        .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                        .insert_header(("Access-Control-Allow-Credentials", "true"))
+                        .insert_header(("Access-Control-Allow-Methods", "GET"))
+                        .body(body_data);
+                }
+            };
+            let sub_replace_json: serde_json::Value = serde_json::from_str(&sub_replace_str).unwrap();
+            match sub_replace_json["code"].as_i64().unwrap() {
+                0 => (),
+                _ => {
+                    return HttpResponse::Ok()
+                        .content_type(ContentType::json())
+                        .insert_header(("From", "biliroaming-rust-server"))
+                        .insert_header(("Tips", "Failed-to-get-subs"))
+                        .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                        .insert_header(("Access-Control-Allow-Credentials", "true"))
+                        .insert_header(("Access-Control-Allow-Methods", "GET"))
+                        .body(body_data);
+                }
+            }
+            let mut index_of_replace_json = 0;
+            let len_of_replace_json = sub_replace_json["data"].as_array().unwrap().len();
+            while index_of_replace_json < len_of_replace_json {
+                let ep: usize = sub_replace_json["data"][index_of_replace_json]["ep"]
+                    .as_u64()
+                    .unwrap() as usize;
+                let key = sub_replace_json["data"][index_of_replace_json]["key"]
+                    .as_str()
+                    .unwrap();
+                let lang = sub_replace_json["data"][index_of_replace_json]["lang"]
+                    .as_str()
+                    .unwrap();
+                let url = sub_replace_json["data"][index_of_replace_json]["url"]
+                    .as_str()
+                    .unwrap();
+                if is_result {
+                    let element = format!("{{\"id\":{index_of_replace_json},\"key\":\"{key}\",\"title\":\"[非官方] {lang} {}\",\"url\":\"https://{url}\"}}",config.th_app_season_sub_name);
+                    body_data_json["result"]["modules"][0]["data"]["episodes"][ep]["subtitles"]
+                        .as_array_mut()
+                        .unwrap()
+                        .insert(0, serde_json::from_str(&element).unwrap());
+                }
+                index_of_replace_json += 1;
+            }
+
+            if config.aid_replace_open {
+                let len_of_episodes = body_data_json["result"]["modules"][0]["data"]["episodes"]
+                    .as_array()
                     .unwrap()
-                    .insert(0, serde_json::from_str(&element).unwrap());
+                    .len();
+                let mut index = 0;
+                while index < len_of_episodes {
+                    body_data_json["result"]["modules"][0]["data"]["episodes"][index]
+                        .as_object_mut()
+                        .unwrap()
+                        .insert("aid".to_string(), serde_json::json!(&config.aid));
+                    index += 1;
+                }
             }
-            index_of_replace_json += 1;
+
+            let body_data = body_data_json.to_string();
+            let expire_time = match config.cache.get(&"season".to_string()) {
+                Some(value) => value,
+                None => &1800,
+            };
+            let value = format!("{}{body_data}", ts + expire_time * 1000);
+            redis_set(&pool, &key, &value, *expire_time).await;
+            return HttpResponse::Ok()
+                .content_type(ContentType::json())
+                .insert_header(("From", "biliroaming-rust-server"))
+                .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                .insert_header(("Access-Control-Allow-Credentials", "true"))
+                .insert_header(("Access-Control-Allow-Methods", "GET"))
+                .body(body_data);
+        } else {
+            return HttpResponse::Ok()
+                .content_type(ContentType::json())
+                .insert_header(("From", "biliroaming-rust-server"))
+                .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                .insert_header(("Access-Control-Allow-Credentials", "true"))
+                .insert_header(("Access-Control-Allow-Methods", "GET"))
+                .body(body_data);
         }
-
-        if config.aid_replace_open {
-            let len_of_episodes = body_data_json["result"]["modules"][0]["data"]["episodes"]
-                .as_array()
-                .unwrap()
-                .len();
-            let mut index = 0;
-            while index < len_of_episodes {
-                body_data_json["result"]["modules"][0]["data"]["episodes"][index]
-                    .as_object_mut()
-                    .unwrap()
-                    .insert("aid".to_string(), serde_json::json!(&config.aid));
-                index += 1;
-            }
-        }
-
-        let body_data = body_data_json.to_string();
-
+    }else{
         return HttpResponse::Ok()
             .content_type(ContentType::json())
             .insert_header(("From", "biliroaming-rust-server"))
             .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
             .insert_header(("Access-Control-Allow-Credentials", "true"))
             .insert_header(("Access-Control-Allow-Methods", "GET"))
-            .body(body_data);
-    } else {
-        return HttpResponse::Ok()
-            .content_type(ContentType::json())
-            .insert_header(("From", "biliroaming-rust-server"))
-            .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-            .insert_header(("Access-Control-Allow-Credentials", "true"))
-            .insert_header(("Access-Control-Allow-Methods", "GET"))
-            .body(body_data);
+            .body(redis_get_data);
     }
+    
 }
 
 pub async fn get_resign_accesskey(
@@ -1031,7 +1089,7 @@ pub async fn get_resign_accesskey(
     area_num: &u8,
     user_agent: &str,
     config: &BiliConfig,
-) -> Option<String> {
+) -> Option<(String,u64)> {
     if *config
         .resign_api_policy
         .get(&area_num.to_string())
@@ -1044,7 +1102,7 @@ pub async fn get_resign_accesskey(
             Some(value) => {
                 let resign_info_json: ResignInfo = serde_json::from_str(&value).unwrap();
                 if resign_info_json.expire_time > ts {
-                    return Some(resign_info_json.access_key);
+                    return Some((resign_info_json.access_key,resign_info_json.expire_time));
                 }
             }
             None => (),
@@ -1067,14 +1125,28 @@ pub async fn get_resign_accesskey(
             return None;
         };
         let access_key = webgetpage_data_json["access_key"].as_str().unwrap().to_string();
-        let resign_info = ResignInfo {
-            area_num: *area_num as i32,
-            access_key: access_key.clone(),
-            refresh_token: "".to_string(),
-            expire_time: ts + 3600, //缓存60分钟应该没啥大问题
-        };
+        let resign_info: ResignInfo;
+        match webgetpage_data_json["expires_time"].as_u64() {
+            Some(value) => {
+                resign_info = ResignInfo {
+                    area_num: *area_num as i32,
+                    access_key: access_key.clone(),
+                    refresh_token: "".to_string(),
+                    expire_time: value,
+                };
+            },
+            None => {
+                resign_info = ResignInfo {
+                    area_num: *area_num as i32,
+                    access_key: access_key.clone(),
+                    refresh_token: "".to_string(),
+                    expire_time: ts + 3600, //缓存60分钟应该没啥大问题
+                };
+            },
+        }
+        
         redis_set(redis, &key, &resign_info.to_json(), 3600).await;
-        return Some(access_key);
+        return Some((access_key,resign_info.expire_time));
     } else {
         let area_num = match area_num {
             4 => 4,
@@ -1088,7 +1160,7 @@ pub async fn get_resign_accesskey(
         let dt = Local::now();
         let ts = dt.timestamp() as u64;
         if resign_info_json.expire_time > ts {
-            return Some(resign_info_json.access_key);
+            return Some((resign_info_json.access_key,resign_info_json.expire_time));
         } else {
             match area_num {
                 4 => get_accesskey_from_token_th(redis, user_agent, config).await,
@@ -1102,7 +1174,7 @@ async fn get_accesskey_from_token_th(
     redis: &Pool,
     user_agent: &str,
     config: &BiliConfig,
-) -> Option<String> {
+) -> Option<(String,u64)> {
     let dt = Local::now();
     let ts = dt.timestamp() as u64;
     let resign_info = to_resign_info(&redis_get(redis, &format!("a41101")).await.unwrap()).await;
@@ -1173,14 +1245,14 @@ async fn get_accesskey_from_token_th(
             - 3600,
     };
     redis_set(redis, "a41101", &resign_info.to_json(), 0).await;
-    Some(getpost_json["data"]["token_info"]["access_token"].to_string())
+    Some((resign_info.access_key,resign_info.expire_time))
 }
 
 async fn get_accesskey_from_token_cn(
     redis: &Pool,
     user_agent: &str,
     config: &BiliConfig,
-) -> Option<String> {
+) -> Option<(String,u64)> {
     let dt = Local::now();
     let ts = dt.timestamp() as u64;
     let resign_info = to_resign_info(&redis_get(redis, &format!("a11101")).await.unwrap()).await;
@@ -1259,7 +1331,7 @@ async fn get_accesskey_from_token_cn(
             - 3600,
     };
     redis_set(redis, "a11101", &resign_info.to_json(), 0).await;
-    Some(getpost_json["data"]["token_info"]["access_token"].to_string())
+    Some((resign_info.access_key,resign_info.expire_time))
 }
 
 async fn to_resign_info(resin_info_str: &str) -> ResignInfo {

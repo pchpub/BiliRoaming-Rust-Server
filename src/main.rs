@@ -1,13 +1,14 @@
 use actix_files::Files;
-use actix_governor::{GovernorConfigBuilder, Governor};
+use actix_governor::{Governor, GovernorConfigBuilder};
 use actix_web::http::header::ContentType;
 use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use async_channel::{Receiver, Sender};
-use biliroaming_rust_server::mods::pub_api::get_api_accesskey;
 use biliroaming_rust_server::mods::get_bili_res::{
     errorurl_reg, get_playurl, get_playurl_background, get_search, get_season, get_subtitle_th,
 };
+use biliroaming_rust_server::mods::pub_api::get_api_accesskey;
 use biliroaming_rust_server::mods::rate_limit::BiliUserToken;
+use biliroaming_rust_server::mods::tools::update_server;
 use biliroaming_rust_server::mods::types::{BiliConfig, SendData};
 use deadpool_redis::{Config, Pool, Runtime};
 use futures::join;
@@ -160,13 +161,17 @@ async fn main() -> std::io::Result<()> {
         }
     }
     match config_type.unwrap() {
-        "json" => fs::write("config.json", serde_json::to_string_pretty(&config).unwrap()).unwrap(),
+        "json" => fs::write(
+            "config.json",
+            serde_json::to_string_pretty(&config).unwrap(),
+        )
+        .unwrap(),
         "yml" => fs::write("config.yml", serde_yaml::to_string(&config).unwrap()).unwrap(),
         _ => {
             println!("[error] 未预期的错误-2");
         }
     }
-    ctrlc::set_handler(move || {
+    ctrlc::set_handler(move || { //目前来看这个已经没用了,但以防万一卡死,还是留着好了
         println!("\n已关闭 biliroaming_rust_server");
         std::process::exit(0);
     })
@@ -178,6 +183,10 @@ async fn main() -> std::io::Result<()> {
     let anti_speedtest_cfg = config.clone();
     let woker_num = config.woker_num;
     let port = config.port.clone();
+
+    if config.auto_update {
+        update_server(config.auto_close.clone());
+    }
 
     let (s, r): (Sender<SendData>, Receiver<SendData>) = async_channel::bounded(30);
     let bilisender = Arc::new(s);
@@ -221,7 +230,7 @@ async fn main() -> std::io::Result<()> {
         .key_extractor(BiliUserToken)
         .finish()
         .unwrap();
-    
+
     let web_main = HttpServer::new(move || {
         let rediscfg = Config::from_url(&config.redis);
         let pool = rediscfg.create_pool(Some(Runtime::Tokio1)).unwrap();

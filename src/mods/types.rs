@@ -4,6 +4,10 @@ use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct BiliConfig {
+    #[serde(default = "default_false")]
+    pub auto_update: bool,
+    #[serde(default = "default_true")]
+    pub auto_close: bool,
     pub redis: String,
     pub woker_num: usize,
     pub port: u16,
@@ -116,6 +120,10 @@ pub struct BiliConfig {
 
 fn default_false() -> bool {
     false
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_string() -> String {
