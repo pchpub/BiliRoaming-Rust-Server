@@ -186,18 +186,27 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
     }
 
     let key = match is_app {
-        true => format!(
-            "e{}c{}v{is_vip}tv{is_tv}{area_num}0101",
-            ep_id.unwrap_or(""),
-            cid.unwrap_or("")
-        ),
+        true => {
+            if is_tv {
+                format!(
+                    "e{}c{}v{is_vip}tv1{area_num}0101",
+                    ep_id.unwrap_or(""),
+                    cid.unwrap_or("")
+                )
+            } else {
+                format!(
+                    "e{}c{}v{is_vip}tv0{area_num}0101",
+                    ep_id.unwrap_or(""),
+                    cid.unwrap_or("")
+                )
+            }
+        }
         false => format!(
             "e{}c{}v{is_vip}{area_num}0701",
             ep_id.unwrap_or(""),
             cid.unwrap_or("")
         ),
     };
-
 
     //查询数据+地区（1位）+类型（2位）+版本（2位）
     //地区 cn 1
@@ -262,7 +271,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                     ("qn", "112"),
                     ("ts", &ts_string),
                 ];
-            }else{
+            } else {
                 query_vec = vec![
                     ("access_key", &access_key[..]),
                     ("appkey", appkey),
@@ -276,8 +285,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                     ("ts", &ts_string),
                 ];
             }
-            
-        }else{
+        } else {
             query_vec = vec![
                 ("access_key", &access_key[..]),
                 ("appkey", appkey),
@@ -291,7 +299,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 ("ts", &ts_string),
             ];
         }
-        
+
         match ep_id {
             Some(value) => query_vec.push(("ep_id", value)),
             None => (),
@@ -447,7 +455,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 area_num,
             };
             spawn(move || {
-                println!("[Debug] bilisender_cl.len:{}",bilisender_cl.len());
+                //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
                 match bilisender_cl.try_send(senddata) {
                     Ok(_) => (),
                     Err(TrySendError::Full(_)) => {
@@ -489,13 +497,13 @@ pub async fn get_playurl_background(
     {
         Ok(data) => data,
         Err(_) => {
-            println!(
-                "[Debug] get_playurl_background getwebpage: {}\n{}\n{}\n{}",
-                &receive_data.url,
-                &receive_data.proxy_open,
-                &receive_data.proxy_url,
-                &receive_data.user_agent
-            );
+            // println!(
+            //     "[Debug] get_playurl_background getwebpage: {}\n{}\n{}\n{}",
+            //     &receive_data.url,
+            //     &receive_data.proxy_open,
+            //     &receive_data.proxy_url,
+            //     &receive_data.user_agent
+            // );
             return Err("[Warning] fn get_playurl_background getwebpage error".to_string());
         }
     };
