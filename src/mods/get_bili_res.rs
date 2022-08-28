@@ -443,13 +443,13 @@ pub async fn get_playurl_background(
     {
         Ok(data) => data,
         Err(_) => {
-            // println!(
-            //     "[Debug] get_playurl_background getwebpage {},{},{},{}",
-            //     &receive_data.url,
-            //     &receive_data.proxy_open,
-            //     &receive_data.proxy_url,
-            //     &receive_data.user_agent
-            // );
+            println!(
+                "[Debug] get_playurl_background getwebpage: {}\n{}\n{}\n{}",
+                &receive_data.url,
+                &receive_data.proxy_open,
+                &receive_data.proxy_url,
+                &receive_data.user_agent
+            );
             return Err("[Warning] fn get_playurl_background getwebpage error".to_string());
         }
     };
