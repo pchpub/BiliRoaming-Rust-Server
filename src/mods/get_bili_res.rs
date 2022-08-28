@@ -189,20 +189,20 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
         true => {
             if is_tv {
                 format!(
-                    "e{}c{}v{is_vip}tv1{area_num}0101",
+                    "e{}c{}v{is_vip}t1{area_num}0101",
                     ep_id.unwrap_or(""),
                     cid.unwrap_or("")
                 )
             } else {
                 format!(
-                    "e{}c{}v{is_vip}tv0{area_num}0101",
+                    "e{}c{}v{is_vip}t0{area_num}0101",
                     ep_id.unwrap_or(""),
                     cid.unwrap_or("")
                 )
             }
         }
         false => format!(
-            "e{}c{}v{is_vip}{area_num}0701",
+            "e{}c{}v{is_vip}t0{area_num}0701",
             ep_id.unwrap_or(""),
             cid.unwrap_or("")
         ),
@@ -213,7 +213,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
     //        e epid
     //        c cid
     //        v is_vip
-    //        tv is_tv
+    //        t is_tv
     //地区 cn 1
     //     hk 2
     //     tw 3
