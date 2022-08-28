@@ -174,9 +174,20 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
         }
     }
 
+    let is_tv: bool;
+    match query.get("fnval") {
+        Some(value) => match value {
+            "130" => is_tv = true,
+            "0" => is_tv = true,
+            "2" => is_tv = true,
+            _ => is_tv = false,
+        },
+        None => is_tv = false,
+    }
+
     let key = match is_app {
         true => format!(
-            "e{}c{}v{is_vip}{area_num}0101",
+            "e{}c{}v{is_vip}tv{is_tv}{area_num}0101",
             ep_id.unwrap_or(""),
             cid.unwrap_or("")
         ),
@@ -186,6 +197,8 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
             cid.unwrap_or("")
         ),
     };
+
+
     //查询数据+地区（1位）+类型（2位）+版本（2位）
     //地区 cn 1
     //     hk 2
@@ -234,18 +247,51 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
     if is_expire || need_flash {
         //println!("is_expire");
         let ts_string = ts.to_string();
-        let mut query_vec = vec![
-            ("access_key", &access_key[..]),
-            ("appkey", appkey),
-            ("build", query.get("build").unwrap_or("6800300")),
-            ("device", query.get("device").unwrap_or("android")),
-            ("fnval", "4048"),
-            ("fnver", "0"),
-            ("fourk", "1"),
-            ("platform", "android"),
-            ("qn", "125"),
-            ("ts", &ts_string),
-        ];
+        let mut query_vec: Vec<(&str, &str)>;
+        if is_tv {
+            if is_vip == 1 {
+                query_vec = vec![
+                    ("access_key", &access_key[..]),
+                    ("appkey", appkey),
+                    ("build", query.get("build").unwrap_or("6800300")),
+                    ("device", query.get("device").unwrap_or("android")),
+                    ("fnval", "130"),
+                    ("fnver", "0"),
+                    ("fourk", "1"),
+                    ("platform", "android"),
+                    ("qn", "112"),
+                    ("ts", &ts_string),
+                ];
+            }else{
+                query_vec = vec![
+                    ("access_key", &access_key[..]),
+                    ("appkey", appkey),
+                    ("build", query.get("build").unwrap_or("6800300")),
+                    ("device", query.get("device").unwrap_or("android")),
+                    ("fnval", "130"),
+                    ("fnver", "0"),
+                    ("fourk", "1"),
+                    ("platform", "android"),
+                    ("qn", "64"),
+                    ("ts", &ts_string),
+                ];
+            }
+            
+        }else{
+            query_vec = vec![
+                ("access_key", &access_key[..]),
+                ("appkey", appkey),
+                ("build", query.get("build").unwrap_or("6800300")),
+                ("device", query.get("device").unwrap_or("android")),
+                ("fnval", "4048"),
+                ("fnver", "0"),
+                ("fourk", "1"),
+                ("platform", "android"),
+                ("qn", "125"),
+                ("ts", &ts_string),
+            ];
+        }
+        
         match ep_id {
             Some(value) => query_vec.push(("ep_id", value)),
             None => (),
