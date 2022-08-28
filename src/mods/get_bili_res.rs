@@ -209,15 +209,20 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
     };
 
     //查询数据+地区（1位）+类型（2位）+版本（2位）
+    //查询数据 a asscesskey
+    //        e epid
+    //        c cid
+    //        v is_vip
+    //        tv is_tv
     //地区 cn 1
     //     hk 2
     //     tw 3
-    //     th 4 （不打算支持，切割泰区，没弹幕我为什么不看nc-raw?）
+    //     th 4 
     //     default 2
     //类型 app playurl 01
     //     app search 02
     //     app subtitle 03
-    //     app season 04 (留着备用)
+    //     app season 04
     //     user_info 05
     //     user_cerinfo 06
     //     web playurl 07
