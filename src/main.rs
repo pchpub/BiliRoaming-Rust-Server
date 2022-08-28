@@ -196,13 +196,13 @@ async fn main() -> std::io::Result<()> {
         .unwrap();
     let web_background = actix_web::rt::spawn(async move {
         //a thread try to update cache
+        //println!("[Debug] spawn web_background");
         loop {
-            //println!("[Debug] spawn web_background");
             let receive_data = match r.recv().await {
                 Ok(it) => it,
                 _ => break,
             };
-            //println!("[Deubg] recieve now r len:{}",r.len());
+            //println!("[Debug] r:{}",r.len());
             match receive_data.data_type {
                 1 => {
                     match get_playurl_background(
@@ -222,6 +222,7 @@ async fn main() -> std::io::Result<()> {
                 _ => {}
             }
         }
+        //println!("[Debug] exit web_background");
     });
 
     let rate_limit_conf = GovernorConfigBuilder::default()
