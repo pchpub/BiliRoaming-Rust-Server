@@ -401,7 +401,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 area_num,
             };
             spawn(move || {
-                //println!("[Debug] bilisender_cl.len:{}",bilisender_cl.len());
+                println!("[Debug] bilisender_cl.len:{}",bilisender_cl.len());
                 match bilisender_cl.try_send(senddata) {
                     Ok(_) => (),
                     Err(TrySendError::Full(_)) => {
