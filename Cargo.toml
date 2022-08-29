@@ -18,7 +18,7 @@ deadpool = "0.9.5"
 deadpool-redis = "0.10.2"
 async-channel = "1.6.1"
 futures = "0.3.21"
-tokio = "1.20.1"
+tokio = { version = "1.20.1", features = ["full"] }
 pcre2 = "0.2.3"
 ctrlc = "3.2.3"
 rand = "0.8.5"
