@@ -193,7 +193,7 @@ fn main() -> std::io::Result<()> {
     let pool_background = anti_speedtest_redis_cfg
         .create_pool(Some(Runtime::Tokio1))
         .unwrap();
-    let web_background = tokio::spawn(async move {
+    let web_background = async move {
         //a thread try to update cache
         println!("[Debug] spawn web_background");
         loop {
@@ -222,7 +222,7 @@ fn main() -> std::io::Result<()> {
             }
         }
         println!("[Debug] exit web_background");
-    });
+    };
     
     let rate_limit_conf = GovernorConfigBuilder::default()
         .per_second(3)
