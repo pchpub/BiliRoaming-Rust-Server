@@ -286,7 +286,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                     ("fnver", "0"),
                     ("fourk", "1"),
                     ("platform", "android"),
-                    ("qn", "64"),
+                    ("qn", "112"),//Debug 原来是64,测试下会返回什么内容
                     ("ts", &ts_string),
                 ];
             }
