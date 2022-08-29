@@ -217,7 +217,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
     //地区 cn 1
     //     hk 2
     //     tw 3
-    //     th 4 
+    //     th 4
     //     default 2
     //类型 app playurl 01
     //     app search 02
@@ -259,37 +259,22 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
     };
     let response_body: String;
     if is_expire || need_flash {
-        //println!("is_expire");
         let ts_string = ts.to_string();
         let mut query_vec: Vec<(&str, &str)>;
         if is_tv {
-            if is_vip == 1 {
-                query_vec = vec![
-                    ("access_key", &access_key[..]),
-                    ("appkey", appkey),
-                    ("build", query.get("build").unwrap_or("6800300")),
-                    ("device", query.get("device").unwrap_or("android")),
-                    ("fnval", "130"),
-                    ("fnver", "0"),
-                    ("fourk", "1"),
-                    ("platform", "android"),
-                    ("qn", "112"),
-                    ("ts", &ts_string),
-                ];
-            } else {
-                query_vec = vec![
-                    ("access_key", &access_key[..]),
-                    ("appkey", appkey),
-                    ("build", query.get("build").unwrap_or("6800300")),
-                    ("device", query.get("device").unwrap_or("android")),
-                    ("fnval", "130"),
-                    ("fnver", "0"),
-                    ("fourk", "1"),
-                    ("platform", "android"),
-                    ("qn", "112"),//Debug 原来是64,测试下会返回什么内容
-                    ("ts", &ts_string),
-                ];
-            }
+            query_vec = vec![
+                ("access_key", &access_key[..]),
+                ("appkey", appkey),
+                ("build", query.get("build").unwrap_or("6800300")),
+                ("device", query.get("device").unwrap_or("android")),
+                ("fnval", "130"),
+                ("fnver", "0"),
+                ("fourk", "1"),
+                ("platform", "android"),
+                //("qn", query.get("qn").unwrap_or("112")), //720P 64 1080P高码率 112
+                ("qn", "112"),//测试了下,没会员会回落到下一档,所以没必要区分 DLNA投屏就最高一档好了,支持其他档没必要,还增加服务器负担
+                ("ts", &ts_string),
+            ];
         } else {
             query_vec = vec![
                 ("access_key", &access_key[..]),
@@ -460,7 +445,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 area_num,
             };
             spawn(move || {
-                println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+                //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
                 match bilisender_cl.try_send(senddata) {
                     Ok(_) => (),
                     Err(TrySendError::Full(_)) => {
