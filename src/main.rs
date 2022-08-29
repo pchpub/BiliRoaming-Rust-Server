@@ -123,8 +123,7 @@ async fn api_accesskey(req: HttpRequest) -> impl Responder {
     get_api_accesskey(&req).await
 }
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
+fn main() -> std::io::Result<()> {
     println!("你好喵~");
     let config_file: File;
     let mut config_type: Option<&str> = None;
@@ -194,7 +193,7 @@ async fn main() -> std::io::Result<()> {
     let pool_background = anti_speedtest_redis_cfg
         .create_pool(Some(Runtime::Tokio1))
         .unwrap();
-    let web_background = actix_web::rt::spawn(async move {
+    let web_background = tokio::spawn(async move {
         //a thread try to update cache
         //println!("[Debug] spawn web_background");
         loop {
@@ -224,7 +223,7 @@ async fn main() -> std::io::Result<()> {
         }
         //println!("[Debug] exit web_background");
     });
-
+    
     let rate_limit_conf = GovernorConfigBuilder::default()
         .per_second(3)
         .burst_size(20)
@@ -257,5 +256,8 @@ async fn main() -> std::io::Result<()> {
     .workers(woker_num)
     .keep_alive(None)
     .run();
-    join!(web_background, web_main).1
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        join!(web_background, web_main).1
+    })
 }
