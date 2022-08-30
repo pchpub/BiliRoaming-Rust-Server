@@ -238,9 +238,18 @@ fn main() -> std::io::Result<()> {
                         value.data_type,
                         value.health_type.to_color_char()
                     );
-                    let url = format!("https://api.telegram.org/bot{}/sendMessage",&anti_speedtest_cfg.telegram_token);
-                    let content = format!("chat_id={}&text={msg}",&anti_speedtest_cfg.telegram_chat_id);
-                    if let Err(_) = async_postwebpage(&url, &content, &false, "", "BiliRoaming-Rust-Server").await {
+                    let url = format!(
+                        "https://api.telegram.org/bot{}/sendMessage",
+                        &anti_speedtest_cfg.telegram_token
+                    );
+                    let content = format!(
+                        "chat_id={}&text={msg}",
+                        &anti_speedtest_cfg.telegram_chat_id
+                    );
+                    if let Err(_) =
+                        async_postwebpage(&url, &content, &false, "", "BiliRoaming-Rust-Server")
+                            .await
+                    {
                         println!("[Error] 发送监控状态失败");
                     };
                 }

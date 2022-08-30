@@ -353,7 +353,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
             {
                 Ok(data) => data,
                 Err(_) => {
-                    if config.telegram_report {
+                    if config.telegram_report && redis_get(&pool, &format!("01{}1301",area_num)).await.unwrap_or("0".to_string()).as_str() == "0" {
                         redis_set(&pool, &format!("01{}1301",area_num), "1", 0).await.unwrap_or_default();
                         let senddata = SendData::Health(SendHealthData{
                             area_num,
@@ -435,7 +435,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 {
                     Ok(data) => data,
                     Err(_) => {
-                        if config.telegram_report {
+                        if config.telegram_report && redis_get(&pool, &format!("01{}1301",area_num)).await.unwrap_or("0".to_string()).as_str() == "0" {
                             redis_set(&pool, &format!("01{}1301",area_num), "1", 0).await.unwrap_or_default();
                             let senddata = SendData::Health(SendHealthData{
                                 area_num,
@@ -833,7 +833,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
     {
         Ok(data) => data,
         Err(_) => {
-            if config.telegram_report {
+            if config.telegram_report && redis_get(&pool, &format!("02{}1301",area_num)).await.unwrap_or("0".to_string()).as_str() == "0" {
                 redis_set(&pool, &format!("02{}1301",area_num), "1", 0).await.unwrap_or_default();
                 let senddata = SendData::Health(SendHealthData{
                     area_num,
@@ -907,7 +907,8 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
     if body_data_json["code"].as_i64().unwrap_or(233) != 0
         && body_data_json["code"].as_str().unwrap_or("233") != "0"
     {
-        if config.telegram_report {
+        if config.telegram_report && redis_get(&pool, &format!("02{}1301",area_num)).await.unwrap_or("0".to_string()).as_str() == "0" {
+            redis_set(&pool, &format!("02{}1301",area_num), "1", 0).await.unwrap_or_default();
             let senddata = SendData::Health(SendHealthData{
                 area_num,
                 data_type: SesourceType::Search,
@@ -1131,7 +1132,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
         {
             Ok(data) => data,
             Err(_) => {
-                if config.telegram_report {
+                if config.telegram_report && redis_get(&pool, "0441301").await.unwrap_or("0".to_string()).as_str() == "0" {
                     redis_set(&pool, "0441301", "1", 0).await.unwrap_or_default();
                     let senddata = SendData::Health(SendHealthData{
                         area_num: 4,
