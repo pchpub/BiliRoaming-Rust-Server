@@ -1,19 +1,17 @@
 use super::get_user_info::{appkey_to_sec, auth_user, getuser_list};
-use super::request::{async_getwebpage, redis_get, redis_set};
+use super::request::{async_getwebpage, redis_get, redis_set, async_postwebpage};
 use super::tools::remove_parameters_playurl;
-use super::types::{BiliConfig, PlayurlType, ResignInfo, SendData};
+use super::types::{BiliConfig, PlayurlType, ResignInfo, SendData, SendPlayurlData, SendHealthData, SesourceType, HealthType};
 use actix_web::http::header::ContentType;
 use actix_web::{HttpRequest, HttpResponse};
 use async_channel::Sender;
 use async_channel::TrySendError;
 use chrono::prelude::*;
-use curl::easy::{Easy, List};
 use deadpool_redis::Pool;
 use md5;
 use pcre2::bytes::Regex;
 use qstring::QString;
 use serde_json::{self, json};
-use std::io::Read;
 use std::sync::Arc;
 use std::thread::spawn;
 
@@ -231,6 +229,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
     //     web season 10
     //     resign_info 11
     //     api 12
+    //     health 13 eg. 0141301 = playurl th health ver.1
     //版本 ：用于处理版本更新后导致的格式变更
     //     now 01
     let is_expire: bool;
@@ -354,6 +353,26 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
             {
                 Ok(data) => data,
                 Err(_) => {
+                    if config.telegram_report {
+                        redis_set(&pool, &format!("01{}1301",area_num), "1", 0).await.unwrap_or_default();
+                        let senddata = SendData::Health(SendHealthData{
+                            area_num,
+                            data_type: SesourceType::PlayUrl,
+                            health_type: HealthType::Offline,
+                        });
+                        spawn(move || {
+                            //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+                            match bilisender_cl.try_send(senddata) {
+                                Ok(_) => (),
+                                Err(TrySendError::Full(_)) => {
+                                    println!("[Error] channel is full");
+                                }
+                                Err(TrySendError::Closed(_)) => {
+                                    println!("[Error] channel is closed");
+                                }
+                            };
+                        });
+                    }
                     return HttpResponse::Ok()
                         .content_type(ContentType::json())
                         .body("{\"code\":-6404,\"message\":\"获取播放地址失败喵\"}");
@@ -416,6 +435,26 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 {
                     Ok(data) => data,
                     Err(_) => {
+                        if config.telegram_report {
+                            redis_set(&pool, &format!("01{}1301",area_num), "1", 0).await.unwrap_or_default();
+                            let senddata = SendData::Health(SendHealthData{
+                                area_num,
+                                data_type: SesourceType::PlayUrl,
+                                health_type: HealthType::Offline,
+                            });
+                            spawn(move || {
+                                //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+                                match bilisender_cl.try_send(senddata) {
+                                    Ok(_) => (),
+                                    Err(TrySendError::Full(_)) => {
+                                        println!("[Error] channel is full");
+                                    }
+                                    Err(TrySendError::Closed(_)) => {
+                                        println!("[Error] channel is closed");
+                                    }
+                                };
+                            });
+                        }
                         return HttpResponse::Ok()
                             .content_type(ContentType::json())
                             .body("{\"code\":-7404,\"message\":\"获取播放地址失败喵\"}");
@@ -433,17 +472,62 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
             let _: () = redis_set(&pool, &key, &value, *expire_time)
                 .await
                 .unwrap_or_default();
+            if config.telegram_report {
+                match redis_get(&pool, &format!("01{}1301",area_num)).await {
+                    Some(value) => {
+                        if &value == "1" {
+                            redis_set(&pool, &format!("01{}1301",area_num), "0", 0).await.unwrap_or_default();
+                            let senddata = SendData::Health(SendHealthData{
+                                area_num,
+                                data_type: SesourceType::PlayUrl,
+                                health_type: HealthType::Online,
+                            });
+                            spawn(move || {
+                                //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+                                match bilisender_cl.try_send(senddata) {
+                                    Ok(_) => (),
+                                    Err(TrySendError::Full(_)) => {
+                                        println!("[Error] channel is full");
+                                    }
+                                    Err(TrySendError::Closed(_)) => {
+                                        println!("[Error] channel is closed");
+                                    }
+                                };
+                            });
+                        }
+                    },
+                    None => {
+                        redis_set(&pool, &format!("01{}1301",area_num), "0", 0).await.unwrap_or_default();
+                        let senddata = SendData::Health(SendHealthData{
+                            area_num,
+                            data_type: SesourceType::PlayUrl,
+                            health_type: HealthType::Online,
+                        });
+                        spawn(move || {
+                            //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+                            match bilisender_cl.try_send(senddata) {
+                                Ok(_) => (),
+                                Err(TrySendError::Full(_)) => {
+                                    println!("[Error] channel is full");
+                                }
+                                Err(TrySendError::Closed(_)) => {
+                                    println!("[Error] channel is closed");
+                                }
+                            };
+                        });
+                    },
+                }
+            }
             response_body = body_data;
         } else {
-            let senddata = SendData {
-                data_type: 1,
+            let senddata = SendData::Playurl(SendPlayurlData {
                 key,
                 url: format!("{api}?{signed_url}"),
                 proxy_open: proxy_open.clone(),
                 proxy_url: proxy_url.to_string(),
                 user_agent,
                 area_num,
-            };
+            });
             spawn(move || {
                 //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
                 match bilisender_cl.try_send(senddata) {
@@ -472,7 +556,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
 
 pub async fn get_playurl_background(
     redis: &Pool,
-    receive_data: &SendData,
+    receive_data: &SendPlayurlData,
     anti_speedtest_cfg: &BiliConfig,
 ) -> Result<(), String> {
     let dt = Local::now();
@@ -523,9 +607,10 @@ pub async fn get_playurl_background(
 }
 
 pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpResponse {
-    let (pool, config, _bilisender) = req
+    let (pool, config, bilisender) = req
         .app_data::<(Pool, BiliConfig, Arc<Sender<SendData>>)>()
         .unwrap();
+    let bilisender_cl = Arc::clone(bilisender);
     match req.headers().get("user-agent") {
         Option::Some(_ua) => (),
         _ => {
@@ -748,6 +833,26 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
     {
         Ok(data) => data,
         Err(_) => {
+            if config.telegram_report {
+                redis_set(&pool, &format!("02{}1301",area_num), "1", 0).await.unwrap_or_default();
+                let senddata = SendData::Health(SendHealthData{
+                    area_num,
+                    data_type: SesourceType::Search,
+                    health_type: HealthType::Offline,
+                });
+                spawn(move || {
+                    //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+                    match bilisender_cl.try_send(senddata) {
+                        Ok(_) => (),
+                        Err(TrySendError::Full(_)) => {
+                            println!("[Error] channel is full");
+                        }
+                        Err(TrySendError::Closed(_)) => {
+                            println!("[Error] channel is closed");
+                        }
+                    };
+                });
+            }
             return HttpResponse::Ok()
                 .content_type(ContentType::json())
                 .body("{\"code\":-5404,\"message\":\"获取失败喵\"}");
@@ -802,6 +907,25 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
     if body_data_json["code"].as_i64().unwrap_or(233) != 0
         && body_data_json["code"].as_str().unwrap_or("233") != "0"
     {
+        if config.telegram_report {
+            let senddata = SendData::Health(SendHealthData{
+                area_num,
+                data_type: SesourceType::Search,
+                health_type: HealthType::Offline,
+            });
+            spawn(move || {
+                //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+                match bilisender_cl.try_send(senddata) {
+                    Ok(_) => (),
+                    Err(TrySendError::Full(_)) => {
+                        println!("[Error] channel is full");
+                    }
+                    Err(TrySendError::Closed(_)) => {
+                        println!("[Error] channel is closed");
+                    }
+                };
+            });
+        }
         return HttpResponse::Ok()
             .content_type(ContentType::json())
             .body("{\"code\":-6404,\"message\":\"获取失败喵\"}");
@@ -834,7 +958,52 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
             }
         }
     }
-
+    if config.telegram_report {
+        match redis_get(&pool, &format!("02{}1301",area_num)).await {
+            Some(value) => {
+                if &value == "1" {
+                    redis_set(&pool, &format!("02{}1301",area_num), "0", 0).await.unwrap_or_default();
+                    let senddata = SendData::Health(SendHealthData{
+                        area_num,
+                        data_type: SesourceType::Search,
+                        health_type: HealthType::Online,
+                    });
+                    spawn(move || {
+                        //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+                        match bilisender_cl.try_send(senddata) {
+                            Ok(_) => (),
+                            Err(TrySendError::Full(_)) => {
+                                println!("[Error] channel is full");
+                            }
+                            Err(TrySendError::Closed(_)) => {
+                                println!("[Error] channel is closed");
+                            }
+                        };
+                    });
+                }
+            },
+            None => {
+                redis_set(&pool, &format!("02{}1301",area_num), "0", 0).await.unwrap_or_default();
+                let senddata = SendData::Health(SendHealthData{
+                    area_num,
+                    data_type: SesourceType::Search,
+                    health_type: HealthType::Online,
+                });
+                spawn(move || {
+                    //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+                    match bilisender_cl.try_send(senddata) {
+                        Ok(_) => (),
+                        Err(TrySendError::Full(_)) => {
+                            println!("[Error] channel is full");
+                        }
+                        Err(TrySendError::Closed(_)) => {
+                            println!("[Error] channel is closed");
+                        }
+                    };
+                });
+            },
+        }
+    }
     let body_data = body_data_json.to_string();
     return HttpResponse::Ok()
         .content_type(ContentType::json())
@@ -846,9 +1015,10 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
 }
 
 pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpResponse {
-    let (pool, config, _bilisender) = req
+    let (pool, config, bilisender) = req
         .app_data::<(Pool, BiliConfig, Arc<Sender<SendData>>)>()
         .unwrap();
+    let bilisender_cl = Arc::clone(bilisender);
     match req.headers().get("user-agent") {
         Option::Some(_ua) => (),
         _ => {
@@ -900,26 +1070,6 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
     let ts_string = ts.to_string();
 
     let season_id = query.get("season_id").unwrap_or("114514");
-    //查询数据+地区（1位）+类型（2位）+版本（2位）
-    //地区 cn 1
-    //     hk 2
-    //     tw 3
-    //     th 4 （不打算支持，切割泰区，没弹幕我为什么不看nc-raw?）
-    //     default 2
-    //类型 app playurl 01
-    //     app search 02
-    //     app subtitle 03
-    //     app season 04 (留着备用)
-    //     user_info 05
-    //     user_cerinfo 06
-    //     web playurl 07
-    //     web search 08
-    //     web subtitle 09
-    //     web season 10
-    //     resign_info 11
-    //     api 12
-    //版本 ：用于处理版本更新后导致的格式变更
-    //     now 01
     let key = format!("s{}41001", season_id);
     let is_expire: bool;
     let redis_get_data: String;
@@ -981,150 +1131,196 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
         {
             Ok(data) => data,
             Err(_) => {
+                if config.telegram_report {
+                    redis_set(&pool, "0441301", "1", 0).await.unwrap_or_default();
+                    let senddata = SendData::Health(SendHealthData{
+                        area_num: 4,
+                        data_type: SesourceType::Season,
+                        health_type: HealthType::Offline,
+                    });
+                    spawn(move || {
+                        //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+                        match bilisender_cl.try_send(senddata) {
+                            Ok(_) => (),
+                            Err(TrySendError::Full(_)) => {
+                                println!("[Error] channel is full");
+                            }
+                            Err(TrySendError::Closed(_)) => {
+                                println!("[Error] channel is closed");
+                            }
+                        };
+                    });
+                }
                 return HttpResponse::Ok()
                     .content_type(ContentType::json())
                     .body("{\"code\":-4404,\"message\":\"获取失败喵\"}");
             }
         };
-        if config.th_app_season_sub_open {
-            let mut body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
-            let season_id: Option<u64>;
-            let is_result: bool;
-            match &body_data_json["result"] {
-                serde_json::Value::Object(value) => {
-                    is_result = true;
-                    season_id = Some(value["season_id"].as_u64().unwrap());
-                }
-                serde_json::Value::Null => {
-                    is_result = false;
-                    match &body_data_json["data"] {
-                        serde_json::Value::Null => {
-                            season_id = None;
-                        }
-                        serde_json::Value::Object(value) => {
-                            season_id = Some(value["season_id"].as_u64().unwrap());
-                        }
-                        _ => {
-                            season_id = None;
+        let season_remake = move || async move {
+            if config.th_app_season_sub_open {
+                let mut body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
+                let season_id: Option<u64>;
+                let is_result: bool;
+                match &body_data_json["result"] {
+                    serde_json::Value::Object(value) => {
+                        is_result = true;
+                        season_id = Some(value["season_id"].as_u64().unwrap());
+                    }
+                    serde_json::Value::Null => {
+                        is_result = false;
+                        match &body_data_json["data"] {
+                            serde_json::Value::Null => {
+                                season_id = None;
+                            }
+                            serde_json::Value::Object(value) => {
+                                season_id = Some(value["season_id"].as_u64().unwrap());
+                            }
+                            _ => {
+                                season_id = None;
+                            }
                         }
                     }
+                    _ => {
+                        is_result = false;
+                        season_id = None;
+                    }
                 }
-                _ => {
-                    is_result = false;
-                    season_id = None;
+    
+                match season_id {
+                    None => {
+                        return body_data;
+                    }
+                    Some(_) => (),
                 }
+    
+                let sub_replace_str = match async_getwebpage(
+                    &format!("{}{}", &config.th_app_season_sub_api, season_id.unwrap()),
+                    &false,
+                    "",
+                    &user_agent,
+                )
+                .await
+                {
+                    Ok(value) => value,
+                    Err(_) => {
+                        return body_data;
+                    }
+                };
+                let sub_replace_json: serde_json::Value =
+                    serde_json::from_str(&sub_replace_str).unwrap();
+                match sub_replace_json["code"].as_i64().unwrap() {
+                    0 => (),
+                    _ => {
+                        return body_data;
+                    }
+                }
+                let mut index_of_replace_json = 0;
+                let len_of_replace_json = sub_replace_json["data"].as_array().unwrap().len();
+                while index_of_replace_json < len_of_replace_json {
+                    let ep: usize = sub_replace_json["data"][index_of_replace_json]["ep"]
+                        .as_u64()
+                        .unwrap() as usize;
+                    let key = sub_replace_json["data"][index_of_replace_json]["key"]
+                        .as_str()
+                        .unwrap();
+                    let lang = sub_replace_json["data"][index_of_replace_json]["lang"]
+                        .as_str()
+                        .unwrap();
+                    let url = sub_replace_json["data"][index_of_replace_json]["url"]
+                        .as_str()
+                        .unwrap();
+                    if is_result {
+                        let element = format!("{{\"id\":{index_of_replace_json},\"key\":\"{key}\",\"title\":\"[非官方] {lang} {}\",\"url\":\"https://{url}\"}}",config.th_app_season_sub_name);
+                        body_data_json["result"]["modules"][0]["data"]["episodes"][ep]["subtitles"]
+                            .as_array_mut()
+                            .unwrap()
+                            .insert(0, serde_json::from_str(&element).unwrap());
+                    }
+                    index_of_replace_json += 1;
+                }
+    
+                if config.aid_replace_open {
+                    let len_of_episodes = body_data_json["result"]["modules"][0]["data"]["episodes"]
+                        .as_array()
+                        .unwrap()
+                        .len();
+                    let mut index = 0;
+                    while index < len_of_episodes {
+                        body_data_json["result"]["modules"][0]["data"]["episodes"][index]
+                            .as_object_mut()
+                            .unwrap()
+                            .insert("aid".to_string(), serde_json::json!(&config.aid));
+                        index += 1;
+                    }
+                }
+    
+                let body_data = body_data_json.to_string();
+                return body_data;
+            } else {
+                return body_data;
             }
-
-            match season_id {
+        };
+        let body_data = season_remake().await;
+        let expire_time = match config.cache.get(&"season".to_string()) {
+            Some(value) => value,
+            None => &1800,
+        };
+        let value = format!("{}{body_data}", ts + expire_time * 1000);
+        redis_set(&pool, &key, &value, *expire_time).await;
+        if config.telegram_report {
+            match redis_get(&pool, "0441301").await {
+                Some(value) => {
+                    if &value == "1" {
+                        redis_set(&pool, "0441301", "0", 0).await.unwrap_or_default();
+                        let senddata = SendData::Health(SendHealthData{
+                            area_num: 4,
+                            data_type: SesourceType::PlayUrl,
+                            health_type: HealthType::Online,
+                        });
+                        spawn(move || {
+                            //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+                            match bilisender_cl.try_send(senddata) {
+                                Ok(_) => (),
+                                Err(TrySendError::Full(_)) => {
+                                    println!("[Error] channel is full");
+                                }
+                                Err(TrySendError::Closed(_)) => {
+                                    println!("[Error] channel is closed");
+                                }
+                            };
+                        });
+                    }
+                },
                 None => {
-                    return HttpResponse::Ok()
-                        .content_type(ContentType::json())
-                        .insert_header(("From", "biliroaming-rust-server"))
-                        .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-                        .insert_header(("Access-Control-Allow-Credentials", "true"))
-                        .insert_header(("Access-Control-Allow-Methods", "GET"))
-                        .body(body_data);
-                }
-                Some(_) => (),
+                    redis_set(&pool, "0441301", "0", 0).await.unwrap_or_default();
+                    let senddata = SendData::Health(SendHealthData{
+                        area_num: 4,
+                        data_type: SesourceType::PlayUrl,
+                        health_type: HealthType::Online,
+                    });
+                    spawn(move || {
+                        //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+                        match bilisender_cl.try_send(senddata) {
+                            Ok(_) => (),
+                            Err(TrySendError::Full(_)) => {
+                                println!("[Error] channel is full");
+                            }
+                            Err(TrySendError::Closed(_)) => {
+                                println!("[Error] channel is closed");
+                            }
+                        };
+                    });
+                },
             }
-
-            let sub_replace_str = match async_getwebpage(
-                &format!("{}{}", &config.th_app_season_sub_api, season_id.unwrap()),
-                &false,
-                "",
-                &user_agent,
-            )
-            .await
-            {
-                Ok(value) => value,
-                Err(_) => {
-                    return HttpResponse::Ok()
-                        .content_type(ContentType::json())
-                        .insert_header(("From", "biliroaming-rust-server"))
-                        .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-                        .insert_header(("Access-Control-Allow-Credentials", "true"))
-                        .insert_header(("Access-Control-Allow-Methods", "GET"))
-                        .body(body_data);
-                }
-            };
-            let sub_replace_json: serde_json::Value =
-                serde_json::from_str(&sub_replace_str).unwrap();
-            match sub_replace_json["code"].as_i64().unwrap() {
-                0 => (),
-                _ => {
-                    return HttpResponse::Ok()
-                        .content_type(ContentType::json())
-                        .insert_header(("From", "biliroaming-rust-server"))
-                        .insert_header(("Tips", "Failed-to-get-subs"))
-                        .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-                        .insert_header(("Access-Control-Allow-Credentials", "true"))
-                        .insert_header(("Access-Control-Allow-Methods", "GET"))
-                        .body(body_data);
-                }
-            }
-            let mut index_of_replace_json = 0;
-            let len_of_replace_json = sub_replace_json["data"].as_array().unwrap().len();
-            while index_of_replace_json < len_of_replace_json {
-                let ep: usize = sub_replace_json["data"][index_of_replace_json]["ep"]
-                    .as_u64()
-                    .unwrap() as usize;
-                let key = sub_replace_json["data"][index_of_replace_json]["key"]
-                    .as_str()
-                    .unwrap();
-                let lang = sub_replace_json["data"][index_of_replace_json]["lang"]
-                    .as_str()
-                    .unwrap();
-                let url = sub_replace_json["data"][index_of_replace_json]["url"]
-                    .as_str()
-                    .unwrap();
-                if is_result {
-                    let element = format!("{{\"id\":{index_of_replace_json},\"key\":\"{key}\",\"title\":\"[非官方] {lang} {}\",\"url\":\"https://{url}\"}}",config.th_app_season_sub_name);
-                    body_data_json["result"]["modules"][0]["data"]["episodes"][ep]["subtitles"]
-                        .as_array_mut()
-                        .unwrap()
-                        .insert(0, serde_json::from_str(&element).unwrap());
-                }
-                index_of_replace_json += 1;
-            }
-
-            if config.aid_replace_open {
-                let len_of_episodes = body_data_json["result"]["modules"][0]["data"]["episodes"]
-                    .as_array()
-                    .unwrap()
-                    .len();
-                let mut index = 0;
-                while index < len_of_episodes {
-                    body_data_json["result"]["modules"][0]["data"]["episodes"][index]
-                        .as_object_mut()
-                        .unwrap()
-                        .insert("aid".to_string(), serde_json::json!(&config.aid));
-                    index += 1;
-                }
-            }
-
-            let body_data = body_data_json.to_string();
-            let expire_time = match config.cache.get(&"season".to_string()) {
-                Some(value) => value,
-                None => &1800,
-            };
-            let value = format!("{}{body_data}", ts + expire_time * 1000);
-            redis_set(&pool, &key, &value, *expire_time).await;
-            return HttpResponse::Ok()
-                .content_type(ContentType::json())
-                .insert_header(("From", "biliroaming-rust-server"))
-                .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-                .insert_header(("Access-Control-Allow-Credentials", "true"))
-                .insert_header(("Access-Control-Allow-Methods", "GET"))
-                .body(body_data);
-        } else {
-            return HttpResponse::Ok()
-                .content_type(ContentType::json())
-                .insert_header(("From", "biliroaming-rust-server"))
-                .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-                .insert_header(("Access-Control-Allow-Credentials", "true"))
-                .insert_header(("Access-Control-Allow-Methods", "GET"))
-                .body(body_data);
         }
+        return  HttpResponse::Ok()
+            .content_type(ContentType::json())
+            .insert_header(("From", "biliroaming-rust-server"))
+            .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+            .insert_header(("Access-Control-Allow-Credentials", "true"))
+            .insert_header(("Access-Control-Allow-Methods", "GET"))
+            .body(body_data);
+        
     } else {
         return HttpResponse::Ok()
             .content_type(ContentType::json())
@@ -1231,50 +1427,11 @@ async fn get_accesskey_from_token_th(
     let resign_info = to_resign_info(&redis_get(redis, &format!("a41101")).await.unwrap()).await;
     let access_key = resign_info.access_key;
     let refresh_token = resign_info.refresh_token;
-    let mut data = Vec::new();
-    let mut handle = Easy::new();
-    let request_body_string = format!("access_token={access_key}&refresh_token={refresh_token}");
-    let mut request_data = request_body_string.as_bytes();
-    handle
-        .url("https://passport.biliintl.com/x/intl/passport-login/oauth2/refresh_token")
-        .unwrap();
-    let mut headers = List::new();
-    headers
-        .append("Content-Type: application/x-www-form-urlencoded")
-        .unwrap();
-    headers.append("charset=utf-8").unwrap();
-    handle.http_headers(headers).unwrap();
-    handle.follow_location(true).unwrap();
-    handle.ssl_verify_peer(false).unwrap();
-    handle.post(true).unwrap();
-    handle.post_field_size(request_data.len() as u64).unwrap();
-    handle.useragent(user_agent).unwrap();
-    if config.th_proxy_token_open {
-        handle
-            .proxy_type(curl::easy::ProxyType::Socks5Hostname)
-            .unwrap();
-        handle.proxy(&config.th_proxy_token_url).unwrap();
-    }
-    {
-        let mut transfer = handle.transfer();
-        transfer
-            .read_function(|into| Ok(request_data.read(into).unwrap()))
-            .unwrap();
-        transfer
-            .write_function(|new_data| {
-                data.extend_from_slice(new_data);
-                Ok(new_data.len())
-            })
-            .unwrap();
-        match transfer.perform() {
-            Ok(()) => (()),
-            _error => {
-                return None;
-            }
-        }
-    }
-
-    let getpost_string: String = match String::from_utf8(data) {
+    let url = "https://passport.biliintl.com/x/intl/passport-login/oauth2/refresh_token";
+    let content = format!("access_token={access_key}&refresh_token={refresh_token}");
+    let proxy_open = &config.th_proxy_token_open;
+    let proxy_url = &config.th_proxy_token_url;
+    let getpost_string = match async_postwebpage(&url, &content, proxy_open, proxy_url, user_agent).await{
         Ok(value) => value,
         Err(_) => return None,
     };
@@ -1309,58 +1466,19 @@ async fn get_accesskey_from_token_cn(
     let resign_info = to_resign_info(&redis_get(redis, &format!("a11101")).await.unwrap()).await;
     let access_key = resign_info.access_key;
     let refresh_token = resign_info.refresh_token;
-    let mut data = Vec::new();
-    let mut handle = Easy::new();
-    let mut request_body_string = format!(
+    let unsign_request_body = format!(
         "access_token={access_key}&appkey=1d8b6e7d45233436&refresh_token={refresh_token}&ts={ts}"
     );
-    request_body_string = format!(
-        "{request_body_string}&sign={:x}",
+    let url = "https://passport.bilibili.com/x/passport-login/oauth2/refresh_token";
+    let content = format!(
+        "{unsign_request_body}&sign={:x}",
         md5::compute(format!(
-            "{request_body_string}560c52ccd288fed045859ed18bffd973"
+            "{unsign_request_body}560c52ccd288fed045859ed18bffd973"
         ))
     );
-    let mut request_data = request_body_string.as_bytes();
-    handle
-        .url("https://passport.bilibili.com/x/passport-login/oauth2/refresh_token")
-        .unwrap();
-    let mut headers = List::new();
-    headers
-        .append("Content-Type: application/x-www-form-urlencoded")
-        .unwrap();
-    headers.append("charset=utf-8").unwrap();
-    handle.http_headers(headers).unwrap();
-    handle.follow_location(false).unwrap();
-    handle.ssl_verify_peer(false).unwrap();
-    handle.post(true).unwrap();
-    handle.post_field_size(request_data.len() as u64).unwrap();
-    handle.useragent(user_agent).unwrap();
-    if config.cn_proxy_token_open {
-        handle
-            .proxy_type(curl::easy::ProxyType::Socks5Hostname)
-            .unwrap();
-        handle.proxy(&config.th_proxy_token_url).unwrap();
-    }
-    {
-        let mut transfer = handle.transfer();
-        transfer
-            .read_function(|into| Ok(request_data.read(into).unwrap()))
-            .unwrap();
-        transfer
-            .write_function(|new_data| {
-                data.extend_from_slice(new_data);
-                Ok(new_data.len())
-            })
-            .unwrap();
-        match transfer.perform() {
-            Ok(()) => (()),
-            _error => {
-                return None;
-            }
-        }
-    }
-
-    let getpost_string: String = match String::from_utf8(data) {
+    let proxy_open = &config.cn_proxy_token_open;
+    let proxy_url = &config.cn_proxy_token_url;
+    let getpost_string = match async_postwebpage(&url, &content, proxy_open, proxy_url, user_agent).await{
         Ok(value) => value,
         Err(_) => return None,
     };

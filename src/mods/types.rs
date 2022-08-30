@@ -116,6 +116,12 @@ pub struct BiliConfig {
     pub api_sign: String, //实验性
     #[serde(default = "default_hashmap_false")]
     pub api_assesskey_open: HashMap<String, bool>, //api是否暴露
+    #[serde(default = "default_false")]
+    pub telegram_report: bool,
+    #[serde(default = "default_string")]
+    pub telegram_token : String,
+    #[serde(default = "default_string")]
+    pub telegram_chat_id: String,
 }
 
 fn default_false() -> bool {
@@ -209,14 +215,80 @@ impl ResignInfo {
     }
 }
 
-pub struct SendData {
-    pub data_type: u8,
+pub enum SendData {
+    Playurl(SendPlayurlData),
+    Health(SendHealthData),
+}
+
+pub struct SendPlayurlData {
     pub key: String,
     pub url: String,
     pub proxy_open: bool,
     pub user_agent: String,
     pub proxy_url: String,
     pub area_num: u8,
+}
+
+pub struct SendHealthData {
+    pub area_num: u8,
+    pub data_type: SesourceType, 
+    pub health_type: HealthType,
+}
+
+impl SendHealthData {
+    pub fn area_name(&self) -> String{
+        match self.area_num {
+            1 => "大陆".to_string(),
+            2 => "香港".to_string(),
+            3 => "台湾".to_string(),
+            4 => "泰区".to_string(),
+            _ => "[Error] 未预期的错误".to_string(),
+        }
+    }
+}
+
+pub enum SesourceType {
+    PlayUrl,
+    Search,
+    Season,
+    Token,
+}
+
+impl std::fmt::Display for SesourceType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SesourceType::PlayUrl => {
+                write!(f, "PlayUrl")
+            },
+            SesourceType::Search => {
+                write!(f, "Search")
+            },
+            SesourceType::Season => {
+                write!(f, "Season")
+            },
+            SesourceType::Token => {
+                write!(f, "Token")
+            },
+        }
+    }
+}
+
+pub enum HealthType {
+    Online,
+    Offline,
+    Unknown,
+    Closed,
+}
+
+impl HealthType {
+    pub fn to_color_char(&self) -> String {
+        match self {
+            HealthType::Online => return "🟢".to_string(),
+            HealthType::Offline => return "🔴".to_string(),
+            HealthType::Unknown => return "🟡".to_string(),
+            HealthType::Closed => return "🟤".to_string(),
+        }
+    }
 }
 
 pub enum PlayurlType {

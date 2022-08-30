@@ -8,7 +8,8 @@ use biliroaming_rust_server::mods::get_bili_res::{
 };
 use biliroaming_rust_server::mods::pub_api::get_api_accesskey;
 use biliroaming_rust_server::mods::rate_limit::BiliUserToken;
-use biliroaming_rust_server::mods::tools::update_server;
+use biliroaming_rust_server::mods::request::async_postwebpage;
+use biliroaming_rust_server::mods::tools::{health_key_to_char, update_server};
 use biliroaming_rust_server::mods::types::{BiliConfig, SendData};
 use deadpool_redis::{Config, Pool, Runtime};
 use futures::join;
@@ -170,7 +171,8 @@ fn main() -> std::io::Result<()> {
             println!("[error] 未预期的错误-2");
         }
     }
-    ctrlc::set_handler(move || { //目前来看这个已经没用了,但以防万一卡死,还是留着好了
+    ctrlc::set_handler(move || {
+        //目前来看这个已经没用了,但以防万一卡死,还是留着好了
         println!("\n已关闭 biliroaming_rust_server");
         std::process::exit(0);
     })
@@ -187,7 +189,7 @@ fn main() -> std::io::Result<()> {
         update_server(config.auto_close.clone());
     }
 
-    let (s, r): (Sender<SendData>, Receiver<SendData>) = async_channel::bounded(30);
+    let (s, r): (Sender<SendData>, Receiver<SendData>) = async_channel::bounded(120);
     let bilisender = Arc::new(s);
     let anti_speedtest_redis_cfg = Config::from_url(&config.redis);
     let pool_background = anti_speedtest_redis_cfg
@@ -202,28 +204,51 @@ fn main() -> std::io::Result<()> {
                 _ => break,
             };
             //println!("[Debug] r:{}",r.len());
-            match receive_data.data_type {
-                1 => {
-                    match get_playurl_background(
-                        &pool_background,
-                        &receive_data,
-                        &anti_speedtest_cfg,
-                    )
-                    .await
+            match receive_data {
+                SendData::Playurl(value) => {
+                    match get_playurl_background(&pool_background, &value, &anti_speedtest_cfg)
+                        .await
                     {
                         Ok(_) => (),
                         Err(value) => println!("{value}"),
                     };
                 }
-                // 2 => {
-                // TODO: add another data cache
-                // },
-                _ => {}
+                SendData::Health(value) => {
+                    let health_cn_playurl = health_key_to_char(&pool_background, "0111301").await;
+                    let health_hk_playurl = health_key_to_char(&pool_background, "0121301").await;
+                    let health_tw_playurl = health_key_to_char(&pool_background, "0131301").await;
+                    let health_th_playurl = health_key_to_char(&pool_background, "0141301").await;
+                    let health_cn_search = health_key_to_char(&pool_background, "0211301").await;
+                    let health_hk_search = health_key_to_char(&pool_background, "0221301").await;
+                    let health_tw_search = health_key_to_char(&pool_background, "0231301").await;
+                    let health_th_search = health_key_to_char(&pool_background, "0241301").await;
+                    let health_th_season = health_key_to_char(&pool_background, "0441301").await;
+                    let msg = format!(
+                        "大陆 Playurl:              {}\n香港 Playurl:              {}\n台湾 Playurl:              {}\n泰区 Playurl:              {}\n大陆 Search:              {}\n香港 Search:              {}\n台湾 Search:              {}\n泰区 Search:              {}\n泰区 Season:              {}\n\n变动: {} {} -> {}",
+                        health_cn_playurl,
+                        health_hk_playurl,
+                        health_tw_playurl,
+                        health_th_playurl,
+                        health_cn_search,
+                        health_hk_search,
+                        health_tw_search,
+                        health_th_search,
+                        health_th_season,
+                        value.area_name(),
+                        value.data_type,
+                        value.health_type.to_color_char()
+                    );
+                    let url = format!("https://api.telegram.org/bot{}/sendMessage",&anti_speedtest_cfg.telegram_token);
+                    let content = format!("chat_id={}&text={msg}",&anti_speedtest_cfg.telegram_chat_id);
+                    if let Err(_) = async_postwebpage(&url, &content, &false, "", "BiliRoaming-Rust-Server").await {
+                        println!("[Error] 发送监控状态失败");
+                    };
+                }
             }
         }
         //println!("[Debug] exit web_background");
     };
-    
+
     let rate_limit_conf = GovernorConfigBuilder::default()
         .per_second(3)
         .burst_size(20)
@@ -257,7 +282,5 @@ fn main() -> std::io::Result<()> {
     .keep_alive(None)
     .run();
     let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(async {
-        join!(web_background, web_main).1
-    })
+    rt.block_on(async { join!(web_background, web_main).1 })
 }

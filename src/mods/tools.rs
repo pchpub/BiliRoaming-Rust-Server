@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 use std::thread;
 use std::env;
+use deadpool_redis::Pool;
+
+use super::request::redis_get;
 use super::{types::PlayurlType, request::{getwebpage, download}};
 
 pub fn remove_parameters_playurl(playurl_type: PlayurlType,data: &mut serde_json::Value) -> Result<(),()> {
@@ -95,4 +98,24 @@ pub fn update_server(is_auto_close: bool){
             thread::sleep(std::time::Duration::from_secs(6 * 60 * 60));
         }
     });
+}
+
+pub async fn health_key_to_char(pool: &Pool,key: &str) -> String {
+    match redis_get(pool, key).await {
+        Some(value) => {
+            let value = value.as_str();
+            if value == "0" { //🔴🟢🟠🟡🔵🟣🟤
+                return "🟢".to_string();
+            }else if value == "1" {
+                return "🔴".to_string();
+            }else if value == "2" {
+                return "🟡".to_string();
+            }else{
+                return "🟤".to_string();
+            }
+        },
+        None => {
+            return "🔴".to_string();
+        },
+    }
 }
