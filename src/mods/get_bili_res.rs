@@ -727,7 +727,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
             ("lang".to_string(), "hans".to_string()),
             ("mobi_app".to_string(), "bstar_a".to_string()),
             ("platform".to_string(), "android".to_string()),
-            ("pn".to_string(), "1".to_string()),
+            ("pn".to_string(), query.get("pn").unwrap_or("1").to_string()),
             ("ps".to_string(), "20".to_string()),
             ("qn".to_string(), "120".to_string()),
             ("s_locale".to_string(), "zh_SG".to_string()),
@@ -770,7 +770,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
                 ("keyword".to_string(), keyword.to_string()),
                 ("mobi_app".to_string(), "android".to_string()),
                 ("platform".to_string(), "android".to_string()),
-                ("pn".to_string(), "1".to_string()),
+                ("pn".to_string(), query.get("pn").unwrap_or("1").to_string()),
                 ("ps".to_string(), "20".to_string()),
                 ("qn".to_string(), "120".to_string()),
                 ("s_locale".to_string(), "zh_CN".to_string()),
@@ -784,7 +784,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
                 _ => (),
             }
         } else {
-            query_vec = query.into_pairs();
+            query_vec = query.clone().into_pairs();
         }
     }
 
@@ -876,6 +876,15 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
             _ => "",
         },
     };
+    if query.get("pn").unwrap_or("1") != "1" {
+        return HttpResponse::Ok()
+            .content_type(ContentType::json())
+            .insert_header(("From", "biliroaming-rust-server"))
+            .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+            .insert_header(("Access-Control-Allow-Credentials", "true"))
+            .insert_header(("Access-Control-Allow-Methods", "GET"))
+            .body(body_data);
+    }
     let search_remake_date = {
         if is_app {
             if let Some(value) = config.appsearch_remake.get(host) {
