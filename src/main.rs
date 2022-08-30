@@ -189,7 +189,7 @@ fn main() -> std::io::Result<()> {
         update_server(config.auto_close.clone());
     }
 
-    let (s, r): (Sender<SendData>, Receiver<SendData>) = async_channel::bounded(30);
+    let (s, r): (Sender<SendData>, Receiver<SendData>) = async_channel::bounded(120);
     let bilisender = Arc::new(s);
     let anti_speedtest_redis_cfg = Config::from_url(&config.redis);
     let pool_background = anti_speedtest_redis_cfg
@@ -224,7 +224,7 @@ fn main() -> std::io::Result<()> {
                     let health_th_search = health_key_to_char(&pool_background, "0241301").await;
                     let health_th_season = health_key_to_char(&pool_background, "0441301").await;
                     let msg = format!(
-                        "大陆 Playurl: {}\n香港 Playurl: {}\n台湾 Playurl: {}\n泰区 Playurl: {}\n大陆 Search: {}\n香港 Search: {}\n台湾 Search: {}\n泰区 Search: {}\n泰区 Season: {}\n\n变动: {} {} -> {}",
+                        "大陆 Playurl:              {}\n香港 Playurl:              {}\n台湾 Playurl:              {}\n泰区 Playurl:              {}\n大陆 Search:              {}\n香港 Search:              {}\n台湾 Search:              {}\n泰区 Search:              {}\n泰区 Season:              {}\n\n变动: {} {} -> {}",
                         health_cn_playurl,
                         health_hk_playurl,
                         health_tw_playurl,
