@@ -32,6 +32,20 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
         "{}",
         req.headers().get("user-agent").unwrap().to_str().unwrap()
     );
+    if is_app && config.limit_biliroaming_version_open{
+        match req.headers().get("build") {
+            Some(value) => {
+                let version: u16 = value.to_str().unwrap_or("0").parse().unwrap_or(0);
+                if version < config.limit_biliroaming_version_min || version > config.limit_biliroaming_version_max {
+                    return HttpResponse::Ok()
+                        .content_type(ContentType::json())
+                        .body("{\"code\":-1403,\"message\":\"什么旧版本魔人,升下级\"}");
+                }
+            },
+            None => (),
+        }
+    }
+    
     let query_string = req.query_string();
     let query = QString::from(query_string);
 
