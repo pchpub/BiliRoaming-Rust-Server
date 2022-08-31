@@ -20,7 +20,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - name: Build
+    - name: Check
       run: cargo check
 
 #     - name: Upload Build Artifact
