@@ -3,6 +3,14 @@ name: Rust
 on:
   push:
     branches: [ "main" ]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - 'config.example.**'
+      - '**.sh'
+      - '**.json'
+      - '**.yml'
+      - '!.github/workflows/**'
 
 jobs:
   build:
