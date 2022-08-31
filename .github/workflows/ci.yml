@@ -3,6 +3,14 @@ name: ci
 on:
   push:
     branches: [ "beta" ]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - 'config.example.**'
+      - '**.sh'
+      - '**.json'
+      - '**.yml'
+      - '!.github/workflows/**'
 
 jobs:
   build:

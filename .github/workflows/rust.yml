@@ -3,6 +3,14 @@ name: Rust
 on:
   push:
     branches: [ "main" ]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - 'config.example.**'
+      - '**.sh'
+      - '**.json'
+      - '**.yml'
+      - '!.github/workflows/**'
 
 jobs:
   build:
@@ -13,11 +21,11 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Build
-      run: cargo build --profile=release
+      run: cargo check
 
-    - name: Upload Build Artifact
-      uses: actions/upload-artifact@v2.2.2
-      with:
-        name: biliroaming-rust-server-${{ github.run_number }}
-        path: |
-          ./target/release/biliroaming_rust_server
+#     - name: Upload Build Artifact
+#       uses: actions/upload-artifact@v2.2.2
+#       with:
+#         name: biliroaming-rust-server-${{ github.run_number }}
+#         path: |
+#           ./target/release/biliroaming_rust_server

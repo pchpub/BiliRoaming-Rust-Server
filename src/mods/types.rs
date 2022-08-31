@@ -11,6 +11,12 @@ pub struct BiliConfig {
     pub redis: String,
     pub woker_num: usize,
     pub port: u16,
+    #[serde(default = "default_false")]
+    pub limit_biliroaming_version_open: bool,
+    #[serde(default = "default_min_version")]
+    pub limit_biliroaming_version_min: u16,//u8其实够了(0-255),但为了保险点,用u16(0-32768)
+    #[serde(default = "default_max_version")]
+    pub limit_biliroaming_version_max: u16,
     pub cn_app_playurl_api: String,
     pub tw_app_playurl_api: String,
     pub hk_app_playurl_api: String,
@@ -161,6 +167,14 @@ fn default_hashmap_string() -> HashMap<String, String>{
         ("3".to_string(),"".to_string()),
         ("4".to_string(),"".to_string()),
     ])
+}
+
+fn default_min_version() -> u16 {
+    64
+}
+
+fn default_max_version() -> u16 {
+    80
 }
 
 #[derive(Serialize, Deserialize, Clone)]
