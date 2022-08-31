@@ -1,22 +1,14 @@
 # BiliRoaming-Rust-Server
 ## [Features]
 
-* /pgc/player/api/playurl?
-* /pgc/player/web/playurl?
-* /intl/gateway/v2/ogv/playurl?
-* read the cfg from json
-* /intl/gateway/v2/app/search/type?
-* /x/v2/search/type?
-* /x/web-interface/search/type?
-* /intl/gateway/v2/ogv/view/app/season?
-* /x/intl/passport-login/oauth2/refresh_token?
-* /intl/gateway/v2/app/subtitle?
 * local black&white list
 * check sign
 * support config.json & config.yaml
 * support http,https,socks5.. proxy 
 * remove need_vip & need_login
 * support auto_update
+* read the cfg from json
+* health check
 * 向后兼容
 
 ## [TODO] 
@@ -69,3 +61,16 @@
 * config中code为0时的缓存请勿设置为1.9h以下(低于30min会导致缓存就和没缓存一样) 建议保持默认
 * 非常不建议将缓存时间设为0（永久缓存）,可能会导致后续错误无法自动恢复
 * 目前服务端只是小范围测试,有已知但未修复的严重bug,可能会导致您的机子更容易-412
+
+## [API]
+
+* /pgc/player/api/playurl
+* /pgc/player/web/playurl
+* /intl/gateway/v2/ogv/playurl
+* /intl/gateway/v2/app/search/type
+* /x/v2/search/type
+* /x/web-interface/search/type
+* /intl/gateway/v2/ogv/view/app/season
+* /x/intl/passport-login/oauth2/refresh_token
+* /intl/gateway/v2/app/subtitle
+* /api/accesskey
