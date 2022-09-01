@@ -608,10 +608,10 @@ pub async fn get_playurl_background(
     }
     let expire_time = match anti_speedtest_cfg
         .cache
-        .get(&body_data_json["code"].as_i64().unwrap().to_string())
+        .get(&body_data_json["code"].as_i64().unwrap_or_default().to_string())
     {
         Some(value) => value,
-        None => anti_speedtest_cfg.cache.get("other").unwrap(),
+        None => anti_speedtest_cfg.cache.get("other").unwrap_or(&1380),
     };
     let value = format!("{}{body_data}", ts + expire_time * 1000);
     match redis_set(&redis, &receive_data.key, &value, *expire_time).await {

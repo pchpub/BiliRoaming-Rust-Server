@@ -197,13 +197,16 @@ fn main() -> std::io::Result<()> {
         .unwrap();
     let web_background = async move {
         //a thread try to update cache
-        //println!("[Debug] spawn web_background");
+        println!("[Debug] spawn web_background");
         loop {
             let receive_data = match r.recv().await {
                 Ok(it) => it,
-                _ => break,
+                _ => {
+                    println!("[Debug] failed to receive data");
+                    break;
+                },
             };
-            //println!("[Debug] r:{}",r.len());
+            println!("[Debug] r:{}",r.len());
             match receive_data {
                 SendData::Playurl(value) => {
                     match get_playurl_background(&pool_background, &value, &anti_speedtest_cfg)
@@ -255,7 +258,7 @@ fn main() -> std::io::Result<()> {
                 }
             }
         }
-        //println!("[Debug] exit web_background");
+        println!("[Debug] exit web_background");
     };
 
     let rate_limit_conf = GovernorConfigBuilder::default()
