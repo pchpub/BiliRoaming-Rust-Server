@@ -7,7 +7,7 @@ use std::path::Path;
 use std::string::String;
 use std::time::Duration;
 
-pub fn getwebpage(url: String,proxy_open: bool,proxy_url: String,user_agent: String) -> Result<String, ()> {
+pub fn getwebpage(url: String,proxy_open: bool,proxy_url: String,user_agent: String,cookie: String) -> Result<String, ()> {
     let mut data = Vec::new();
     let mut handle = Easy::new();
     handle.url(&url).unwrap();
@@ -16,7 +16,8 @@ pub fn getwebpage(url: String,proxy_open: bool,proxy_url: String,user_agent: Str
     handle.post(false).unwrap();
     handle.useragent(&user_agent).unwrap();
     handle.connect_timeout(Duration::new(20, 0)).unwrap();
-    
+    handle.cookie(&cookie).unwrap();
+
     if proxy_open { 
         if proxy_url.contains("://") {
             handle.proxy(&proxy_url).unwrap();
@@ -50,12 +51,13 @@ pub fn getwebpage(url: String,proxy_open: bool,proxy_url: String,user_agent: Str
 
 }
 
-pub async fn async_getwebpage(url: &str,proxy_open: &bool,proxy_url: &str,user_agent: &str) -> Result<String, ()> {
+pub async fn async_getwebpage(url: &str,proxy_open: &bool,proxy_url: &str,user_agent: &str,cookie: &str) -> Result<String, ()> {
     let url = url.to_owned();
     let proxy_open = proxy_open.to_owned();
     let proxy_url = proxy_url.to_owned();
     let user_agent = user_agent.to_owned();
-    match spawn_blocking(move || getwebpage(url,proxy_open,proxy_url,user_agent)).await {
+    let cookie = cookie.to_owned();
+    match spawn_blocking(move || getwebpage(url,proxy_open,proxy_url,user_agent,cookie)).await {
         Ok(value) => value,
         _ => return Err(()),
     }

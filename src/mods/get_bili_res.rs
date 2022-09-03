@@ -1,7 +1,7 @@
 use super::get_user_info::{appkey_to_sec, auth_user, getuser_list};
 use super::request::{async_getwebpage, redis_get, redis_set, async_postwebpage};
 use super::tools::remove_parameters_playurl;
-use super::types::{BiliConfig, PlayurlType, ResignInfo, SendData, SendPlayurlData, SendHealthData, SesourceType, HealthType};
+use super::types::{BiliConfig, PlayurlType, ResignInfo, SendData, SendPlayurlData, SendHealthData, SesourceType, HealthType, random_string};
 use actix_web::http::header::ContentType;
 use actix_web::{HttpRequest, HttpResponse};
 use async_channel::Sender;
@@ -362,6 +362,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 proxy_open,
                 proxy_url,
                 &user_agent,
+                ""
             )
             .await
             {
@@ -444,6 +445,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                     proxy_open,
                     proxy_url,
                     &user_agent,
+                    "",
                 )
                 .await
                 {
@@ -580,6 +582,7 @@ pub async fn get_playurl_background(
         &receive_data.proxy_open,
         &receive_data.proxy_url,
         &receive_data.user_agent,
+        ""
     )
     .await
     {
@@ -608,10 +611,10 @@ pub async fn get_playurl_background(
     }
     let expire_time = match anti_speedtest_cfg
         .cache
-        .get(&body_data_json["code"].as_i64().unwrap().to_string())
+        .get(&body_data_json["code"].as_i64().unwrap_or_default().to_string())
     {
         Some(value) => value,
-        None => anti_speedtest_cfg.cache.get("other").unwrap(),
+        None => anti_speedtest_cfg.cache.get("other").unwrap_or(&1380),
     };
     let value = format!("{}{body_data}", ts + expire_time * 1000);
     match redis_set(&redis, &receive_data.key, &value, *expire_time).await {
@@ -842,6 +845,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
         proxy_open,
         &proxy_url,
         &user_agent,
+        &format!("buvid3={}",random_string())
     )
     .await
     {
@@ -1150,6 +1154,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
             proxy_open,
             &proxy_url,
             &user_agent,
+            ""
         )
         .await
         {
@@ -1222,6 +1227,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
                     &false,
                     "",
                     &user_agent,
+                    ""
                 )
                 .await
                 {
@@ -1386,7 +1392,7 @@ pub async fn get_resign_accesskey(
             &area_num,
             &config.resign_api_sign.get(&area_num_str).unwrap()
         );
-        let webgetpage_data = if let Ok(data) = async_getwebpage(&url, &false, "", "").await {
+        let webgetpage_data = if let Ok(data) = async_getwebpage(&url, &false, "", "","").await {
             data
         } else {
             println!("[Error] 从非官方接口处获取accesskey失败");
@@ -1608,6 +1614,7 @@ pub async fn get_subtitle_th(req: &HttpRequest, _: bool, _: bool) -> HttpRespons
             proxy_open,
             proxy_url,
             &user_agent,
+            ""
         )
         .await
         {

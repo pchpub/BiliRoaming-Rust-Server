@@ -201,7 +201,10 @@ fn main() -> std::io::Result<()> {
         loop {
             let receive_data = match r.recv().await {
                 Ok(it) => it,
-                _ => break,
+                _ => {
+                    //println!("[Debug] failed to receive data");
+                    break;
+                },
             };
             //println!("[Debug] r:{}",r.len());
             match receive_data {
@@ -255,7 +258,7 @@ fn main() -> std::io::Result<()> {
                 }
             }
         }
-        //println!("[Debug] exit web_background");
+        println!("[Debug] exit web_background");
     };
 
     let rate_limit_conf = GovernorConfigBuilder::default()

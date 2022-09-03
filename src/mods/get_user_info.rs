@@ -15,7 +15,7 @@ pub async fn getuser_list(redis: &Pool,access_key: &str,appkey:&str,appsec:&str,
             let sign = md5::compute(format!("access_key={}&appkey={}&ts={}{}",access_key,appkey,ts_min,appsec));
             let url:String = format!("https://app.bilibili.com/x/v2/account/myinfo?access_key={}&appkey={}&ts={}&sign={:x}",access_key,appkey,ts_min,sign);
             //println!("{}",url);
-            let output = match async_getwebpage(&url,&false,"",user_agent).await {
+            let output = match async_getwebpage(&url,&false,"",user_agent,"").await {
                 Ok(data) => data,
                 Err(_) => {
                     // println!("getuser_list函数寄了 url:{}",url);
@@ -117,7 +117,7 @@ pub async fn getusercer_list(redis: &Pool,uid: &u64) -> Result<UserCerinfo,()> {
     };
     
     if is_expire {
-        let getwebpage_data = match async_getwebpage(&format!("https://black.qimo.ink/status.php?uid={uid}"), &false, "","").await {
+        let getwebpage_data = match async_getwebpage(&format!("https://black.qimo.ink/status.php?uid={uid}"), &false, "","","").await {
             Ok(data) => data,
             Err(_) => {return Err(())}
         };
@@ -190,10 +190,12 @@ pub fn appkey_to_sec(appkey:&str) -> Result<String, ()> {
         "57263273bc6b67f6" => Ok("a0488e488d1567960d3a765e8d129f90".to_string()), // Android
         "7d336ec01856996b" => Ok("a1ce6983bc89e20a36c37f40c4f1a0dd".to_string()), // AndroidB
         "85eb6835b0a1034e" => Ok("2ad42749773c441109bdc0191257a664".to_string()), // unknown
+        "84956560bc028eb7" => Ok("94aba54af9065f71de72f5508f1cd42e".to_string()), // unknown
         "8e16697a1b4f8121" => Ok("f5dd03b752426f2e623d7badb28d190a".to_string()), // AndroidI
         "aae92bc66f3edfab" => Ok("af125a0d5279fd576c1b4418a3e8276d".to_string()), // PC	投稿工具
         "ae57252b0c09105d" => Ok("c75875c596a69eb55bd119e74b07cfe3".to_string()), // AndroidI
         "bca7e84c2d947ac6" => Ok("60698ba2f68e01ce44738920a0ffe768".to_string()), // login
+        "4ebafd7c4951b366" => Ok("8cb98205e9b2ad3669aad0fce12a4c13".to_string()), // iPhone
         "iVGUTjsxvpLeuDCf" => Ok("aHRmhWMLkdeMuILqORnYZocwMBpMEOdt".to_string()), //Android	取流专用
         "YvirImLGlLANCLvM" => Ok("JNlZNgfNGKZEpaDTkCdPQVXntXhuiJEM".to_string()), //ios	取流专用
         //_ => Ok("560c52ccd288fed045859ed18bffd973".to_string()),

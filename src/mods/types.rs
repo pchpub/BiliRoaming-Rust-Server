@@ -118,7 +118,7 @@ pub struct BiliConfig {
     pub websearch_remake: HashMap<String, String>,
     #[serde(default = "default_string")]
     pub donate_url: String,
-    #[serde(default = "default_sign")]
+    #[serde(default = "random_string")]
     pub api_sign: String, //实验性
     #[serde(default = "default_hashmap_false")]
     pub api_assesskey_open: HashMap<String, bool>, //api是否暴露
@@ -142,7 +142,7 @@ fn default_string() -> String {
     "".to_string()
 }
 
-fn default_sign() -> String {
+pub fn random_string() -> String {
     let rand_sign = rand::thread_rng()
         .sample_iter(&rand::distributions::Alphanumeric)
         .take(8)
