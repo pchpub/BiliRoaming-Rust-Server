@@ -690,7 +690,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
     };
 
     let cookie = 
-    if is_app && !is_th {
+    if !is_app && !is_th {
         match req.headers().get("cookie"){
             Some(value) => format!("{:?}",value),
             None => format!("buvid3={}",random_string()),
