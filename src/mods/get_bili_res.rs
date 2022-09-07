@@ -731,7 +731,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
         "".to_string()
     };
 
-    println!("[Debug] cookie:{}", cookie);
+    //println!("[Debug] cookie:{}", cookie);
 
     let appsec = match appkey_to_sec(appkey) {
         Ok(value) => value,
