@@ -1,7 +1,10 @@
 use super::get_user_info::{appkey_to_sec, auth_user, getuser_list};
-use super::request::{async_getwebpage, redis_get, redis_set, async_postwebpage};
+use super::request::{async_getwebpage, async_postwebpage, redis_get, redis_set};
 use super::tools::remove_parameters_playurl;
-use super::types::{BiliConfig, PlayurlType, ResignInfo, SendData, SendPlayurlData, SendHealthData, SesourceType, HealthType, random_string};
+use super::types::{
+    random_string, BiliConfig, HealthType, PlayurlType, ResignInfo, SendData, SendHealthData,
+    SendPlayurlData, SesourceType,
+};
 use actix_web::http::header::ContentType;
 use actix_web::{HttpRequest, HttpResponse};
 use async_channel::Sender;
@@ -32,20 +35,22 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
         "{}",
         req.headers().get("user-agent").unwrap().to_str().unwrap()
     );
-    if is_app && config.limit_biliroaming_version_open{
+    if is_app && config.limit_biliroaming_version_open {
         match req.headers().get("build") {
             Some(value) => {
                 let version: u16 = value.to_str().unwrap_or("0").parse().unwrap_or(0);
-                if version < config.limit_biliroaming_version_min || version > config.limit_biliroaming_version_max {
+                if version < config.limit_biliroaming_version_min
+                    || version > config.limit_biliroaming_version_max
+                {
                     return HttpResponse::Ok()
                         .content_type(ContentType::json())
                         .body("{\"code\":-1403,\"message\":\"什么旧版本魔人,升下级\"}");
                 }
-            },
+            }
             None => (),
         }
     }
-    
+
     let query_string = req.query_string();
     let query = QString::from(query_string);
 
@@ -285,7 +290,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 ("fourk", "1"),
                 ("platform", "android"),
                 //("qn", query.get("qn").unwrap_or("112")), //720P 64 1080P高码率 112
-                ("qn", "112"),//测试了下,没会员会回落到下一档,所以没必要区分 DLNA投屏就最高一档好了,支持其他档没必要,还增加服务器负担
+                ("qn", "112"), //测试了下,没会员会回落到下一档,所以没必要区分 DLNA投屏就最高一档好了,支持其他档没必要,还增加服务器负担
                 ("ts", &ts_string),
             ];
         } else {
@@ -362,15 +367,23 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 proxy_open,
                 proxy_url,
                 &user_agent,
-                ""
+                "",
             )
             .await
             {
                 Ok(data) => data,
                 Err(_) => {
-                    if config.telegram_report && redis_get(&pool, &format!("01{}1301",area_num)).await.unwrap_or("0".to_string()).as_str() == "0" {
-                        redis_set(&pool, &format!("01{}1301",area_num), "1", 0).await.unwrap_or_default();
-                        let senddata = SendData::Health(SendHealthData{
+                    if config.telegram_report
+                        && redis_get(&pool, &format!("01{}1301", area_num))
+                            .await
+                            .unwrap_or("0".to_string())
+                            .as_str()
+                            == "0"
+                    {
+                        redis_set(&pool, &format!("01{}1301", area_num), "1", 0)
+                            .await
+                            .unwrap_or_default();
+                        let senddata = SendData::Health(SendHealthData {
                             area_num,
                             data_type: SesourceType::PlayUrl,
                             health_type: HealthType::Offline,
@@ -451,9 +464,17 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 {
                     Ok(data) => data,
                     Err(_) => {
-                        if config.telegram_report && redis_get(&pool, &format!("01{}1301",area_num)).await.unwrap_or("0".to_string()).as_str() == "0" {
-                            redis_set(&pool, &format!("01{}1301",area_num), "1", 0).await.unwrap_or_default();
-                            let senddata = SendData::Health(SendHealthData{
+                        if config.telegram_report
+                            && redis_get(&pool, &format!("01{}1301", area_num))
+                                .await
+                                .unwrap_or("0".to_string())
+                                .as_str()
+                                == "0"
+                        {
+                            redis_set(&pool, &format!("01{}1301", area_num), "1", 0)
+                                .await
+                                .unwrap_or_default();
+                            let senddata = SendData::Health(SendHealthData {
                                 area_num,
                                 data_type: SesourceType::PlayUrl,
                                 health_type: HealthType::Offline,
@@ -489,11 +510,13 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 .await
                 .unwrap_or_default();
             if config.telegram_report {
-                match redis_get(&pool, &format!("01{}1301",area_num)).await {
+                match redis_get(&pool, &format!("01{}1301", area_num)).await {
                     Some(value) => {
                         if &value == "1" {
-                            redis_set(&pool, &format!("01{}1301",area_num), "0", 0).await.unwrap_or_default();
-                            let senddata = SendData::Health(SendHealthData{
+                            redis_set(&pool, &format!("01{}1301", area_num), "0", 0)
+                                .await
+                                .unwrap_or_default();
+                            let senddata = SendData::Health(SendHealthData {
                                 area_num,
                                 data_type: SesourceType::PlayUrl,
                                 health_type: HealthType::Online,
@@ -511,10 +534,12 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                                 };
                             });
                         }
-                    },
+                    }
                     None => {
-                        redis_set(&pool, &format!("01{}1301",area_num), "0", 0).await.unwrap_or_default();
-                        let senddata = SendData::Health(SendHealthData{
+                        redis_set(&pool, &format!("01{}1301", area_num), "0", 0)
+                            .await
+                            .unwrap_or_default();
+                        let senddata = SendData::Health(SendHealthData {
                             area_num,
                             data_type: SesourceType::PlayUrl,
                             health_type: HealthType::Online,
@@ -531,7 +556,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                                 }
                             };
                         });
-                    },
+                    }
                 }
             }
             response_body = body_data;
@@ -582,7 +607,7 @@ pub async fn get_playurl_background(
         &receive_data.proxy_open,
         &receive_data.proxy_url,
         &receive_data.user_agent,
-        ""
+        "",
     )
     .await
     {
@@ -609,10 +634,12 @@ pub async fn get_playurl_background(
     } else {
         remove_parameters_playurl(PlayurlType::China, &mut body_data_json).unwrap_or_default();
     }
-    let expire_time = match anti_speedtest_cfg
-        .cache
-        .get(&body_data_json["code"].as_i64().unwrap_or_default().to_string())
-    {
+    let expire_time = match anti_speedtest_cfg.cache.get(
+        &body_data_json["code"]
+            .as_i64()
+            .unwrap_or_default()
+            .to_string(),
+    ) {
         Some(value) => value,
         None => anti_speedtest_cfg.cache.get("other").unwrap_or(&1380),
     };
@@ -688,6 +715,23 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
         }
         _ => 2,
     };
+
+    let cookie = if !is_app && !is_th {
+        match req.headers().get("cookie") {
+            Some(value) => {
+                if let Ok(cookie_raw) = value.to_str() {
+                    cookie_raw.to_owned()
+                } else {
+                    format!("buvid3={}", random_string())
+                }
+            }
+            None => format!("buvid3={}", random_string()),
+        }
+    } else {
+        "".to_string()
+    };
+
+    //println!("[Debug] cookie:{}", cookie);
 
     let appsec = match appkey_to_sec(appkey) {
         Ok(value) => value,
@@ -845,15 +889,23 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
         proxy_open,
         &proxy_url,
         &user_agent,
-        &format!("buvid3={}",random_string())
+        &cookie,
     )
     .await
     {
         Ok(data) => data,
         Err(_) => {
-            if config.telegram_report && redis_get(&pool, &format!("02{}1301",area_num)).await.unwrap_or("0".to_string()).as_str() == "0" {
-                redis_set(&pool, &format!("02{}1301",area_num), "1", 0).await.unwrap_or_default();
-                let senddata = SendData::Health(SendHealthData{
+            if config.telegram_report
+                && redis_get(&pool, &format!("02{}1301", area_num))
+                    .await
+                    .unwrap_or("0".to_string())
+                    .as_str()
+                    == "0"
+            {
+                redis_set(&pool, &format!("02{}1301", area_num), "1", 0)
+                    .await
+                    .unwrap_or_default();
+                let senddata = SendData::Health(SendHealthData {
                     area_num,
                     data_type: SesourceType::Search,
                     health_type: HealthType::Offline,
@@ -934,9 +986,17 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
     if body_data_json["code"].as_i64().unwrap_or(233) != 0
         && body_data_json["code"].as_str().unwrap_or("233") != "0"
     {
-        if config.telegram_report && redis_get(&pool, &format!("02{}1301",area_num)).await.unwrap_or("0".to_string()).as_str() == "0" {
-            redis_set(&pool, &format!("02{}1301",area_num), "1", 0).await.unwrap_or_default();
-            let senddata = SendData::Health(SendHealthData{
+        if config.telegram_report
+            && redis_get(&pool, &format!("02{}1301", area_num))
+                .await
+                .unwrap_or("0".to_string())
+                .as_str()
+                == "0"
+        {
+            redis_set(&pool, &format!("02{}1301", area_num), "1", 0)
+                .await
+                .unwrap_or_default();
+            let senddata = SendData::Health(SendHealthData {
                 area_num,
                 data_type: SesourceType::Search,
                 health_type: HealthType::Offline,
@@ -987,11 +1047,13 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
         }
     }
     if config.telegram_report {
-        match redis_get(&pool, &format!("02{}1301",area_num)).await {
+        match redis_get(&pool, &format!("02{}1301", area_num)).await {
             Some(value) => {
                 if &value == "1" {
-                    redis_set(&pool, &format!("02{}1301",area_num), "0", 0).await.unwrap_or_default();
-                    let senddata = SendData::Health(SendHealthData{
+                    redis_set(&pool, &format!("02{}1301", area_num), "0", 0)
+                        .await
+                        .unwrap_or_default();
+                    let senddata = SendData::Health(SendHealthData {
                         area_num,
                         data_type: SesourceType::Search,
                         health_type: HealthType::Online,
@@ -1009,10 +1071,12 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
                         };
                     });
                 }
-            },
+            }
             None => {
-                redis_set(&pool, &format!("02{}1301",area_num), "0", 0).await.unwrap_or_default();
-                let senddata = SendData::Health(SendHealthData{
+                redis_set(&pool, &format!("02{}1301", area_num), "0", 0)
+                    .await
+                    .unwrap_or_default();
+                let senddata = SendData::Health(SendHealthData {
                     area_num,
                     data_type: SesourceType::Search,
                     health_type: HealthType::Online,
@@ -1029,7 +1093,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
                         }
                     };
                 });
-            },
+            }
         }
     }
     let body_data = body_data_json.to_string();
@@ -1154,15 +1218,23 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
             proxy_open,
             &proxy_url,
             &user_agent,
-            ""
+            "",
         )
         .await
         {
             Ok(data) => data,
             Err(_) => {
-                if config.telegram_report && redis_get(&pool, "0441301").await.unwrap_or("0".to_string()).as_str() == "0" {
-                    redis_set(&pool, "0441301", "1", 0).await.unwrap_or_default();
-                    let senddata = SendData::Health(SendHealthData{
+                if config.telegram_report
+                    && redis_get(&pool, "0441301")
+                        .await
+                        .unwrap_or("0".to_string())
+                        .as_str()
+                        == "0"
+                {
+                    redis_set(&pool, "0441301", "1", 0)
+                        .await
+                        .unwrap_or_default();
+                    let senddata = SendData::Health(SendHealthData {
                         area_num: 4,
                         data_type: SesourceType::Season,
                         health_type: HealthType::Offline,
@@ -1187,7 +1259,8 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
         };
         let season_remake = move || async move {
             if config.th_app_season_sub_open {
-                let mut body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
+                let mut body_data_json: serde_json::Value =
+                    serde_json::from_str(&body_data).unwrap();
                 let season_id: Option<u64>;
                 let is_result: bool;
                 match &body_data_json["result"] {
@@ -1214,20 +1287,20 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
                         season_id = None;
                     }
                 }
-    
+
                 match season_id {
                     None => {
                         return body_data;
                     }
                     Some(_) => (),
                 }
-    
+
                 let sub_replace_str = match async_getwebpage(
                     &format!("{}{}", &config.th_app_season_sub_api, season_id.unwrap()),
                     &false,
                     "",
                     &user_agent,
-                    ""
+                    "",
                 )
                 .await
                 {
@@ -1268,9 +1341,10 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
                     }
                     index_of_replace_json += 1;
                 }
-    
+
                 if config.aid_replace_open {
-                    let len_of_episodes = body_data_json["result"]["modules"][0]["data"]["episodes"]
+                    let len_of_episodes = body_data_json["result"]["modules"][0]["data"]
+                        ["episodes"]
                         .as_array()
                         .unwrap()
                         .len();
@@ -1283,7 +1357,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
                         index += 1;
                     }
                 }
-    
+
                 let body_data = body_data_json.to_string();
                 return body_data;
             } else {
@@ -1301,8 +1375,10 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
             match redis_get(&pool, "0441301").await {
                 Some(value) => {
                     if &value == "1" {
-                        redis_set(&pool, "0441301", "0", 0).await.unwrap_or_default();
-                        let senddata = SendData::Health(SendHealthData{
+                        redis_set(&pool, "0441301", "0", 0)
+                            .await
+                            .unwrap_or_default();
+                        let senddata = SendData::Health(SendHealthData {
                             area_num: 4,
                             data_type: SesourceType::PlayUrl,
                             health_type: HealthType::Online,
@@ -1320,10 +1396,12 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
                             };
                         });
                     }
-                },
+                }
                 None => {
-                    redis_set(&pool, "0441301", "0", 0).await.unwrap_or_default();
-                    let senddata = SendData::Health(SendHealthData{
+                    redis_set(&pool, "0441301", "0", 0)
+                        .await
+                        .unwrap_or_default();
+                    let senddata = SendData::Health(SendHealthData {
                         area_num: 4,
                         data_type: SesourceType::PlayUrl,
                         health_type: HealthType::Online,
@@ -1340,17 +1418,16 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
                             }
                         };
                     });
-                },
+                }
             }
         }
-        return  HttpResponse::Ok()
+        return HttpResponse::Ok()
             .content_type(ContentType::json())
             .insert_header(("From", "biliroaming-rust-server"))
             .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
             .insert_header(("Access-Control-Allow-Credentials", "true"))
             .insert_header(("Access-Control-Allow-Methods", "GET"))
             .body(body_data);
-        
     } else {
         return HttpResponse::Ok()
             .content_type(ContentType::json())
@@ -1392,7 +1469,7 @@ pub async fn get_resign_accesskey(
             &area_num,
             &config.resign_api_sign.get(&area_num_str).unwrap()
         );
-        let webgetpage_data = if let Ok(data) = async_getwebpage(&url, &false, "", "","").await {
+        let webgetpage_data = if let Ok(data) = async_getwebpage(&url, &false, "", "", "").await {
             data
         } else {
             println!("[Error] 从非官方接口处获取accesskey失败");
@@ -1461,10 +1538,11 @@ async fn get_accesskey_from_token_th(
     let content = format!("access_token={access_key}&refresh_token={refresh_token}");
     let proxy_open = &config.th_proxy_token_open;
     let proxy_url = &config.th_proxy_token_url;
-    let getpost_string = match async_postwebpage(&url, &content, proxy_open, proxy_url, user_agent).await{
-        Ok(value) => value,
-        Err(_) => return None,
-    };
+    let getpost_string =
+        match async_postwebpage(&url, &content, proxy_open, proxy_url, user_agent).await {
+            Ok(value) => value,
+            Err(_) => return None,
+        };
     let getpost_json: serde_json::Value = serde_json::from_str(&getpost_string).unwrap();
     let resign_info = ResignInfo {
         area_num: 4,
@@ -1508,10 +1586,11 @@ async fn get_accesskey_from_token_cn(
     );
     let proxy_open = &config.cn_proxy_token_open;
     let proxy_url = &config.cn_proxy_token_url;
-    let getpost_string = match async_postwebpage(&url, &content, proxy_open, proxy_url, user_agent).await{
-        Ok(value) => value,
-        Err(_) => return None,
-    };
+    let getpost_string =
+        match async_postwebpage(&url, &content, proxy_open, proxy_url, user_agent).await {
+            Ok(value) => value,
+            Err(_) => return None,
+        };
     let getpost_json: serde_json::Value = serde_json::from_str(&getpost_string).unwrap();
     let resign_info = ResignInfo {
         area_num: 1,
@@ -1614,7 +1693,7 @@ pub async fn get_subtitle_th(req: &HttpRequest, _: bool, _: bool) -> HttpRespons
             proxy_open,
             proxy_url,
             &user_agent,
-            ""
+            "",
         )
         .await
         {
