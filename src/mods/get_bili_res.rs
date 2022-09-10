@@ -137,7 +137,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
         }
     };
 
-    println!("[Debug] uid:{}", user_info.uid);
+    //println!("[Debug] uid:{}", user_info.uid);
 
     let (black, white) = match auth_user(pool, &user_info.uid, &config).await {
         Ok(value) => value,

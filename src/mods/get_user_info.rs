@@ -147,6 +147,7 @@ pub async fn getusercer_list(redis: &Pool,uid: &u64) -> Result<UserCerinfo,()> {
             return Err(());
         }
     }else{
+        println!("[Debug] uid:{}", user_cerinfo.uid);
         return Ok(user_cerinfo);
     }
 }
