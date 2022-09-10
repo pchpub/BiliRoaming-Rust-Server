@@ -142,12 +142,13 @@ pub async fn getusercer_list(redis: &Pool,uid: &u64) -> Result<UserCerinfo,()> {
                 status_expire_time: ts+1*24*60*60*1000,
             };
             redis_set(redis, &key, &return_data.to_json(), 1*24*60*60*1000).await;
+            println!("[Debug] uid:{}", return_data.uid);
             return Ok(return_data);
         }else{
             return Err(());
         }
     }else{
-        println!("[Debug] uid:{}", user_cerinfo.uid);
+        //println!("[Debug] uid:{}", user_cerinfo.uid);
         return Ok(user_cerinfo);
     }
 }
