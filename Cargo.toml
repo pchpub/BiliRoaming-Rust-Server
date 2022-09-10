@@ -1,6 +1,6 @@
 [package]
 name = "biliroaming_rust_server"
-version = "0.2.11.1"
+version = "0.2.12"
 edition = "2021"
 #author = "P CH"
 
