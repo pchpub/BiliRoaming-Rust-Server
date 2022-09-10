@@ -141,7 +141,7 @@ pub async fn getusercer_list(redis: &Pool,uid: &u64) -> Result<UserCerinfo,()> {
                 white: getwebpage_json["data"]["is_whitelist"].as_bool().unwrap_or(false),
                 status_expire_time: ts+1*24*60*60*1000,
             };
-            redis_set(redis, &key, &return_data.to_json(), 1*24*60*60*1000).await;
+            redis_set(redis, &key, &return_data.to_json(), 1*24*60*60).await;
             println!("[Debug] uid:{}", return_data.uid);
             return Ok(return_data);
         }else{
