@@ -95,6 +95,10 @@ pub struct BiliConfig {
     pub th_proxy_token_url: String,
     pub cn_proxy_token_open: bool,
     pub th_proxy_token_open: bool,
+    #[serde(default = "default_string")]
+    pub cn_proxy_accesskey_url: String,
+    #[serde(default = "default_false")]
+    pub cn_proxy_accesskey_open: bool,
     pub th_proxy_subtitle_url: String,
     pub th_proxy_subtitle_open: bool,
     pub aid: u64,

@@ -5,7 +5,7 @@ use chrono::prelude::*;
 use super::request::{redis_get,redis_set,async_getwebpage};
 use super::types::{UserCerinfo, UserInfo, BiliConfig};
 
-pub async fn getuser_list(redis: &Pool,access_key: &str,appkey:&str,appsec:&str,user_agent: &str) -> Result<UserInfo,String> {
+pub async fn getuser_list(redis: &Pool,access_key: &str,appkey:&str,appsec:&str,user_agent: &str,config: &BiliConfig) -> Result<UserInfo,String> {
     let info: String = match redis_get(&redis,&format!("{access_key}20501")).await {
         Some(value) => value,
         None => {
@@ -15,7 +15,7 @@ pub async fn getuser_list(redis: &Pool,access_key: &str,appkey:&str,appsec:&str,
             let sign = md5::compute(format!("access_key={}&appkey={}&ts={}{}",access_key,appkey,ts_min,appsec));
             let url:String = format!("https://app.bilibili.com/x/v2/account/myinfo?access_key={}&appkey={}&ts={}&sign={:x}",access_key,appkey,ts_min,sign);
             //println!("{}",url);
-            let output = match async_getwebpage(&url,&false,"",user_agent,"").await {
+            let output = match async_getwebpage(&url,&config.cn_proxy_accesskey_open,&config.cn_proxy_accesskey_url,user_agent,"").await {
                 Ok(data) => data,
                 Err(_) => {
                     // println!("getuser_list函数寄了 url:{}",url);
@@ -142,7 +142,7 @@ pub async fn getusercer_list(redis: &Pool,uid: &u64) -> Result<UserCerinfo,()> {
                 status_expire_time: ts+1*24*60*60*1000,
             };
             redis_set(redis, &key, &return_data.to_json(), 1*24*60*60).await;
-            println!("[Debug] uid:{}", return_data.uid);
+            //println!("[Debug] uid:{}", return_data.uid);
             return Ok(return_data);
         }else{
             return Err(());

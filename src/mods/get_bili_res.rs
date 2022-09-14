@@ -128,7 +128,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
         _ => None,
     };
 
-    let user_info = match getuser_list(pool, &access_key, appkey, &appsec, &user_agent).await {
+    let user_info = match getuser_list(pool, &access_key, appkey, &appsec, &user_agent,&config).await {
         Ok(value) => value,
         Err(value) => {
             return HttpResponse::Ok()
@@ -179,7 +179,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 .await
                 .unwrap_or((access_key, 1));
             let user_info =
-                match getuser_list(pool, &access_key, appkey, &appsec, &user_agent).await {
+                match getuser_list(pool, &access_key, appkey, &appsec, &user_agent,&config).await {
                     Ok(value) => value,
                     Err(value) => {
                         return HttpResponse::Ok()
@@ -745,7 +745,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
     };
 
     if is_app && (!is_th) {
-        let user_info = match getuser_list(pool, access_key, appkey, &appsec, &user_agent).await {
+        let user_info = match getuser_list(pool, access_key, appkey, &appsec, &user_agent,&config).await {
             Ok(value) => value,
             Err(value) => {
                 return HttpResponse::Ok()
