@@ -244,6 +244,7 @@ pub struct SendPlayurlData {
     pub proxy_open: bool,
     pub user_agent: String,
     pub proxy_url: String,
+    pub is_app: bool,
     pub area_num: u8,
 }
 
@@ -311,5 +312,7 @@ impl HealthType {
 
 pub enum PlayurlType {
     Thailand,
-    China,
+    ChinaApp,
+    ChinaWeb,
+    ChinaTv,
 }

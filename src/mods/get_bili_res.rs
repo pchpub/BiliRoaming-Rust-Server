@@ -1,6 +1,6 @@
 use super::get_user_info::{appkey_to_sec, auth_user, getuser_list};
 use super::request::{async_getwebpage, async_postwebpage, redis_get, redis_set};
-use super::tools::remove_parameters_playurl;
+use super::tools::{remove_parameters_playurl, playurl_get_deadline};
 use super::types::{
     random_string, BiliConfig, HealthType, PlayurlType, ResignInfo, SendData, SendHealthData,
     SendPlayurlData, SesourceType,
@@ -128,16 +128,15 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
         _ => None,
     };
 
-    let user_info = match getuser_list(pool, &access_key, appkey, &appsec, &user_agent,&config).await {
-        Ok(value) => value,
-        Err(value) => {
-            return HttpResponse::Ok()
-                .content_type(ContentType::json())
-                .body(format!("{{\"code\":-4403,\"message\":\"{value}\"}}"));
-        }
-    };
-
-    //println!("[Debug] uid:{}", user_info.uid);
+    let user_info =
+        match getuser_list(pool, &access_key, appkey, &appsec, &user_agent, &config).await {
+            Ok(value) => value,
+            Err(value) => {
+                return HttpResponse::Ok()
+                    .content_type(ContentType::json())
+                    .body(format!("{{\"code\":-4403,\"message\":\"{value}\"}}"));
+            }
+        };
 
     let (black, white) = match auth_user(pool, &user_info.uid, &config).await {
         Ok(value) => value,
@@ -178,15 +177,23 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
             (access_key, _) = get_resign_accesskey(pool, &area_num, &user_agent, &config)
                 .await
                 .unwrap_or((access_key, 1));
-            let user_info =
-                match getuser_list(pool, &access_key, appkey, &appsec, &user_agent,&config).await {
-                    Ok(value) => value,
-                    Err(value) => {
-                        return HttpResponse::Ok()
-                            .content_type(ContentType::json())
-                            .body(format!("{{\"code\":-5403,\"message\":\"{value}\"}}"));
-                    }
-                };
+            let user_info = match getuser_list(
+                pool,
+                &access_key,
+                appkey,
+                &appsec,
+                &user_agent,
+                &config,
+            )
+            .await
+            {
+                Ok(value) => value,
+                Err(value) => {
+                    return HttpResponse::Ok()
+                        .content_type(ContentType::json())
+                        .body(format!("{{\"code\":-5403,\"message\":\"{value}\"}}"));
+                }
+            };
             if user_info.vip_expire_time >= ts {
                 is_vip = 1;
             }
@@ -375,34 +382,46 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
             {
                 Ok(data) => data,
                 Err(_) => {
-                    if config.telegram_report
-                        && redis_get(&pool, &format!("01{}1301", area_num))
+                    if config.telegram_report {
+                        let num = redis_get(&pool, &format!("01{}1301", area_num))
                             .await
                             .unwrap_or("0".to_string())
                             .as_str()
-                            == "0"
-                    {
-                        redis_set(&pool, &format!("01{}1301", area_num), "1", 0)
+                            .parse::<u32>()
+                            .unwrap();
+                        if num > 3 {
+                            redis_set(&pool, &format!("01{}1301", area_num), "1", 0)
+                                .await
+                                .unwrap_or_default();
+                            let senddata = SendData::Health(SendHealthData {
+                                area_num,
+                                data_type: SesourceType::PlayUrl,
+                                health_type: HealthType::Offline,
+                            });
+                            spawn(move || {
+                                //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+                                match bilisender_cl.try_send(senddata) {
+                                    Ok(_) => (),
+                                    Err(TrySendError::Full(_)) => {
+                                        println!("[Error] channel is full");
+                                    }
+                                    Err(TrySendError::Closed(_)) => {
+                                        println!("[Error] channel is closed");
+                                    }
+                                };
+                            });
+                        } else {
+                            redis_set(
+                                &pool,
+                                &format!("01{}1301", area_num),
+                                &(num + 1).to_string(),
+                                0,
+                            )
                             .await
                             .unwrap_or_default();
-                        let senddata = SendData::Health(SendHealthData {
-                            area_num,
-                            data_type: SesourceType::PlayUrl,
-                            health_type: HealthType::Offline,
-                        });
-                        spawn(move || {
-                            //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
-                            match bilisender_cl.try_send(senddata) {
-                                Ok(_) => (),
-                                Err(TrySendError::Full(_)) => {
-                                    println!("[Error] channel is full");
-                                }
-                                Err(TrySendError::Closed(_)) => {
-                                    println!("[Error] channel is closed");
-                                }
-                            };
-                        });
+                        }
                     }
+
                     return HttpResponse::Ok()
                         .content_type(ContentType::json())
                         .body("{\"code\":-6404,\"message\":\"获取播放地址失败喵\"}");
@@ -413,8 +432,13 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 remove_parameters_playurl(PlayurlType::Thailand, &mut body_data_json)
                     .unwrap_or_default();
             } else {
-                remove_parameters_playurl(PlayurlType::China, &mut body_data_json)
-                    .unwrap_or_default();
+                if is_app {
+                    remove_parameters_playurl(PlayurlType::ChinaApp, &mut body_data_json)
+                        .unwrap_or_default();
+                } else {
+                    remove_parameters_playurl(PlayurlType::ChinaWeb, &mut body_data_json)
+                        .unwrap_or_default();
+                }
             }
             let mut code = body_data_json["code"].as_i64().unwrap().clone();
             let backup_policy = match area_num {
@@ -466,33 +490,44 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 {
                     Ok(data) => data,
                     Err(_) => {
-                        if config.telegram_report
-                            && redis_get(&pool, &format!("01{}1301", area_num))
+                        if config.telegram_report {
+                            let num = redis_get(&pool, &format!("01{}1301", area_num))
                                 .await
                                 .unwrap_or("0".to_string())
                                 .as_str()
-                                == "0"
-                        {
-                            redis_set(&pool, &format!("01{}1301", area_num), "1", 0)
+                                .parse::<u32>()
+                                .unwrap();
+                            if num > 3 {
+                                redis_set(&pool, &format!("01{}1301", area_num), "1", 0)
+                                    .await
+                                    .unwrap_or_default();
+                                let senddata = SendData::Health(SendHealthData {
+                                    area_num,
+                                    data_type: SesourceType::PlayUrl,
+                                    health_type: HealthType::Offline,
+                                });
+                                spawn(move || {
+                                    //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+                                    match bilisender_cl.try_send(senddata) {
+                                        Ok(_) => (),
+                                        Err(TrySendError::Full(_)) => {
+                                            println!("[Error] channel is full");
+                                        }
+                                        Err(TrySendError::Closed(_)) => {
+                                            println!("[Error] channel is closed");
+                                        }
+                                    };
+                                });
+                            } else {
+                                redis_set(
+                                    &pool,
+                                    &format!("01{}1301", area_num),
+                                    &(num + 1).to_string(),
+                                    0,
+                                )
                                 .await
                                 .unwrap_or_default();
-                            let senddata = SendData::Health(SendHealthData {
-                                area_num,
-                                data_type: SesourceType::PlayUrl,
-                                health_type: HealthType::Offline,
-                            });
-                            spawn(move || {
-                                //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
-                                match bilisender_cl.try_send(senddata) {
-                                    Ok(_) => (),
-                                    Err(TrySendError::Full(_)) => {
-                                        println!("[Error] channel is full");
-                                    }
-                                    Err(TrySendError::Closed(_)) => {
-                                        println!("[Error] channel is closed");
-                                    }
-                                };
-                            });
+                            }
                         }
                         return HttpResponse::Ok()
                             .content_type(ContentType::json())
@@ -502,13 +537,28 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 let body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
                 code = body_data_json["code"].as_i64().unwrap();
             }
+            let playurl_type: PlayurlType;
+            if is_th {
+                playurl_type = PlayurlType::Thailand;
+            }else if is_tv {
+                playurl_type = PlayurlType::ChinaTv;
+            }else if is_app {
+                playurl_type = PlayurlType::ChinaApp;
+            }else{
+                playurl_type = PlayurlType::ChinaWeb;
+            }
 
-            let expire_time = match config.cache.get(&code.to_string()) {
-                Some(value) => value,
-                None => config.cache.get("other").unwrap(),
+            let expire_time = match playurl_get_deadline(playurl_type,&mut body_data_json) {
+                Ok(value) => value-ts/1000,
+                Err(_) => {
+                    match config.cache.get(&code.to_string()) {
+                        Some(value) => value,
+                        None => config.cache.get("other").unwrap(),
+                    }.clone()
+                },
             };
             let value = format!("{}{body_data}", ts + expire_time * 1000);
-            let _: () = redis_set(&pool, &key, &value, *expire_time)
+            let _: () = redis_set(&pool, &key, &value, expire_time)
                 .await
                 .unwrap_or_default();
             if config.telegram_report {
@@ -570,6 +620,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 proxy_url: proxy_url.to_string(),
                 user_agent,
                 area_num,
+                is_app,
             });
             spawn(move || {
                 //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
@@ -634,7 +685,13 @@ pub async fn get_playurl_background(
     if receive_data.area_num == 4 {
         remove_parameters_playurl(PlayurlType::Thailand, &mut body_data_json).unwrap_or_default();
     } else {
-        remove_parameters_playurl(PlayurlType::China, &mut body_data_json).unwrap_or_default();
+        if receive_data.is_app {
+            remove_parameters_playurl(PlayurlType::ChinaApp, &mut body_data_json)
+                .unwrap_or_default();
+        } else {
+            remove_parameters_playurl(PlayurlType::ChinaWeb, &mut body_data_json)
+                .unwrap_or_default();
+        }
     }
     let expire_time = match anti_speedtest_cfg.cache.get(
         &body_data_json["code"]
@@ -745,14 +802,15 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
     };
 
     if is_app && (!is_th) {
-        let user_info = match getuser_list(pool, access_key, appkey, &appsec, &user_agent,&config).await {
-            Ok(value) => value,
-            Err(value) => {
-                return HttpResponse::Ok()
-                    .content_type(ContentType::json())
-                    .body(format!("{{\"code\":-4403,\"message\":\"{value}\"}}"));
-            }
-        };
+        let user_info =
+            match getuser_list(pool, access_key, appkey, &appsec, &user_agent, &config).await {
+                Ok(value) => value,
+                Err(value) => {
+                    return HttpResponse::Ok()
+                        .content_type(ContentType::json())
+                        .body(format!("{{\"code\":-4403,\"message\":\"{value}\"}}"));
+                }
+            };
 
         let (_, _) = match auth_user(pool, &user_info.uid, &config).await {
             Ok(value) => value,
@@ -897,34 +955,46 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
     {
         Ok(data) => data,
         Err(_) => {
-            if config.telegram_report
-                && redis_get(&pool, &format!("02{}1301", area_num))
+            if config.telegram_report {
+                let num = redis_get(&pool, &format!("02{}1301", area_num))
                     .await
                     .unwrap_or("0".to_string())
                     .as_str()
-                    == "0"
-            {
-                redis_set(&pool, &format!("02{}1301", area_num), "1", 0)
+                    .parse::<u32>()
+                    .unwrap();
+                if num > 3 {
+                    redis_set(&pool, &format!("02{}1301", area_num), "1", 0)
+                        .await
+                        .unwrap_or_default();
+                    let senddata = SendData::Health(SendHealthData {
+                        area_num,
+                        data_type: SesourceType::PlayUrl,
+                        health_type: HealthType::Offline,
+                    });
+                    spawn(move || {
+                        //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+                        match bilisender_cl.try_send(senddata) {
+                            Ok(_) => (),
+                            Err(TrySendError::Full(_)) => {
+                                println!("[Error] channel is full");
+                            }
+                            Err(TrySendError::Closed(_)) => {
+                                println!("[Error] channel is closed");
+                            }
+                        };
+                    });
+                } else {
+                    redis_set(
+                        &pool,
+                        &format!("02{}1301", area_num),
+                        &(num + 1).to_string(),
+                        0,
+                    )
                     .await
                     .unwrap_or_default();
-                let senddata = SendData::Health(SendHealthData {
-                    area_num,
-                    data_type: SesourceType::Search,
-                    health_type: HealthType::Offline,
-                });
-                spawn(move || {
-                    //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
-                    match bilisender_cl.try_send(senddata) {
-                        Ok(_) => (),
-                        Err(TrySendError::Full(_)) => {
-                            println!("[Error] channel is full");
-                        }
-                        Err(TrySendError::Closed(_)) => {
-                            println!("[Error] channel is closed");
-                        }
-                    };
-                });
+                }
             }
+
             return HttpResponse::Ok()
                 .content_type(ContentType::json())
                 .body("{\"code\":-5404,\"message\":\"获取失败喵\"}");
@@ -988,33 +1058,44 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
     if body_data_json["code"].as_i64().unwrap_or(233) != 0
         && body_data_json["code"].as_str().unwrap_or("233") != "0"
     {
-        if config.telegram_report
-            && redis_get(&pool, &format!("02{}1301", area_num))
+        if config.telegram_report {
+            let num = redis_get(&pool, &format!("02{}1301", area_num))
                 .await
                 .unwrap_or("0".to_string())
                 .as_str()
-                == "0"
-        {
-            redis_set(&pool, &format!("02{}1301", area_num), "1", 0)
+                .parse::<u32>()
+                .unwrap();
+            if num > 3 {
+                redis_set(&pool, &format!("02{}1301", area_num), "1", 0)
+                    .await
+                    .unwrap_or_default();
+                let senddata = SendData::Health(SendHealthData {
+                    area_num,
+                    data_type: SesourceType::PlayUrl,
+                    health_type: HealthType::Offline,
+                });
+                spawn(move || {
+                    //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+                    match bilisender_cl.try_send(senddata) {
+                        Ok(_) => (),
+                        Err(TrySendError::Full(_)) => {
+                            println!("[Error] channel is full");
+                        }
+                        Err(TrySendError::Closed(_)) => {
+                            println!("[Error] channel is closed");
+                        }
+                    };
+                });
+            } else {
+                redis_set(
+                    &pool,
+                    &format!("02{}1301", area_num),
+                    &(num + 1).to_string(),
+                    0,
+                )
                 .await
                 .unwrap_or_default();
-            let senddata = SendData::Health(SendHealthData {
-                area_num,
-                data_type: SesourceType::Search,
-                health_type: HealthType::Offline,
-            });
-            spawn(move || {
-                //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
-                match bilisender_cl.try_send(senddata) {
-                    Ok(_) => (),
-                    Err(TrySendError::Full(_)) => {
-                        println!("[Error] channel is full");
-                    }
-                    Err(TrySendError::Closed(_)) => {
-                        println!("[Error] channel is closed");
-                    }
-                };
-            });
+            }
         }
         return HttpResponse::Ok()
             .content_type(ContentType::json())
@@ -1226,33 +1307,39 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
         {
             Ok(data) => data,
             Err(_) => {
-                if config.telegram_report
-                    && redis_get(&pool, "0441301")
+                if config.telegram_report {
+                    let num = redis_get(&pool, "0441301")
                         .await
                         .unwrap_or("0".to_string())
                         .as_str()
-                        == "0"
-                {
-                    redis_set(&pool, "0441301", "1", 0)
-                        .await
-                        .unwrap_or_default();
-                    let senddata = SendData::Health(SendHealthData {
-                        area_num: 4,
-                        data_type: SesourceType::Season,
-                        health_type: HealthType::Offline,
-                    });
-                    spawn(move || {
-                        //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
-                        match bilisender_cl.try_send(senddata) {
-                            Ok(_) => (),
-                            Err(TrySendError::Full(_)) => {
-                                println!("[Error] channel is full");
-                            }
-                            Err(TrySendError::Closed(_)) => {
-                                println!("[Error] channel is closed");
-                            }
-                        };
-                    });
+                        .parse::<u32>()
+                        .unwrap();
+                    if num > 3 {
+                        redis_set(&pool, "0441301", "1", 0)
+                            .await
+                            .unwrap_or_default();
+                        let senddata = SendData::Health(SendHealthData {
+                            data_type: SesourceType::PlayUrl,
+                            health_type: HealthType::Offline,
+                            area_num: 4,
+                        });
+                        spawn(move || {
+                            //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+                            match bilisender_cl.try_send(senddata) {
+                                Ok(_) => (),
+                                Err(TrySendError::Full(_)) => {
+                                    println!("[Error] channel is full");
+                                }
+                                Err(TrySendError::Closed(_)) => {
+                                    println!("[Error] channel is closed");
+                                }
+                            };
+                        });
+                    } else {
+                        redis_set(&pool, "0441301", &(num + 1).to_string(), 0)
+                            .await
+                            .unwrap_or_default();
+                    }
                 }
                 return HttpResponse::Ok()
                     .content_type(ContentType::json())
