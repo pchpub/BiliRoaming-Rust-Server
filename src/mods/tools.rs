@@ -108,7 +108,7 @@ pub fn playurl_get_deadline(
         }
         PlayurlType::ChinaApp => {
             if data["code"].as_i64().unwrap() == 0 {
-                let items = if let Some(value) = data["dash"]["video"]["stream_list"].as_array_mut()
+                let items = if let Some(value) = data["dash"]["video"].as_array_mut()
                 {
                     value
                 } else {
