@@ -108,7 +108,7 @@ pub fn playurl_get_deadline(
         }
         PlayurlType::ChinaApp => {
             if data["code"].as_i64().unwrap() == 0 {
-                let items = if let Some(value) = data["dash"]["video"]["stream_list"].as_array_mut()
+                let items = if let Some(value) = data["dash"]["video"].as_array_mut()
                 {
                     value
                 } else {
@@ -243,15 +243,25 @@ pub async fn health_key_to_char(pool: &Pool, key: &str) -> String {
     match redis_get(pool, key).await {
         Some(value) => {
             let value = value.as_str();
-            if value == "0" {
-                //🔴🟢🟠🟡🔵🟣🟤
-                return "🟢".to_string();
-            } else if value == "1" {
-                return "🔴".to_string();
-            } else if value == "2" {
-                return "🟡".to_string();
-            } else {
-                return "🟤".to_string();
+            // if value == "0" {
+            //     //🔴🟢🟠🟡🔵🟣🟤
+            //     return "🟢".to_string();
+            // } else if value == "1" {
+            //     return "🟡".to_string();
+            // } else if value == "2" {
+            //     return "🟡".to_string();
+            // } else if value == "3" {
+            //     return "🟡".to_string();
+            // } else if value == "4" {
+            //     return "🔴".to_string();
+            // }
+            match value {
+                "0" => return "🟢".to_string(),
+                "1" => return "🟡".to_string(),
+                "2" => return "🟠".to_string(),
+                "3" => return "🟠".to_string(),
+                "4" => return "🔴".to_string(),
+                _ => return "🔴".to_string(),
             }
         }
         None => {
