@@ -191,6 +191,7 @@ fn main() -> std::io::Result<()> {
 
     let (s, r): (Sender<SendData>, Receiver<SendData>) = async_channel::bounded(120);
     let bilisender = Arc::new(s);
+    let bilisender_live = bilisender.clone();
     let anti_speedtest_redis_cfg = Config::from_url(&config.redis);
     let pool_background = anti_speedtest_redis_cfg
         .create_pool(Some(Runtime::Tokio1))
@@ -198,6 +199,9 @@ fn main() -> std::io::Result<()> {
     let web_background = async move {
         //a thread try to update cache
         //println!("[Debug] spawn web_background");
+        if bilisender_live.is_closed() {
+            println!("[Error] channel was closed");
+        }
         loop {
             let receive_data = match r.recv().await {
                 Ok(it) => it,
