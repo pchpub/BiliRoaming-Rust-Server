@@ -564,7 +564,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
             if config.telegram_report {
                 match redis_get(&pool, &format!("01{}1301", area_num)).await {
                     Some(value) => {
-                        if &value == "1" {
+                        if value.parse::<u16>().unwrap() >= 1 {
                             redis_set(&pool, &format!("01{}1301", area_num), "0", 0)
                                 .await
                                 .unwrap_or_default();
@@ -1132,7 +1132,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
     if config.telegram_report {
         match redis_get(&pool, &format!("02{}1301", area_num)).await {
             Some(value) => {
-                if &value == "1" {
+                if value.parse::<u16>().unwrap() >= 1 {
                     redis_set(&pool, &format!("02{}1301", area_num), "0", 0)
                         .await
                         .unwrap_or_default();
@@ -1463,7 +1463,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
         if config.telegram_report {
             match redis_get(&pool, "0441301").await {
                 Some(value) => {
-                    if &value == "1" {
+                    if value.parse::<u16>().unwrap() >= 1 {
                         redis_set(&pool, "0441301", "0", 0)
                             .await
                             .unwrap_or_default();
