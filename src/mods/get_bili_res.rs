@@ -1,6 +1,6 @@
 use super::get_user_info::{appkey_to_sec, auth_user, getuser_list};
 use super::request::{async_getwebpage, async_postwebpage, redis_get, redis_set};
-use super::tools::{remove_parameters_playurl, playurl_get_deadline};
+use super::tools::{playurl_get_deadline, remove_parameters_playurl};
 use super::types::{
     random_string, BiliConfig, HealthType, PlayurlType, ResignInfo, SendData, SendHealthData,
     SendPlayurlData, SesourceType,
@@ -540,22 +540,21 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
             let playurl_type: PlayurlType;
             if is_th {
                 playurl_type = PlayurlType::Thailand;
-            }else if is_tv {
+            } else if is_tv {
                 playurl_type = PlayurlType::ChinaTv;
-            }else if is_app {
+            } else if is_app {
                 playurl_type = PlayurlType::ChinaApp;
-            }else{
+            } else {
                 playurl_type = PlayurlType::ChinaWeb;
             }
 
-            let expire_time = match playurl_get_deadline(playurl_type,&mut body_data_json) {
-                Ok(value) => value-ts/1000,
-                Err(_) => {
-                    match config.cache.get(&code.to_string()) {
-                        Some(value) => value,
-                        None => config.cache.get("other").unwrap(),
-                    }.clone()
-                },
+            let expire_time = match playurl_get_deadline(playurl_type, &mut body_data_json) {
+                Ok(value) => value - ts / 1000,
+                Err(_) => match config.cache.get(&code.to_string()) {
+                    Some(value) => value,
+                    None => config.cache.get("other").unwrap(),
+                }
+                .clone(),
             };
             let value = format!("{}{body_data}", ts + expire_time * 1000);
             let _: () = redis_set(&pool, &key, &value, expire_time)
@@ -564,7 +563,8 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
             if config.telegram_report {
                 match redis_get(&pool, &format!("01{}1301", area_num)).await {
                     Some(value) => {
-                        if value.parse::<u16>().unwrap() >= 1 {
+                        let err_num = value.parse::<u16>().unwrap();
+                        if err_num >= 4 {
                             redis_set(&pool, &format!("01{}1301", area_num), "0", 0)
                                 .await
                                 .unwrap_or_default();
@@ -585,6 +585,10 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                                     }
                                 };
                             });
+                        } else if err_num != 0 {
+                            redis_set(&pool, &format!("01{}1301", area_num), "0", 0)
+                                .await
+                                .unwrap_or_default();
                         }
                     }
                     None => {
@@ -1132,7 +1136,8 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
     if config.telegram_report {
         match redis_get(&pool, &format!("02{}1301", area_num)).await {
             Some(value) => {
-                if value.parse::<u16>().unwrap() >= 1 {
+                let err_num = value.parse::<u16>().unwrap();
+                if err_num >= 4 {
                     redis_set(&pool, &format!("02{}1301", area_num), "0", 0)
                         .await
                         .unwrap_or_default();
@@ -1153,6 +1158,10 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
                             }
                         };
                     });
+                } else if err_num != 0 {
+                    redis_set(&pool, &format!("02{}1301", area_num), "0", 0)
+                        .await
+                        .unwrap_or_default();
                 }
             }
             None => {
@@ -1463,7 +1472,8 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
         if config.telegram_report {
             match redis_get(&pool, "0441301").await {
                 Some(value) => {
-                    if value.parse::<u16>().unwrap() >= 1 {
+                    let err_num = value.parse::<u16>().unwrap();
+                    if err_num >= 4 {
                         redis_set(&pool, "0441301", "0", 0)
                             .await
                             .unwrap_or_default();
@@ -1484,6 +1494,10 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
                                 }
                             };
                         });
+                    } else if err_num != 0 {
+                        redis_set(&pool, "0441301", "0", 0)
+                            .await
+                            .unwrap_or_default();
                     }
                 }
                 None => {
