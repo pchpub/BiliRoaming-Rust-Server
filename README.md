@@ -17,6 +17,7 @@
 * ~~/intl/gateway/v2/ogv/view/app/season2?~~ web脚本已弃用
 * ~~/intl/gateway/v2/ogv/view/app/episode?~~ web脚本已弃用
 * ~~/pgc/view/web/season?~~ web脚本已弃用
+* web panel
 * to be faster
 
 ## [使用说明]
