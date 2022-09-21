@@ -116,6 +116,8 @@ pub struct BiliConfig {
 
     pub cache: HashMap<String, u64>,
     pub local_wblist: HashMap<String, (bool, bool)>,
+    #[serde(default = "default_true")]
+    pub online_blacklist_open: bool,
     #[serde(default = "default_false")]
     pub one_click_run: bool,
     pub appsearch_remake: HashMap<String, String>,
