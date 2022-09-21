@@ -1,0 +1,86 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>BiliRust-panel</title>
+	
+	<style>
+        fieldset{
+/*            background-color: #f1f1f1;*/
+            border: none;
+            border-radius: 2px;
+            margin-bottom: 12px;
+            overflow: hidden;
+            padding: 0 .625em;
+        }
+ 
+        label{
+            cursor: pointer;
+            display: inline-block;
+            padding: 3px 6px;
+            text-align: right;
+            width: 150px;
+            vertical-align: top;
+        }
+ 
+        input{
+            font-size: inherit;
+        }
+    </style>
+</head>
+
+<body>
+	<h1>BiliRoaming-Rust-Panel</h1>
+	<form action="">
+        <fieldset>
+        <p>
+            <label for="auto_update" >自动更新:</label>
+			<input type="checkbox" id="auto_update" name="auto_update" align="left" value="true">
+        </p>
+		<p>
+            <label for="auto_close" >更新后自动关闭:</label>
+			<input type="checkbox" id="auto_close" name="auto_close" align="left" value="true">
+        </p>
+        <p>
+            <label for="redis">redis url:</label>
+            <input type="text" id="redis" name="redis" align="left">
+        </p>
+		<p>
+            <label for="woker_num">woker_num:</label>
+            <input type="number" id="woker_num" name="woker_num"  min="1" max="5" value="4" align="left">
+        </p>
+		<p>
+            <label for="port">port:</label>
+            <input type="text" id="port" name="port" align="left">
+        </p>
+		<p>
+            <label for="cn_app_playurl_api">cn_app_playurl_api:</label>
+            <input type="text" id="cn_app_playurl_api" name="cn_app_playurl_api" value="233" align="left">
+        </p>
+		<p>
+            <label for="hk_app_playurl_api">hk_app_playurl_api:</label>
+            <input type="text" id="hk_app_playurl_api" name="hk_app_playurl_api" align="left">
+        </p>
+		<p>
+            <label for="tw_app_playurl_api">tw_app_playurl_api:</label>
+            <input type="text" id="tw_app_playurl_api" name="tw_app_playurl_api" align="left">
+        </p>
+		<p>
+            <label for="th_app_playurl_api">th_app_playurl_api:</label>
+            <input type="text" id="th_app_playurl_api" name="th_app_playurl_api" align="left">
+        </p>
+		<p>
+            <label for="cn_web_playurl_api">cn_web_playurl_api:</label>
+            <input type="text" id="cn_web_playurl_api" name="cn_web_playurl_api" align="left">
+        </p>
+        <p>
+            <label for="messageContent">message content:</label>
+            <textarea id="messageContent" name="messageContent" cols="40" rows="5" align="left"></textarea>
+        </p>
+        <p>
+            <input type="submit">
+        </p>
+        </fieldset>
+    </form>
+</body>
+</html>

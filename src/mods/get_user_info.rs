@@ -159,6 +159,10 @@ pub async fn auth_user(redis: &Pool,uid: &u64,config: &BiliConfig) -> Result<(bo
         None => (),
     }
 
+    if !config.online_blacklist_open {
+        return Ok((false,false));
+    }
+
     match getusercer_list(redis, uid).await{
         Ok(data) => {
             if config.one_click_run {
