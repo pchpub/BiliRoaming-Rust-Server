@@ -1031,33 +1031,6 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
             .insert_header(("Access-Control-Allow-Methods", "GET"))
             .body(body_data);
     }
-    let search_remake_date = {
-        if is_app {
-            if let Some(value) = config.appsearch_remake.get(host) {
-                value
-            } else {
-                return HttpResponse::Ok()
-                    .content_type(ContentType::json())
-                    .insert_header(("From", "biliroaming-rust-server"))
-                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-                    .insert_header(("Access-Control-Allow-Credentials", "true"))
-                    .insert_header(("Access-Control-Allow-Methods", "GET"))
-                    .body(body_data);
-            }
-        } else {
-            if let Some(value) = config.websearch_remake.get(host) {
-                value
-            } else {
-                return HttpResponse::Ok()
-                    .content_type(ContentType::json())
-                    .insert_header(("From", "biliroaming-rust-server"))
-                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-                    .insert_header(("Access-Control-Allow-Credentials", "true"))
-                    .insert_header(("Access-Control-Allow-Methods", "GET"))
-                    .body(body_data);
-            }
-        }
-    };
     let mut body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
     if body_data_json["code"].as_i64().unwrap_or(233) != 0
         && body_data_json["code"].as_str().unwrap_or("233") != "0"
@@ -1105,6 +1078,33 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
             .content_type(ContentType::json())
             .body("{\"code\":-6404,\"message\":\"获取失败喵\"}");
     }
+    let search_remake_date = {
+        if is_app {
+            if let Some(value) = config.appsearch_remake.get(host) {
+                value
+            } else {
+                return HttpResponse::Ok()
+                    .content_type(ContentType::json())
+                    .insert_header(("From", "biliroaming-rust-server"))
+                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                    .insert_header(("Access-Control-Allow-Credentials", "true"))
+                    .insert_header(("Access-Control-Allow-Methods", "GET"))
+                    .body(body_data);
+            }
+        } else {
+            if let Some(value) = config.websearch_remake.get(host) {
+                value
+            } else {
+                return HttpResponse::Ok()
+                    .content_type(ContentType::json())
+                    .insert_header(("From", "biliroaming-rust-server"))
+                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                    .insert_header(("Access-Control-Allow-Credentials", "true"))
+                    .insert_header(("Access-Control-Allow-Methods", "GET"))
+                    .body(body_data);
+            }
+        }
+    };
     if is_app {
         match body_data_json["data"]["items"].as_array_mut() {
             Some(value2) => {
