@@ -46,7 +46,7 @@ pub async fn getuser_list(redis: &Pool,access_key: &str,appkey:&str,appsec:&str,
                 //println!("getuser_list函数寄了 output_json:{}",output_json);
                 return Err("账号未登录喵(b站api说的,估计你access_key过期了)".to_string());
             }else if code == -3{
-                println!("{}",url);
+                //println!("{}",url); //Debug
                 //println!("getuser_list函数寄了 output_json:{}",output_json);
                 return Err("可能我sign参数算错了,非常抱歉喵".to_string());
             }else if code == -412{
