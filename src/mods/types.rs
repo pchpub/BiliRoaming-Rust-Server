@@ -4,6 +4,8 @@ use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct BiliConfig {
+    #[serde(default = "config_version")]
+    pub config_version: u16,
     #[serde(default = "default_false")]
     pub auto_update: bool,
     #[serde(default = "default_true")]
@@ -14,7 +16,7 @@ pub struct BiliConfig {
     #[serde(default = "default_false")]
     pub limit_biliroaming_version_open: bool,
     #[serde(default = "default_min_version")]
-    pub limit_biliroaming_version_min: u16,//u8其实够了(0-255),但为了保险点,用u16(0-32768)
+    pub limit_biliroaming_version_min: u16, //u8其实够了(0-255),但为了保险点,用u16(0-32768)
     #[serde(default = "default_max_version")]
     pub limit_biliroaming_version_max: u16,
     pub cn_app_playurl_api: String,
@@ -85,12 +87,6 @@ pub struct BiliConfig {
     pub hk_proxy_search_open: bool,
     pub tw_proxy_search_open: bool,
     pub th_proxy_search_open: bool,
-    // pub th_accesskey : String,
-    // pub th_token : String,
-    // pub th_force_update : bool,
-    // pub cn_accesskey : String,
-    // pub cn_token : String,
-    // pub cn_force_update : bool, 此方法弃用
     pub cn_proxy_token_url: String,
     pub th_proxy_token_url: String,
     pub cn_proxy_token_open: bool,
@@ -129,11 +125,258 @@ pub struct BiliConfig {
     #[serde(default = "default_hashmap_false")]
     pub api_assesskey_open: HashMap<String, bool>, //api是否暴露
     #[serde(default = "default_false")]
-    pub telegram_report: bool,
-    #[serde(default = "default_string")]
-    pub telegram_token : String,
-    #[serde(default = "default_string")]
-    pub telegram_chat_id: String,
+    pub report_open: bool,
+    #[serde(default)]
+    pub report_config: ReportConfig,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ReportConfig {
+    pub method: Method,
+    pub url: String,
+    pub content: String,
+    #[serde(skip)]
+    url_separate_elements: Vec<String>,
+    #[serde(skip)]
+    url_insert_order: Vec<ReportOrderName>,
+    #[serde(skip)]
+    content_separate_elements: Vec<String>,
+    #[serde(skip)]
+    content_insert_order: Vec<ReportOrderName>,
+}
+
+impl std::default::Default for ReportConfig {
+    fn default() -> Self {
+        Self {
+            method: Method::Get,
+            url: r#"https://api.telegram.org/bot{}/sendMessage?chat_id={}&text={}"#.to_string(),
+            content: r#""#.to_string(),
+            url_separate_elements: Default::default(),
+            url_insert_order: Default::default(),
+            content_separate_elements: Default::default(),
+            content_insert_order: Default::default(),
+        }
+    }
+}
+
+impl ReportConfig {
+    pub fn init(&mut self) -> Result<(), ()> {
+        let key2order = HashMap::from([
+            ("CnPlayurl", ReportOrderName::CnPlayurl),
+            ("HkPlayurl", ReportOrderName::HkPlayurl),
+            ("TwPlayurl", ReportOrderName::TwPlayurl),
+            ("ThPlayurl", ReportOrderName::ThPlayurl),
+            ("CnSearch", ReportOrderName::CnSearch),
+            ("HkSearch", ReportOrderName::HkSearch),
+            ("TwSearch", ReportOrderName::TwSearch),
+            ("ThSearch", ReportOrderName::ThSearch),
+            ("ThSeason", ReportOrderName::ThSeason),
+            ("ChangedAreaName",ReportOrderName::ChangedAreaName),
+            ("ChangedDataType",ReportOrderName::ChangedDataType),
+            ("ChangedHealthType",ReportOrderName::ChangedHealthType),
+        ]);
+
+        {
+            let mut has_start = false;
+            let mut start_index = 0;
+            let mut last_end = 0;
+            let mut index = 0;
+            let len = self.url.len();
+            for char in self.url.chars() {
+                match char {
+                    '{' => {
+                        has_start = true;
+                        start_index = index;
+                    }
+                    '}' => {
+                        if has_start {
+                            match key2order.get(&self.url[start_index + 1..index]) {
+                                Some(value) => {
+                                    last_end = index + 1;
+                                    self.url_insert_order.push(value.clone());
+                                    self.url_separate_elements
+                                        .push((&self.url[last_end..start_index]).to_string());
+                                }
+                                None => {}
+                            }
+                            has_start = false;
+                        }
+                    }
+                    _ => {}
+                }
+                index += 1;
+            }
+            if last_end != len {
+                self.url_separate_elements
+                    .push((&self.url[last_end..]).to_string());
+            }
+        }
+        {
+            let mut has_start = false;
+            let mut start_index = 0;
+            let mut last_end = 0;
+            let mut index = 0;
+            let len = self.content.len();
+            for char in self.content.chars() {
+                match char {
+                    '{' => {
+                        has_start = true;
+                        start_index = index;
+                    }
+                    '}' => {
+                        if has_start {
+                            match key2order.get(&self.content[start_index + 1..index]) {
+                                Some(value) => {
+                                    last_end = index + 1;
+                                    self.content_insert_order.push(value.clone());
+                                    self.content_separate_elements
+                                        .push((&self.content[last_end..start_index]).to_string());
+                                }
+                                None => {}
+                            }
+                            has_start = false;
+                        }
+                    }
+                    _ => {}
+                }
+                index += 1;
+            }
+            if last_end != len {
+                self.url_separate_elements
+                    .push((&self.content[last_end..]).to_string());
+            }
+        }
+        Ok(())
+    }
+
+    pub fn build_url(
+        &self,
+        cn_playurl: &str,
+        hk_playurl: &str,
+        tw_playurl: &str,
+        th_playurl: &str,
+        cn_search: &str,
+        hk_search: &str,
+        tw_search: &str,
+        th_search: &str,
+        th_season: &str,
+        changed_area_name: &str,
+        changed_data_type: &str,
+        changed_health_type: &str,
+    ) -> Result<String,()> {
+        let health_values = HashMap::from([
+            (ReportOrderName::CnPlayurl, cn_playurl),
+            (ReportOrderName::HkPlayurl, hk_playurl),
+            (ReportOrderName::CnPlayurl, tw_playurl),
+            (ReportOrderName::ThPlayurl, th_playurl),
+            (ReportOrderName::CnSearch, cn_search),
+            (ReportOrderName::HkSearch, hk_search),
+            (ReportOrderName::TwSearch, tw_search),
+            (ReportOrderName::ThSearch, th_search),
+            (ReportOrderName::ThSeason, th_season),
+            (ReportOrderName::ChangedAreaName,changed_area_name),
+            (ReportOrderName::ChangedDataType,changed_data_type),
+            (ReportOrderName::ChangedHealthType,changed_health_type),
+        ]);
+        let mut url = String::new();
+        let len_elements = self.url_separate_elements.len();
+        let len_order = self.url_insert_order.len();
+        let mut index = 0;
+        while index < len_order {
+            url = url + &self.url_separate_elements[index];
+            url = url
+                + health_values
+                    .get(&self.url_insert_order[index])
+                    .unwrap_or(&&"");
+            index += 1;
+        }
+        if len_order != len_elements {
+            url = url + &self.url_separate_elements[index];
+        }
+        return Ok(url);
+    }
+
+    pub fn build_content(
+        &self,
+        cn_playurl: &str,
+        hk_playurl: &str,
+        tw_playurl: &str,
+        th_playurl: &str,
+        cn_search: &str,
+        hk_search: &str,
+        tw_search: &str,
+        th_search: &str,
+        th_season: &str,
+        changed_area_name: &str,
+        changed_data_type: &str,
+        changed_health_type: &str,
+    ) -> Result<String,()>{
+        match self.method {
+            Method::Get => {
+                println!("[Error] GET has no context");
+                return Err(());
+            },
+            Method::Post => {
+                let health_values = HashMap::from([
+                    (ReportOrderName::CnPlayurl, cn_playurl),
+                    (ReportOrderName::HkPlayurl, hk_playurl),
+                    (ReportOrderName::CnPlayurl, tw_playurl),
+                    (ReportOrderName::ThPlayurl, th_playurl),
+                    (ReportOrderName::CnSearch, cn_search),
+                    (ReportOrderName::HkSearch, hk_search),
+                    (ReportOrderName::TwSearch, tw_search),
+                    (ReportOrderName::ThSearch, th_search),
+                    (ReportOrderName::ThSeason, th_season),
+                    (ReportOrderName::ChangedAreaName,changed_area_name),
+                    (ReportOrderName::ChangedDataType,changed_data_type),
+                    (ReportOrderName::ChangedHealthType,changed_health_type),
+                ]);
+                let mut content = String::new();
+                let len_elements = self.content_separate_elements.len();
+                let len_order = self.content_insert_order.len();
+                let mut index = 0;
+                while index < len_order {
+                    content = content + &self.content_separate_elements[index];
+                    content = content
+                        + health_values
+                            .get(&self.content_insert_order[index])
+                            .unwrap_or(&&"");
+                    index += 1;
+                }
+                if len_order != len_elements {
+                    content = content + &self.content_separate_elements[index];
+                }
+                return Ok(content);
+            },
+        }
+        
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+enum ReportOrderName {
+    CnPlayurl,
+    HkPlayurl,
+    TwPlayurl,
+    ThPlayurl,
+    CnSearch,
+    HkSearch,
+    TwSearch,
+    ThSearch,
+    ThSeason,
+    ChangedAreaName,
+    ChangedDataType,
+    ChangedHealthType,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub enum Method {
+    Get,
+    Post,
+}
+
+fn config_version() -> u16 {
+    2
 }
 
 fn default_false() -> bool {
@@ -157,21 +400,21 @@ pub fn random_string() -> String {
     format!("{}", rand_sign)
 }
 
-fn default_hashmap_false() -> HashMap<String, bool>{
+fn default_hashmap_false() -> HashMap<String, bool> {
     HashMap::from([
-        ("1".to_string(),false),
-        ("2".to_string(),false),
-        ("3".to_string(),false),
-        ("4".to_string(),false),
+        ("1".to_string(), false),
+        ("2".to_string(), false),
+        ("3".to_string(), false),
+        ("4".to_string(), false),
     ])
 }
 
-fn default_hashmap_string() -> HashMap<String, String>{
+fn default_hashmap_string() -> HashMap<String, String> {
     HashMap::from([
-        ("1".to_string(),"".to_string()),
-        ("2".to_string(),"".to_string()),
-        ("3".to_string(),"".to_string()),
-        ("4".to_string(),"".to_string()),
+        ("1".to_string(), "".to_string()),
+        ("2".to_string(), "".to_string()),
+        ("3".to_string(), "".to_string()),
+        ("4".to_string(), "".to_string()),
     ])
 }
 
@@ -252,12 +495,12 @@ pub struct SendPlayurlData {
 
 pub struct SendHealthData {
     pub area_num: u8,
-    pub data_type: SesourceType, 
+    pub data_type: SesourceType,
     pub health_type: HealthType,
 }
 
 impl SendHealthData {
-    pub fn area_name(&self) -> String{
+    pub fn area_name(&self) -> String {
         match self.area_num {
             1 => "大陆".to_string(),
             2 => "香港".to_string(),
@@ -280,16 +523,16 @@ impl std::fmt::Display for SesourceType {
         match self {
             SesourceType::PlayUrl => {
                 write!(f, "PlayUrl")
-            },
+            }
             SesourceType::Search => {
                 write!(f, "Search")
-            },
+            }
             SesourceType::Season => {
                 write!(f, "Season")
-            },
+            }
             SesourceType::Token => {
                 write!(f, "Token")
-            },
+            }
         }
     }
 }

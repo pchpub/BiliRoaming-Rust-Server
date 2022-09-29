@@ -382,7 +382,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
             {
                 Ok(data) => data,
                 Err(_) => {
-                    if config.telegram_report {
+                    if config.report_open {
                         let num = redis_get(&pool, &format!("01{}1301", area_num))
                             .await
                             .unwrap_or("0".to_string())
@@ -490,7 +490,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                 {
                     Ok(data) => data,
                     Err(_) => {
-                        if config.telegram_report {
+                        if config.report_open {
                             let num = redis_get(&pool, &format!("01{}1301", area_num))
                                 .await
                                 .unwrap_or("0".to_string())
@@ -560,7 +560,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
             let _: () = redis_set(&pool, &key, &value, expire_time)
                 .await
                 .unwrap_or_default();
-            if config.telegram_report {
+            if config.report_open {
                 match redis_get(&pool, &format!("01{}1301", area_num)).await {
                     Some(value) => {
                         let err_num = value.parse::<u16>().unwrap();
@@ -959,7 +959,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
     {
         Ok(data) => data,
         Err(_) => {
-            if config.telegram_report {
+            if config.report_open {
                 let num = redis_get(&pool, &format!("02{}1301", area_num))
                     .await
                     .unwrap_or("0".to_string())
@@ -1035,7 +1035,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
     if body_data_json["code"].as_i64().unwrap_or(233) != 0
         && body_data_json["code"].as_str().unwrap_or("233") != "0"
     {
-        if config.telegram_report {
+        if config.report_open {
             let num = redis_get(&pool, &format!("02{}1301", area_num))
                 .await
                 .unwrap_or("0".to_string())
@@ -1133,7 +1133,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
             }
         }
     }
-    if config.telegram_report {
+    if config.report_open {
         match redis_get(&pool, &format!("02{}1301", area_num)).await {
             Some(value) => {
                 let err_num = value.parse::<u16>().unwrap();
@@ -1316,7 +1316,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
         {
             Ok(data) => data,
             Err(_) => {
-                if config.telegram_report {
+                if config.report_open {
                     let num = redis_get(&pool, "0441301")
                         .await
                         .unwrap_or("0".to_string())
@@ -1469,7 +1469,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
         };
         let value = format!("{}{body_data}", ts + expire_time * 1000);
         redis_set(&pool, &key, &value, *expire_time).await;
-        if config.telegram_report {
+        if config.report_open {
             match redis_get(&pool, "0441301").await {
                 Some(value) => {
                     let err_num = value.parse::<u16>().unwrap();
