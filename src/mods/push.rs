@@ -88,6 +88,8 @@ pub async fn send_report(
                     &health_data.health_type.to_color_char(),
                 )
                 .unwrap();
+            println!("[Debug] url:{}", url);
+            println!("[Debug] content:{}", content);
             match postwebpage(
                 url,
                 content,
