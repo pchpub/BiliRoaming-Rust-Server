@@ -181,14 +181,18 @@ impl ReportConfig {
             let mut start_index = 0;
             let mut last_end = 0;
             let mut index = 0;
-            let len = self.url.len();
+            let len = self.url.chars().count();
+            let mut chars = Vec::with_capacity(len);
             for char in self.url.chars() {
-                match char {
-                    '{' => {
+                chars.push(format!("{}",char));
+            }
+            for char in chars {
+                match &char[..] {
+                    "{" => {
                         has_start = true;
                         start_index = index;
                     }
-                    '}' => {
+                    "}" => {
                         if has_start {
                             match key2order.get(&self.url[start_index + 1..index]) {
                                 Some(value) => {

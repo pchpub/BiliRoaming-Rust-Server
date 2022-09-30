@@ -125,6 +125,12 @@ async fn api_accesskey(req: HttpRequest) -> impl Responder {
 }
 
 fn main() -> std::io::Result<()> {
+    for i in 0..2 {
+        println!("{}", i);
+    }
+
+
+
     println!("你好喵~");
     let mut config_type: Option<&str> = None;
     let config_suffix = ["json", "yml"];
@@ -171,7 +177,9 @@ fn main() -> std::io::Result<()> {
             println!("[Error] channel was closed");
         }
         let mut report_config = anti_speedtest_cfg.report_config.clone();
-        report_config.init().unwrap();
+        if anti_speedtest_cfg.report_open {
+            report_config.init().unwrap();
+        }
         loop {
             let receive_data = match r.recv().await {
                 Ok(it) => it,
