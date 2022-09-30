@@ -291,7 +291,7 @@ impl ReportConfig {
         let health_values = HashMap::from([
             (ReportOrderName::CnPlayurl, cn_playurl),
             (ReportOrderName::HkPlayurl, hk_playurl),
-            (ReportOrderName::CnPlayurl, tw_playurl),
+            (ReportOrderName::TwPlayurl, tw_playurl),
             (ReportOrderName::ThPlayurl, th_playurl),
             (ReportOrderName::CnSearch, cn_search),
             (ReportOrderName::HkSearch, hk_search),
@@ -344,7 +344,7 @@ impl ReportConfig {
                 let health_values = HashMap::from([
                     (ReportOrderName::CnPlayurl, cn_playurl),
                     (ReportOrderName::HkPlayurl, hk_playurl),
-                    (ReportOrderName::CnPlayurl, tw_playurl),
+                    (ReportOrderName::TwPlayurl, tw_playurl),
                     (ReportOrderName::ThPlayurl, th_playurl),
                     (ReportOrderName::CnSearch, cn_search),
                     (ReportOrderName::HkSearch, hk_search),
