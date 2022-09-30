@@ -125,12 +125,6 @@ async fn api_accesskey(req: HttpRequest) -> impl Responder {
 }
 
 fn main() -> std::io::Result<()> {
-    for i in 0..2 {
-        println!("{}", i);
-    }
-
-
-
     println!("你好喵~");
     let mut config_type: Option<&str> = None;
     let config_suffix = ["json", "yml"];

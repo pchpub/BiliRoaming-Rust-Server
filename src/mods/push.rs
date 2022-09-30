@@ -39,6 +39,7 @@ pub async fn send_report(
                     &health_data.health_type.to_color_char(),
                 )
                 .unwrap();
+            println!("[Debug] url:{}", url);
             match getwebpage(
                 url,
                 false,
@@ -46,9 +47,11 @@ pub async fn send_report(
                 "BiliRoaming-Rust-Server".to_string(),
                 "".to_string(),
             ) {
-                Ok(_) => {}
+                Ok(_) => {
+                    return Ok(());
+                }
                 Err(_) => {
-                    println!("[Error] Send report failed");
+                    return Err(());
                 }
             }
         }
@@ -92,10 +95,11 @@ pub async fn send_report(
                 "".to_string(),
                 "BiliRoaming-Rust-Server".to_string(),
             ) {
-                //(url: String,content: String,proxy_open: bool,proxy_url: String,user_agent: String)
-                Ok(_) => {}
+                Ok(_) => {
+                    return Ok(());
+                }
                 Err(_) => {
-                    println!("[Error] Send report failed");
+                    return Err(());
                 }
             }
         }
@@ -129,5 +133,4 @@ pub async fn send_report(
     // {
     //     println!("[Error] 发送监控状态失败");
     // };
-    Err(())
 }
