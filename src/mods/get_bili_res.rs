@@ -389,7 +389,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                             .as_str()
                             .parse::<u32>()
                             .unwrap();
-                        if num > 3 {
+                        if num == 4 {
                             redis_set(&pool, &format!("01{}1301", area_num), "1", 0)
                                 .await
                                 .unwrap_or_default();
@@ -497,7 +497,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                                 .as_str()
                                 .parse::<u32>()
                                 .unwrap();
-                            if num > 3 {
+                            if num == 4 {
                                 redis_set(&pool, &format!("01{}1301", area_num), "1", 0)
                                     .await
                                     .unwrap_or_default();
@@ -966,7 +966,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
                     .as_str()
                     .parse::<u32>()
                     .unwrap();
-                if num > 3 {
+                if num == 4 {
                     redis_set(&pool, &format!("02{}1301", area_num), "1", 0)
                         .await
                         .unwrap_or_default();
@@ -1042,7 +1042,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
                 .as_str()
                 .parse::<u32>()
                 .unwrap();
-            if num > 3 {
+            if num == 4 {
                 redis_set(&pool, &format!("02{}1301", area_num), "1", 0)
                     .await
                     .unwrap_or_default();
@@ -1323,7 +1323,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
                         .as_str()
                         .parse::<u32>()
                         .unwrap();
-                    if num > 3 {
+                    if num == 4 {
                         redis_set(&pool, "0441301", "1", 0)
                             .await
                             .unwrap_or_default();
