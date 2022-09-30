@@ -204,12 +204,12 @@ impl ReportConfig {
                         if has_start {
                             match key2order.get(&vec_char_to_string(&chars,start_index + 1,index).unwrap()[..]) {
                                 Some(value) => {
-                                    last_end = index + 1;
                                     self.url_insert_order.push(value.clone());
                                     self.url_separate_elements
                                         .push(
                                             vec_char_to_string(&chars,last_end,start_index).unwrap()
                                         );
+                                    last_end = index + 1;
                                 }
                                 None => {}
                             }
@@ -247,12 +247,12 @@ impl ReportConfig {
                         if has_start {
                             match key2order.get(&vec_char_to_string(&chars,start_index + 1,index).unwrap()[..]) {
                                 Some(value) => {
-                                    last_end = index + 1;
                                     self.content_insert_order.push(value.clone());
                                     self.content_separate_elements
                                         .push(
                                             vec_char_to_string(&chars,last_end,start_index).unwrap()
                                         );
+                                    last_end = index + 1;
                                 }
                                 None => {}
                             }
