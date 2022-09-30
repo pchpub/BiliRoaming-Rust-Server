@@ -159,6 +159,14 @@ impl std::default::Default for ReportConfig {
     }
 }
 
+fn vec_char_to_string(content: &Vec<String>,start: usize,end: usize) -> Result<String,()>{
+    let mut string = String::new();
+    for index in start..end {
+        string = string + &content[index];
+    }
+    Ok(string)
+}
+
 impl ReportConfig {
     pub fn init(&mut self) -> Result<(), ()> {
         let key2order = HashMap::from([
@@ -186,7 +194,7 @@ impl ReportConfig {
             for char in self.url.chars() {
                 chars.push(format!("{}",char));
             }
-            for char in chars {
+            for char in chars.iter() {
                 match &char[..] {
                     "{" => {
                         has_start = true;
@@ -194,12 +202,14 @@ impl ReportConfig {
                     }
                     "}" => {
                         if has_start {
-                            match key2order.get(&self.url[start_index + 1..index]) {
+                            match key2order.get(&vec_char_to_string(&chars,start_index + 1,index).unwrap()[..]) {
                                 Some(value) => {
                                     last_end = index + 1;
                                     self.url_insert_order.push(value.clone());
                                     self.url_separate_elements
-                                        .push((&self.url[last_end..start_index]).to_string());
+                                        .push(
+                                            vec_char_to_string(&chars,last_end,start_index).unwrap()
+                                        );
                                 }
                                 None => {}
                             }
@@ -212,7 +222,9 @@ impl ReportConfig {
             }
             if last_end != len {
                 self.url_separate_elements
-                    .push((&self.url[last_end..]).to_string());
+                    .push(
+                        vec_char_to_string(&chars,last_end,len).unwrap()
+                    );
             }
         }
         {
@@ -220,21 +232,27 @@ impl ReportConfig {
             let mut start_index = 0;
             let mut last_end = 0;
             let mut index = 0;
-            let len = self.content.len();
+            let len = self.content.chars().count();
+            let mut chars = Vec::with_capacity(len);
             for char in self.content.chars() {
-                match char {
-                    '{' => {
+                chars.push(format!("{}",char));
+            }
+            for char in chars.iter() {
+                match &char[..] {
+                    "{" => {
                         has_start = true;
                         start_index = index;
                     }
-                    '}' => {
+                    "}" => {
                         if has_start {
-                            match key2order.get(&self.content[start_index + 1..index]) {
+                            match key2order.get(&vec_char_to_string(&chars,start_index + 1,index).unwrap()[..]) {
                                 Some(value) => {
                                     last_end = index + 1;
                                     self.content_insert_order.push(value.clone());
                                     self.content_separate_elements
-                                        .push((&self.content[last_end..start_index]).to_string());
+                                        .push(
+                                            vec_char_to_string(&chars,last_end,start_index).unwrap()
+                                        );
                                 }
                                 None => {}
                             }
@@ -246,8 +264,10 @@ impl ReportConfig {
                 index += 1;
             }
             if last_end != len {
-                self.url_separate_elements
-                    .push((&self.content[last_end..]).to_string());
+                self.content_separate_elements
+                    .push(
+                        vec_char_to_string(&chars,last_end,len).unwrap()
+                    );
             }
         }
         Ok(())
