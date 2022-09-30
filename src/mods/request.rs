@@ -34,7 +34,7 @@ pub fn getwebpage(url: String,proxy_open: bool,proxy_url: String,user_agent: Str
             Ok(new_data.len())
         }).unwrap();
         match transfer.perform() {
-            Ok(()) => (()),
+            Ok(()) => (),
             _error => {
                 return Err(());
             }
@@ -100,7 +100,7 @@ pub fn postwebpage(url: String,content: String,proxy_open: bool,proxy_url: Strin
             })
             .unwrap();
         match transfer.perform() {
-            Ok(()) => (()),
+            Ok(()) => (),
             _error => {
                 return Err(());
             }
@@ -161,7 +161,7 @@ pub fn download<P: AsRef<Path>>(url: String,proxy_open: bool,proxy_url: String,u
             Ok(new_data.len())
         }).unwrap();
         match transfer.perform() {
-            Ok(()) => (()),
+            Ok(()) => (),
             Err(err) => {
                 println!("[Error] download failed: {}", err);
                 return Err(());

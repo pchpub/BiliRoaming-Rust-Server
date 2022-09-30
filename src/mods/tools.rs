@@ -242,20 +242,7 @@ pub fn update_server(is_auto_close: bool) {
 pub async fn health_key_to_char(pool: &Pool, key: &str) -> String {
     match redis_get(pool, key).await {
         Some(value) => {
-            let value = value.as_str();
-            // if value == "0" {
-            //     //🔴🟢🟠🟡🔵🟣🟤
-            //     return "🟢".to_string();
-            // } else if value == "1" {
-            //     return "🟡".to_string();
-            // } else if value == "2" {
-            //     return "🟡".to_string();
-            // } else if value == "3" {
-            //     return "🟡".to_string();
-            // } else if value == "4" {
-            //     return "🔴".to_string();
-            // }
-            match value {
+            match &value[..] {
                 "0" => return "🟢".to_string(),
                 "1" => return "🟡".to_string(),
                 "2" => return "🟠".to_string(),

@@ -3,18 +3,18 @@ use actix_governor::{Governor, GovernorConfigBuilder};
 use actix_web::http::header::ContentType;
 use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use async_channel::{Receiver, Sender};
+use biliroaming_rust_server::mods::config::load_biliconfig;
 use biliroaming_rust_server::mods::get_bili_res::{
     errorurl_reg, get_playurl, get_playurl_background, get_search, get_season, get_subtitle_th,
 };
 use biliroaming_rust_server::mods::pub_api::get_api_accesskey;
+use biliroaming_rust_server::mods::push::send_report;
 use biliroaming_rust_server::mods::rate_limit::BiliUserToken;
-use biliroaming_rust_server::mods::request::async_postwebpage;
-use biliroaming_rust_server::mods::tools::{health_key_to_char, update_server};
+use biliroaming_rust_server::mods::tools::update_server;
 use biliroaming_rust_server::mods::types::{BiliConfig, SendData};
 use deadpool_redis::{Config, Pool, Runtime};
 use futures::join;
-use serde_json;
-use std::fs::{self, File};
+use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -126,7 +126,6 @@ async fn api_accesskey(req: HttpRequest) -> impl Responder {
 
 fn main() -> std::io::Result<()> {
     println!("你好喵~");
-    let config_file: File;
     let mut config_type: Option<&str> = None;
     let config_suffix = ["json", "yml"];
     for suffix in config_suffix {
@@ -134,43 +133,13 @@ fn main() -> std::io::Result<()> {
             config_type = Some(suffix);
         }
     }
-    let config: BiliConfig;
-    match config_type {
-        None => {
-            println!("[error] 无配置文件");
+    let config = match load_biliconfig(config_type) {
+        Ok(value) => value,
+        Err(value) => {
+            println!("{value}");
             std::process::exit(78);
         }
-        Some(value) => {
-            match File::open(format!("config.{}", value)) {
-                Ok(value) => {
-                    config_file = value;
-                }
-                Err(_) => {
-                    println!("[error] 配置文件打开失败");
-                    std::process::exit(78);
-                }
-            }
-            match value {
-                "json" => config = serde_json::from_reader(config_file).unwrap(),
-                "yml" => config = serde_yaml::from_reader(config_file).unwrap(),
-                _ => {
-                    println!("[error] 未预期的错误-1");
-                    std::process::exit(78);
-                }
-            }
-        }
-    }
-    match config_type.unwrap() {
-        "json" => fs::write(
-            "config.json",
-            serde_json::to_string_pretty(&config).unwrap(),
-        )
-        .unwrap(),
-        "yml" => fs::write("config.yml", serde_yaml::to_string(&config).unwrap()).unwrap(),
-        _ => {
-            println!("[error] 未预期的错误-2");
-        }
-    }
+    };
     ctrlc::set_handler(move || {
         //目前来看这个已经没用了,但以防万一卡死,还是留着好了
         println!("\n已关闭 biliroaming_rust_server");
@@ -178,7 +147,6 @@ fn main() -> std::io::Result<()> {
     })
     .unwrap();
 
-    println!(r#"[Tips] 在代理设置处添加"socks5://"以平滑过渡至新版"#);
     //fs::write("config.example.yml", serde_yaml::to_string(&config).unwrap()).unwrap(); //Debug 方便生成示例配置
 
     let anti_speedtest_cfg = config.clone();
@@ -198,9 +166,13 @@ fn main() -> std::io::Result<()> {
         .unwrap();
     let web_background = async move {
         //a thread try to update cache
-        //println!("[Debug] spawn web_background");
+        // println!("[Debug] spawn web_background");
         if bilisender_live.is_closed() {
             println!("[Error] channel was closed");
+        }
+        let mut report_config = anti_speedtest_cfg.report_config.clone();
+        if anti_speedtest_cfg.report_open {
+            report_config.init().unwrap();
         }
         loop {
             let receive_data = match r.recv().await {
@@ -208,7 +180,7 @@ fn main() -> std::io::Result<()> {
                 _ => {
                     //println!("[Debug] failed to receive data");
                     break;
-                },
+                }
             };
             //println!("[Debug] r:{}",r.len());
             match receive_data {
@@ -221,44 +193,9 @@ fn main() -> std::io::Result<()> {
                     };
                 }
                 SendData::Health(value) => {
-                    let health_cn_playurl = health_key_to_char(&pool_background, "0111301").await;
-                    let health_hk_playurl = health_key_to_char(&pool_background, "0121301").await;
-                    let health_tw_playurl = health_key_to_char(&pool_background, "0131301").await;
-                    let health_th_playurl = health_key_to_char(&pool_background, "0141301").await;
-                    let health_cn_search = health_key_to_char(&pool_background, "0211301").await;
-                    let health_hk_search = health_key_to_char(&pool_background, "0221301").await;
-                    let health_tw_search = health_key_to_char(&pool_background, "0231301").await;
-                    let health_th_search = health_key_to_char(&pool_background, "0241301").await;
-                    let health_th_season = health_key_to_char(&pool_background, "0441301").await;
-                    let msg = format!(
-                        "大陆 Playurl:              {}\n香港 Playurl:              {}\n台湾 Playurl:              {}\n泰区 Playurl:              {}\n大陆 Search:              {}\n香港 Search:              {}\n台湾 Search:              {}\n泰区 Search:              {}\n泰区 Season:              {}\n\n变动: {} {} -> {}",
-                        health_cn_playurl,
-                        health_hk_playurl,
-                        health_tw_playurl,
-                        health_th_playurl,
-                        health_cn_search,
-                        health_hk_search,
-                        health_tw_search,
-                        health_th_search,
-                        health_th_season,
-                        value.area_name(),
-                        value.data_type,
-                        value.health_type.to_color_char()
-                    );
-                    let url = format!(
-                        "https://api.telegram.org/bot{}/sendMessage",
-                        &anti_speedtest_cfg.telegram_token
-                    );
-                    let content = format!(
-                        "chat_id={}&text={msg}",
-                        &anti_speedtest_cfg.telegram_chat_id
-                    );
-                    if let Err(_) =
-                        async_postwebpage(&url, &content, &false, "", "BiliRoaming-Rust-Server")
-                            .await
-                    {
-                        println!("[Error] 发送监控状态失败");
-                    };
+                    if let Err(_) = send_report(&pool_background,&mut report_config, &value).await {
+                        println!("[Error] failed to send health report");
+                    }
                 }
             }
         }
