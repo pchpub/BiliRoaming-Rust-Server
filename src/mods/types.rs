@@ -164,7 +164,7 @@ impl std::default::Default for ReportConfig {
     }
 }
 
-fn vec_char_to_string(content: &Vec<String>,start: usize,end: usize) -> Result<String,()>{
+fn vec_char_to_string(content: &Vec<String>, start: usize, end: usize) -> Result<String, ()> {
     let mut string = String::new();
     for index in start..end {
         string = string + &content[index];
@@ -184,9 +184,9 @@ impl ReportConfig {
             ("TwSearch", ReportOrderName::TwSearch),
             ("ThSearch", ReportOrderName::ThSearch),
             ("ThSeason", ReportOrderName::ThSeason),
-            ("ChangedAreaName",ReportOrderName::ChangedAreaName),
-            ("ChangedDataType",ReportOrderName::ChangedDataType),
-            ("ChangedHealthType",ReportOrderName::ChangedHealthType),
+            ("ChangedAreaName", ReportOrderName::ChangedAreaName),
+            ("ChangedDataType", ReportOrderName::ChangedDataType),
+            ("ChangedHealthType", ReportOrderName::ChangedHealthType),
         ]);
 
         {
@@ -197,7 +197,7 @@ impl ReportConfig {
             let len = self.url.chars().count();
             let mut chars = Vec::with_capacity(len);
             for char in self.url.chars() {
-                chars.push(format!("{}",char));
+                chars.push(format!("{}", char));
             }
             for char in chars.iter() {
                 match &char[..] {
@@ -207,12 +207,13 @@ impl ReportConfig {
                     }
                     "}" => {
                         if has_start {
-                            match key2order.get(&vec_char_to_string(&chars,start_index + 1,index).unwrap()[..]) {
+                            match key2order.get(
+                                &vec_char_to_string(&chars, start_index + 1, index).unwrap()[..],
+                            ) {
                                 Some(value) => {
                                     self.url_insert_order.push(value.clone());
-                                    self.url_separate_elements
-                                        .push(
-                                            vec_char_to_string(&chars,last_end,start_index).unwrap()
+                                    self.url_separate_elements.push(
+                                        vec_char_to_string(&chars, last_end, start_index).unwrap(),
                                     );
                                     last_end = index + 1;
                                 }
@@ -227,9 +228,7 @@ impl ReportConfig {
             }
             if last_end != len {
                 self.url_separate_elements
-                    .push(
-                        vec_char_to_string(&chars,last_end,len).unwrap()
-                    );
+                    .push(vec_char_to_string(&chars, last_end, len).unwrap());
             }
         }
         {
@@ -240,7 +239,7 @@ impl ReportConfig {
             let len = self.content.chars().count();
             let mut chars = Vec::with_capacity(len);
             for char in self.content.chars() {
-                chars.push(format!("{}",char));
+                chars.push(format!("{}", char));
             }
             for char in chars.iter() {
                 match &char[..] {
@@ -250,12 +249,13 @@ impl ReportConfig {
                     }
                     "}" => {
                         if has_start {
-                            match key2order.get(&vec_char_to_string(&chars,start_index + 1,index).unwrap()[..]) {
+                            match key2order.get(
+                                &vec_char_to_string(&chars, start_index + 1, index).unwrap()[..],
+                            ) {
                                 Some(value) => {
                                     self.content_insert_order.push(value.clone());
-                                    self.content_separate_elements
-                                        .push(
-                                            vec_char_to_string(&chars,last_end,start_index).unwrap()
+                                    self.content_separate_elements.push(
+                                        vec_char_to_string(&chars, last_end, start_index).unwrap(),
                                     );
                                     last_end = index + 1;
                                 }
@@ -270,9 +270,7 @@ impl ReportConfig {
             }
             if last_end != len {
                 self.content_separate_elements
-                    .push(
-                        vec_char_to_string(&chars,last_end,len).unwrap()
-                    );
+                    .push(vec_char_to_string(&chars, last_end, len).unwrap());
             }
         }
         Ok(())
@@ -292,7 +290,7 @@ impl ReportConfig {
         changed_area_name: &str,
         changed_data_type: &str,
         changed_health_type: &str,
-    ) -> Result<String,()> {
+    ) -> Result<String, ()> {
         let health_values = HashMap::from([
             (ReportOrderName::CnPlayurl, cn_playurl),
             (ReportOrderName::HkPlayurl, hk_playurl),
@@ -303,9 +301,9 @@ impl ReportConfig {
             (ReportOrderName::TwSearch, tw_search),
             (ReportOrderName::ThSearch, th_search),
             (ReportOrderName::ThSeason, th_season),
-            (ReportOrderName::ChangedAreaName,changed_area_name),
-            (ReportOrderName::ChangedDataType,changed_data_type),
-            (ReportOrderName::ChangedHealthType,changed_health_type),
+            (ReportOrderName::ChangedAreaName, changed_area_name),
+            (ReportOrderName::ChangedDataType, changed_data_type),
+            (ReportOrderName::ChangedHealthType, changed_health_type),
         ]);
         let mut url = String::new();
         let len_elements = self.url_separate_elements.len();
@@ -339,12 +337,12 @@ impl ReportConfig {
         changed_area_name: &str,
         changed_data_type: &str,
         changed_health_type: &str,
-    ) -> Result<String,()>{
+    ) -> Result<String, ()> {
         match self.method {
             Method::Get => {
                 println!("[Error] GET has no context");
                 return Err(());
-            },
+            }
             Method::Post => {
                 let health_values = HashMap::from([
                     (ReportOrderName::CnPlayurl, cn_playurl),
@@ -356,9 +354,9 @@ impl ReportConfig {
                     (ReportOrderName::TwSearch, tw_search),
                     (ReportOrderName::ThSearch, th_search),
                     (ReportOrderName::ThSeason, th_season),
-                    (ReportOrderName::ChangedAreaName,changed_area_name),
-                    (ReportOrderName::ChangedDataType,changed_data_type),
-                    (ReportOrderName::ChangedHealthType,changed_health_type),
+                    (ReportOrderName::ChangedAreaName, changed_area_name),
+                    (ReportOrderName::ChangedDataType, changed_data_type),
+                    (ReportOrderName::ChangedHealthType, changed_health_type),
                 ]);
                 let mut content = String::new();
                 let len_elements = self.content_separate_elements.len();
@@ -376,9 +374,8 @@ impl ReportConfig {
                     content = content + &self.content_separate_elements[index];
                 }
                 return Ok(content);
-            },
             }
-        
+        }
     }
 }
 
@@ -665,7 +662,12 @@ impl AreaCache {
             false
         }
     }
-    pub fn update(&mut self, area: &str, prefer_area:&str, body_data_json: &serde_json::Value) -> Result<String, ()> {
+    pub fn update(
+        &mut self,
+        area: &str,
+        prefer_area: &str,
+        body_data_json: &serde_json::Value,
+    ) -> Result<String, ()> {
         let code = body_data_json["code"].as_i64().unwrap();
         let message = body_data_json["message"].as_str().unwrap().clone();
         /*

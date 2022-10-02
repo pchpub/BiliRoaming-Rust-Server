@@ -87,9 +87,9 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
     let mut access_key = match query.get("access_key") {
         Option::Some(key) => key.to_string(),
         _ => {
-            return HttpResponse::Ok().content_type(ContentType::json()).body(
-                "{\"code\":2403,\"message\":\"草,没登陆你看个der,让我凭空拿到你账号是吧\"}",
-            );
+            return HttpResponse::Ok()
+                .content_type(ContentType::json())
+                .body("{\"code\":2403,\"message\":\"草,没登陆你看个der,让我凭空拿到你账号是吧\"}");
         }
     };
 
@@ -268,7 +268,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
     //     resign_info 11
     //     api 12
     //     health 13 eg. 0141301 = playurl th health ver.1
-    //     ep_cached_area 14 eg. e100011401 = ep_id 10001 avail areaver.1, 
+    //     ep_cached_area 14 eg. e100011401 = ep_id 10001 avail areaver.1,
     //           data_structure: {"hk": false,"hk_checked": false, "tw": false,"tw_checked": false, "th": false,"th_checked": false, "cn": false,"cn_checked": false, "current": ""}
     //
     //版本 ：用于处理版本更新后导致的格式变更
@@ -1292,9 +1292,9 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
     let access_key = match query.get("access_key") {
         Option::Some(key) => key,
         _ => {
-            return HttpResponse::Ok().content_type(ContentType::json()).body(
-                "{\"code\":2403,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}",
-            );
+            return HttpResponse::Ok()
+                .content_type(ContentType::json())
+                .body("{\"code\":2403,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}");
         }
     };
 
@@ -1810,26 +1810,6 @@ pub async fn get_subtitle_th(req: &HttpRequest, _: bool, _: bool) -> HttpRespons
     let ep_id = query.get("ep_id").unwrap();
     let dt = Local::now();
     let ts = dt.timestamp() as u64;
-    //查询数据+地区（1位）+类型（2位）+版本（2位）
-    //地区 cn 1
-    //     hk 2
-    //     tw 3
-    //     th 4 （不打算支持，切割泰区，没弹幕我为什么不看nc-raw?）
-    //     default 2
-    //类型 app playurl 01
-    //     app search 02
-    //     app subtitle 03
-    //     app season 04 (留着备用)
-    //     user_info 05
-    //     user_cerinfo 06
-    //     web playurl 07
-    //     web search 08
-    //     web subtitle 09
-    //     web season 10
-    //     token 11
-    //     th subtitle 12
-    //版本 ：用于处理版本更新后导致的格式变更
-    //     now 01
     let key = format!("e{ep_id}41201");
     let is_expire: bool;
     let mut redis_get_data = String::new();

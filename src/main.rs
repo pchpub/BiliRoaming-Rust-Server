@@ -193,7 +193,8 @@ fn main() -> std::io::Result<()> {
                     };
                 }
                 SendData::Health(value) => {
-                    if let Err(_) = send_report(&pool_background,&mut report_config, &value).await {
+                    if let Err(_) = send_report(&pool_background, &mut report_config, &value).await
+                    {
                         println!("[Error] failed to send health report");
                     }
                 }

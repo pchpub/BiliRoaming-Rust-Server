@@ -81,10 +81,10 @@ pub fn playurl_get_deadline(
             if data["code"].as_i64().unwrap() == 0 {
                 let items = if let Some(value) = data["data"]["video_info"]["stream_list"].as_array_mut()
                 {
-                    value
-                } else {
-                    return Err(());
-                };
+                        value
+                    } else {
+                        return Err(());
+                    };
                 for item in items {
                     match item["dash_video"]["base_url"].as_str() {
                         Some(value) => {
@@ -243,16 +243,16 @@ pub async fn health_key_to_char(pool: &Pool, key: &str) -> String {
     match redis_get(pool, key).await {
         Some(value) => {
             match &value[..] {
-                "0" => return "🟢".to_string(),
-                "1" => return "🟡".to_string(),
-                "2" => return "🟠".to_string(),
-                "3" => return "🟠".to_string(),
-                "4" => return "🔴".to_string(),
-                _ => return "🔴".to_string(),
-            }
-        }
-        None => {
-            return "🔴".to_string();
+            "0" => return "🟢".to_string(),
+            "1" => return "🟡".to_string(),
+            "2" => return "🟠".to_string(),
+            "3" => return "🟠".to_string(),
+            "4" => return "🔴".to_string(),
+            _ => return "🔴".to_string(),
         }
     }
+        None => {
+            return "🔴".to_string();
 }
+            }
+        }
