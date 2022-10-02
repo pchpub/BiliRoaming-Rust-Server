@@ -128,6 +128,8 @@ pub struct BiliConfig {
     pub report_open: bool,
     #[serde(default)]
     pub report_config: ReportConfig,
+    #[serde(default = "default_false")]
+    pub ep_id_area_cache_open: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -610,6 +612,15 @@ impl Area {
             _ => {
                 panic!("[Error] 不合法的area_num")
             },
+        }
+    }
+
+    pub fn num(&self) -> u8 {
+        match self {
+            Area::Cn => 1,
+            Area::Hk => 2,
+            Area::Tw => 3,
+            Area::Th => 4,
         }
     }
 }

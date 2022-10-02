@@ -18,7 +18,7 @@ use serde_json::{self, json};
 use std::sync::Arc;
 use std::thread::spawn;
 
-pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpResponse {
+pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool,query_string: &str,query: QString,area_num: u8) -> HttpResponse {
     let (pool, config, bilisender) = req
         .app_data::<(Pool, BiliConfig, Arc<Sender<SendData>>)>()
         .unwrap();
@@ -51,8 +51,8 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
         }
     }
 
-    let query_string = req.query_string();
-    let query = QString::from(query_string);
+    // let query_string = req.query_string();
+    // let query = QString::from(query_string);
 
     let mut appkey = match query.get("appkey") {
         Option::Some(key) => key,
@@ -99,24 +99,24 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
             .body("{\"code\":2403,\"message\":\"没有accesskey,你b站和漫游需要换个版本\"}");
     }
 
-    let area = match query.get("area") {
-        Option::Some(area) => area,
-        _ => {
-            if is_th {
-                "th"
-            } else {
-                "hk"
-            }
-        }
-    };
+    // let area = match query.get("area") {
+    //     Option::Some(area) => area,
+    //     _ => {
+    //         if is_th {
+    //             "th"
+    //         } else {
+    //             "hk"
+    //         }
+    //     }
+    // };
 
-    let area_num: u8 = match area {
-        "cn" => 1,
-        "hk" => 2,
-        "tw" => 3,
-        "th" => 4,
-        _ => 2,
-    };
+    // let area_num: u8 = match area {
+    //     "cn" => 1,
+    //     "hk" => 2,
+    //     "tw" => 3,
+    //     "th" => 4,
+    //     _ => 2,
+    // };
 
     let ep_id = match query.get("ep_id") {
         Option::Some(key) => Some(key),

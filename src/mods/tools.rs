@@ -1,11 +1,16 @@
+use actix_web::http::header::ContentType;
+use actix_web::{HttpResponse, HttpRequest};
+use async_channel::Sender;
 use deadpool_redis::Pool;
 use qstring::QString;
 use std::env;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::thread;
 
+use super::get_bili_res::get_playurl;
 use super::request::redis_get;
-use super::types::{GetEpAreaType, Area};
+use super::types::{GetEpAreaType, Area, BiliConfig, SendData};
 use super::{
     request::{download, getwebpage},
     types::PlayurlType,
@@ -255,10 +260,10 @@ pub async fn health_key_to_char(pool: &Pool, key: &str) -> String {
     }
 }
 
-pub async fn get_ep_area(pool: &Pool, ep: &str, area: &str) -> Result<GetEpAreaType, ()> {
+pub async fn get_ep_area(pool: &Pool, ep: &str, area: &u8) -> Result<GetEpAreaType, ()> {
     let key = format!("e{ep}{area}1401");
     let data_raw = redis_get(pool,&key).await;
-    let area = area.parse::<usize>().unwrap_or(2);
+    // let area = area.parse::<usize>().unwrap_or(2);
     if let Some(value) = data_raw {
         let mut ep_area_data: [u8;4] = [2,2,2,2];
         let mut is_all_available = true;
@@ -277,29 +282,98 @@ pub async fn get_ep_area(pool: &Pool, ep: &str, area: &str) -> Result<GetEpAreaT
             }
         }
 
-        if ep_area_data[area-1] == 0 {
-            if area == 2 && ep_area_data[1] == 0 {
-                return Ok(GetEpAreaType::Available(Area::Hk));
+        if is_all_available {
+            if *area == 4 && ep_area_data[3] == 0 {
+                return Ok(GetEpAreaType::Available(Area::Th));
             }else{
-                return Ok(GetEpAreaType::Available(Area::new(area as u8)));
-            }
-        }else{
-            if is_all_available {
                 if ep_area_data[1] == 0 {
                     return Ok(GetEpAreaType::Available(Area::Hk));
                 }else if ep_area_data[2] == 0 {
                     return Ok(GetEpAreaType::Available(Area::Tw));
                 }else if ep_area_data[3] == 0 {
                     return Ok(GetEpAreaType::Available(Area::Th));
-                }else if ep_area_data[3] == 0 {
+                }else if ep_area_data[0] == 0 {
                     return Ok(GetEpAreaType::Available(Area::Cn));
                 }else{
                     return Err(()); //不这样搞的话可能被攻击时会出大问题
                 }
             }
+        }else{
+            if ep_area_data[*area as usize -1] == 0 {
+                if *area == 2 && ep_area_data[1] == 0 {
+                    return Ok(GetEpAreaType::Available(Area::Hk));
+                }else{
+                    return Ok(GetEpAreaType::Available(Area::new(*area as u8)));
+                }
+            }else{
+                return Ok(GetEpAreaType::NoCurrentAreaData);
+            }
         }
     }else{
         return Ok(GetEpAreaType::NoCurrentAreaData);
     };
-    Err(())
+}
+
+pub async fn redir_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpResponse {
+    let (pool, config, _bilisender) = req
+        .app_data::<(Pool, BiliConfig, Arc<Sender<SendData>>)>()
+        .unwrap();
+    let query_string = req.query_string();
+    let query = QString::from(query_string);
+    let area = match query.get("area") {
+        Option::Some(area) => area,
+        _ => {
+            if is_th {
+                "th"
+            } else {
+                "hk"
+            }
+        }
+    };
+
+    let area_num: u8 = match area {
+        "cn" => 1,
+        "hk" => 2,
+        "tw" => 3,
+        "th" => 4,
+        _ => 2,
+    };
+    if config.ep_id_area_cache_open {
+        if let Ok(value) = get_ep_area(pool,query.get("ep_id").unwrap(),&area_num).await {
+            match value {
+                GetEpAreaType::NoCurrentAreaData => {
+                    return get_playurl(req, is_app, is_th, query_string, query, area_num).await;
+                },
+                GetEpAreaType::OnlyHasCurrentAreaData(is_exist) => {
+                    if is_exist {
+                        return get_playurl(req, is_app, is_th, query_string, query, area_num).await;
+                    }else{
+                        return HttpResponse::Ok()
+                        .content_type(ContentType::json())
+                        .insert_header(("From", "biliroaming-rust-server"))
+                        .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                        .insert_header(("Access-Control-Allow-Credentials", "true"))
+                        .insert_header(("Access-Control-Allow-Methods", "GET"))
+                        .body("{\"code\":8403,\"message\":\"该剧集被判定为没有地区能播放\"}");
+                    }
+                },
+                GetEpAreaType::Available(area) => {
+                    let is_th: bool;
+                    match area {
+                        Area::Th => {
+                            is_th =true;
+                        },
+                        _ => {
+                            is_th = false;
+                        }
+                    }
+                    return get_playurl(req, is_app, is_th, query_string, query, area.num()).await;
+                },
+            }
+        }else{
+            return get_playurl(req, is_app, is_th, query_string, query, area_num).await;
+        }
+    }else{
+        return get_playurl(req, is_app, is_th, query_string, query, area_num).await;
+    }
 }

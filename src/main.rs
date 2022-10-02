@@ -5,12 +5,12 @@ use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder}
 use async_channel::{Receiver, Sender};
 use biliroaming_rust_server::mods::config::load_biliconfig;
 use biliroaming_rust_server::mods::get_bili_res::{
-    errorurl_reg, get_playurl, get_playurl_background, get_search, get_season, get_subtitle_th,
+    errorurl_reg, get_playurl_background, get_search, get_season, get_subtitle_th,
 };
 use biliroaming_rust_server::mods::pub_api::get_api_accesskey;
 use biliroaming_rust_server::mods::push::send_report;
 use biliroaming_rust_server::mods::rate_limit::BiliUserToken;
-use biliroaming_rust_server::mods::tools::update_server;
+use biliroaming_rust_server::mods::tools::{update_server, redir_playurl_request};
 use biliroaming_rust_server::mods::types::{BiliConfig, SendData};
 use deadpool_redis::{Config, Pool, Runtime};
 use futures::join;
@@ -48,9 +48,9 @@ async fn web_default(req: HttpRequest) -> impl Responder {
             .body("{\"code\":-404,\"message\":\"请检查填入的服务器地址是否有效\"}");
     };
     match res_type {
-        1 => get_playurl(&req, true, false).await,
-        2 => get_playurl(&req, false, false).await,
-        3 => get_playurl(&req, true, true).await,
+        1 => redir_playurl_request(&req, true, false).await,
+        2 => redir_playurl_request(&req, false, false).await,
+        3 => redir_playurl_request(&req, true, true).await,
         4 => get_search(&req, true, false).await,
         5 => get_search(&req, false, false).await,
         6 => get_search(&req, true, true).await,
@@ -81,17 +81,17 @@ async fn donate(req: HttpRequest) -> impl Responder {
 
 #[get("/pgc/player/api/playurl")]
 async fn zhplayurl_app(req: HttpRequest) -> impl Responder {
-    get_playurl(&req, true, false).await
+    redir_playurl_request(&req, true, false).await
 }
 
 #[get("/pgc/player/web/playurl")]
 async fn zhplayurl_web(req: HttpRequest) -> impl Responder {
-    get_playurl(&req, false, false).await
+    redir_playurl_request(&req, false, false).await
 }
 
 #[get("/intl/gateway/v2/ogv/playurl")]
 async fn thplayurl_app(req: HttpRequest) -> impl Responder {
-    get_playurl(&req, true, true).await
+    redir_playurl_request(&req, true, true).await
 }
 
 #[get("/x/v2/search/type")]
