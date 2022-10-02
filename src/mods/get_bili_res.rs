@@ -18,7 +18,14 @@ use serde_json::{self, json};
 use std::sync::Arc;
 use std::thread::spawn;
 
-pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool,query_string: &str,query: QString,area_num: u8) -> HttpResponse {
+pub async fn get_playurl(
+    req: &HttpRequest,
+    is_app: bool,
+    is_th: bool,
+    query_string: &str,
+    query: QString,
+    area_num: u8,
+) -> HttpResponse {
     let (pool, config, bilisender) = req
         .app_data::<(Pool, BiliConfig, Arc<Sender<SendData>>)>()
         .unwrap();
@@ -28,6 +35,10 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool,query_stri
         _ => {
             return HttpResponse::Ok()
                 .content_type(ContentType::json())
+                .insert_header(("From", "biliroaming-rust-server"))
+                .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                .insert_header(("Access-Control-Allow-Credentials", "true"))
+                .insert_header(("Access-Control-Allow-Methods", "GET"))
                 .body("{\"code\":1403,\"message\":\"草,没ua你看个der\"}");
         }
     }
@@ -44,6 +55,10 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool,query_stri
                 {
                     return HttpResponse::Ok()
                         .content_type(ContentType::json())
+                        .insert_header(("From", "biliroaming-rust-server"))
+                        .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                        .insert_header(("Access-Control-Allow-Credentials", "true"))
+                        .insert_header(("Access-Control-Allow-Methods", "GET"))
                         .body("{\"code\":1403,\"message\":\"什么旧版本魔人,升下级\"}");
                 }
             }
@@ -64,6 +79,10 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool,query_stri
         Err(()) => {
             return HttpResponse::Ok()
                 .content_type(ContentType::json())
+                .insert_header(("From", "biliroaming-rust-server"))
+                .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                .insert_header(("Access-Control-Allow-Credentials", "true"))
+                .insert_header(("Access-Control-Allow-Methods", "GET"))
                 .body("{\"code\":3403,\"message\":\"未知设备\"}");
         }
     };
@@ -80,6 +99,10 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool,query_stri
         {
             return HttpResponse::Ok()
                 .content_type(ContentType::json())
+                .insert_header(("From", "biliroaming-rust-server"))
+                .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                .insert_header(("Access-Control-Allow-Credentials", "true"))
+                .insert_header(("Access-Control-Allow-Methods", "GET"))
                 .body("{\"code\":0403,\"message\":\"校验失败\"}");
         }
     }
@@ -87,15 +110,23 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool,query_stri
     let mut access_key = match query.get("access_key") {
         Option::Some(key) => key.to_string(),
         _ => {
-            return HttpResponse::Ok().content_type(ContentType::json()).body(
-                "{\"code\":2403,\"message\":\"草,没登陆你看个der,让我凭空拿到你账号是吧\"}",
-            );
+            return HttpResponse::Ok()
+                .content_type(ContentType::json())
+                .insert_header(("From", "biliroaming-rust-server"))
+                .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                .insert_header(("Access-Control-Allow-Credentials", "true"))
+                .insert_header(("Access-Control-Allow-Methods", "GET"))
+                .body("{\"code\":2403,\"message\":\"草,没登陆你看个der,让我凭空拿到你账号是吧\"}");
         }
     };
 
     if access_key.len() == 0 {
         return HttpResponse::Ok()
             .content_type(ContentType::json())
+            .insert_header(("From", "biliroaming-rust-server"))
+            .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+            .insert_header(("Access-Control-Allow-Credentials", "true"))
+            .insert_header(("Access-Control-Allow-Methods", "GET"))
             .body("{\"code\":2403,\"message\":\"没有accesskey,你b站和漫游需要换个版本\"}");
     }
 
@@ -133,6 +164,10 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool,query_stri
             Ok(value) => value,
             Err(value) => {
                 return HttpResponse::Ok()
+                    .insert_header(("From", "biliroaming-rust-server"))
+                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                    .insert_header(("Access-Control-Allow-Credentials", "true"))
+                    .insert_header(("Access-Control-Allow-Methods", "GET"))
                     .content_type(ContentType::json())
                     .body(format!("{{\"code\":4403,\"message\":\"{value}\"}}"));
             }
@@ -143,12 +178,20 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool,query_stri
         Err(value) => {
             return HttpResponse::Ok()
                 .content_type(ContentType::plaintext())
+                .insert_header(("From", "biliroaming-rust-server"))
+                .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                .insert_header(("Access-Control-Allow-Credentials", "true"))
+                .insert_header(("Access-Control-Allow-Methods", "GET"))
                 .body(value);
         }
     };
     if black {
         return HttpResponse::Ok()
             .content_type(ContentType::json())
+            .insert_header(("From", "biliroaming-rust-server"))
+            .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+            .insert_header(("Access-Control-Allow-Credentials", "true"))
+            .insert_header(("Access-Control-Allow-Methods", "GET"))
             .body("{\"code\":4403,\"message\":\"黑名单用户,建议换号重开\"}");
     }
     let dt = Local::now();
@@ -191,6 +234,10 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool,query_stri
                 Err(value) => {
                     return HttpResponse::Ok()
                         .content_type(ContentType::json())
+                        .insert_header(("From", "biliroaming-rust-server"))
+                        .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                        .insert_header(("Access-Control-Allow-Credentials", "true"))
+                        .insert_header(("Access-Control-Allow-Methods", "GET"))
                         .body(format!("{{\"code\":5403,\"message\":\"{value}\"}}"));
                 }
             };
@@ -426,6 +473,10 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool,query_stri
 
                     return HttpResponse::Ok()
                         .content_type(ContentType::json())
+                        .insert_header(("From", "biliroaming-rust-server"))
+                        .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                        .insert_header(("Access-Control-Allow-Credentials", "true"))
+                        .insert_header(("Access-Control-Allow-Methods", "GET"))
                         .body("{\"code\":6404,\"message\":\"获取播放地址失败喵\"}");
                 }
             };
@@ -533,6 +584,13 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool,query_stri
                         }
                         return HttpResponse::Ok()
                             .content_type(ContentType::json())
+                            .insert_header(("From", "biliroaming-rust-server"))
+                            .insert_header((
+                                "Access-Control-Allow-Origin",
+                                "https://www.bilibili.com",
+                            ))
+                            .insert_header(("Access-Control-Allow-Credentials", "true"))
+                            .insert_header(("Access-Control-Allow-Methods", "GET"))
                             .body("{\"code\":7404,\"message\":\"获取播放地址失败喵\"}");
                     }
                 };
@@ -725,6 +783,10 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
         _ => {
             return HttpResponse::Ok()
                 .content_type(ContentType::json())
+                .insert_header(("From", "biliroaming-rust-server"))
+                .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                .insert_header(("Access-Control-Allow-Credentials", "true"))
+                .insert_header(("Access-Control-Allow-Methods", "GET"))
                 .body("{\"code\":1403,\"message\":\"草,没ua你看个der\"}");
         }
     }
@@ -740,9 +802,15 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
         access_key = match query.get("access_key") {
             Option::Some(key) => key,
             _ => {
-                return HttpResponse::Ok().content_type(ContentType::json()).body(
-                    "{\"code\":2403,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}",
-                );
+                return HttpResponse::Ok()
+                    .content_type(ContentType::json())
+                    .insert_header(("From", "biliroaming-rust-server"))
+                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                    .insert_header(("Access-Control-Allow-Credentials", "true"))
+                    .insert_header(("Access-Control-Allow-Methods", "GET"))
+                    .body(
+                        "{\"code\":2403,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}",
+                    );
             }
         };
     } else {
@@ -803,6 +871,10 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
         Err(()) => {
             return HttpResponse::Ok()
                 .content_type(ContentType::json())
+                .insert_header(("From", "biliroaming-rust-server"))
+                .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                .insert_header(("Access-Control-Allow-Credentials", "true"))
+                .insert_header(("Access-Control-Allow-Methods", "GET"))
                 .body("{\"code\":3403,\"message\":\"未知设备\"}");
         }
     };
@@ -814,6 +886,10 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
                 Err(value) => {
                     return HttpResponse::Ok()
                         .content_type(ContentType::json())
+                        .insert_header(("From", "biliroaming-rust-server"))
+                        .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                        .insert_header(("Access-Control-Allow-Credentials", "true"))
+                        .insert_header(("Access-Control-Allow-Methods", "GET"))
                         .body(format!("{{\"code\":4403,\"message\":\"{value}\"}}"));
                 }
             };
@@ -1003,6 +1079,10 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
 
             return HttpResponse::Ok()
                 .content_type(ContentType::json())
+                .insert_header(("From", "biliroaming-rust-server"))
+                .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                .insert_header(("Access-Control-Allow-Credentials", "true"))
+                .insert_header(("Access-Control-Allow-Methods", "GET"))
                 .body("{\"code\":5404,\"message\":\"获取失败喵\"}");
         }
     };
@@ -1078,6 +1158,10 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
         }
         return HttpResponse::Ok()
             .content_type(ContentType::json())
+            .insert_header(("From", "biliroaming-rust-server"))
+            .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+            .insert_header(("Access-Control-Allow-Credentials", "true"))
+            .insert_header(("Access-Control-Allow-Methods", "GET"))
             .body("{\"code\":6404,\"message\":\"获取失败喵\"}");
     }
     let search_remake_date = {
@@ -1210,6 +1294,10 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
         _ => {
             return HttpResponse::Ok()
                 .content_type(ContentType::json())
+                .insert_header(("From", "biliroaming-rust-server"))
+                .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                .insert_header(("Access-Control-Allow-Credentials", "true"))
+                .insert_header(("Access-Control-Allow-Methods", "GET"))
                 .body("{\"code\":1403,\"message\":\"草,没ua你看个der\"}");
         }
     }
@@ -1223,9 +1311,13 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
     let access_key = match query.get("access_key") {
         Option::Some(key) => key,
         _ => {
-            return HttpResponse::Ok().content_type(ContentType::json()).body(
-                "{\"code\":2403,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}",
-            );
+            return HttpResponse::Ok()
+                .content_type(ContentType::json())
+                .insert_header(("From", "biliroaming-rust-server"))
+                .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                .insert_header(("Access-Control-Allow-Credentials", "true"))
+                .insert_header(("Access-Control-Allow-Methods", "GET"))
+                .body("{\"code\":2403,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}");
         }
     };
 
@@ -1295,6 +1387,10 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
             _ => {
                 return HttpResponse::Ok()
                     .content_type(ContentType::json())
+                    .insert_header(("From", "biliroaming-rust-server"))
+                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                    .insert_header(("Access-Control-Allow-Credentials", "true"))
+                    .insert_header(("Access-Control-Allow-Methods", "GET"))
                     .body(format!(
                         "{{\"code\":3403,\"message\":\"没有对应的appsec\"}}"
                     ));
@@ -1354,6 +1450,10 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
                 }
                 return HttpResponse::Ok()
                     .content_type(ContentType::json())
+                    .insert_header(("From", "biliroaming-rust-server"))
+                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                    .insert_header(("Access-Control-Allow-Credentials", "true"))
+                    .insert_header(("Access-Control-Allow-Methods", "GET"))
                     .body("{\"code\":4404,\"message\":\"获取失败喵\"}");
             }
         };
@@ -1730,6 +1830,10 @@ pub async fn get_subtitle_th(req: &HttpRequest, _: bool, _: bool) -> HttpRespons
         _ => {
             return HttpResponse::Ok()
                 .content_type(ContentType::json())
+                .insert_header(("From", "biliroaming-rust-server"))
+                .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                .insert_header(("Access-Control-Allow-Credentials", "true"))
+                .insert_header(("Access-Control-Allow-Methods", "GET"))
                 .body("{\"code\":1403,\"message\":\"草,没ua你看个der\"}");
         }
     }
@@ -1786,6 +1890,10 @@ pub async fn get_subtitle_th(req: &HttpRequest, _: bool, _: bool) -> HttpRespons
             Err(_) => {
                 return HttpResponse::Ok()
                     .content_type(ContentType::json())
+                    .insert_header(("From", "biliroaming-rust-server"))
+                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                    .insert_header(("Access-Control-Allow-Credentials", "true"))
+                    .insert_header(("Access-Control-Allow-Methods", "GET"))
                     .body("{\"code\":2404,\"message\":\"获取字幕失败喵\"}");
             }
         };
