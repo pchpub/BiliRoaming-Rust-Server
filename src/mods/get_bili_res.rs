@@ -2,8 +2,8 @@ use super::get_user_info::{appkey_to_sec, auth_user, getuser_list};
 use super::request::{async_getwebpage, async_postwebpage, redis_get, redis_set};
 use super::tools::{playurl_get_deadline, remove_parameters_playurl};
 use super::types::{
-    random_string, BiliConfig, HealthType, PlayurlType, ResignInfo, SendData, SendHealthData,
-    SendPlayurlData, SesourceType,
+    random_string, AreaCache, BiliConfig, HealthType, PlayurlType, ResignInfo, SendData,
+    SendHealthData, SendPlayurlData, SesourceType,
 };
 use actix_web::http::header::ContentType;
 use actix_web::{HttpRequest, HttpResponse};
@@ -105,7 +105,7 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
             if is_th {
                 "th"
             } else {
-                "hk"
+                ""
             }
         }
     };
@@ -115,7 +115,17 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
         "hk" => 2,
         "tw" => 3,
         "th" => 4,
-        _ => 2,
+        _ => {
+            // area="" then return -10403 directly
+            println!("area匹配失败! -> {}", area);
+            return HttpResponse::Ok()
+                .content_type(ContentType::json())
+                .insert_header(("From", "biliroaming-rust-server"))
+                .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                .insert_header(("Access-Control-Allow-Credentials", "true"))
+                .insert_header(("Access-Control-Allow-Methods", "GET"))
+                .body("{\"code\":-10403,\"message\":\"抱歉您所在地区不可观看！\"}");
+        }
     };
 
     let ep_id = match query.get("ep_id") {
@@ -258,6 +268,9 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
     //     resign_info 11
     //     api 12
     //     health 13 eg. 0141301 = playurl th health ver.1
+    //     ep_cached_area 14 eg. e100011401 = ep_id 10001 avail areaver.1, 
+    //           data_structure: {"hk": false,"hk_checked": false, "tw": false,"tw_checked": false, "th": false,"th_checked": false, "cn": false,"cn_checked": false, "current": ""}
+    //
     //版本 ：用于处理版本更新后导致的格式变更
     //     now 01
     let is_expire: bool;
@@ -286,6 +299,39 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
     };
     let response_body: String;
     if is_expire || need_flash {
+        let mut cached_aval_area: AreaCache =  match redis_get(
+            &pool,
+            &format!(
+                "e{}1401",
+                match ep_id {
+                    Some(value) => value,
+                    None => "",
+                }
+            ),
+        )
+        .await
+        {
+            Some(value) => serde_json::from_str(&value).unwrap_or_default(),
+            None => serde_json::from_value(
+                json!({"hk": false,"hk_checked": false, "tw": false,"tw_checked": false, "th": false,"th_checked": false, "cn": false,"cn_checked": false, "current": ""}),
+            )
+            .unwrap(),
+        };
+        // cached_aval_area.debug();
+        if config.area_cache_open
+            && cached_aval_area.get_current() != area
+            && cached_aval_area.is_failed(area)
+        {
+            // TODO: 服务器端重写
+            return HttpResponse::Ok()
+                .content_type(ContentType::json())
+                .insert_header(("From", "biliroaming-rust-server"))
+                .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                .insert_header(("Access-Control-Allow-Credentials", "true"))
+                .insert_header(("Access-Control-Allow-Methods", "GET"))
+                .body("{\"code\":-10403,\"message\":\"抱歉您所在地区不可观看！\"}");
+        }
+
         let ts_string = ts.to_string();
         let mut query_vec: Vec<(&str, &str)>;
         if is_tv {
@@ -613,6 +659,31 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
                             };
                         });
                     }
+                }
+            }
+
+            if config.area_cache_open {
+                let body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
+                let prefer_area = &config.prefer_area;
+                match cached_aval_area.update(area, prefer_area, &body_data_json) {
+                    Ok(data) => {
+                        if data != "" {
+                            redis_set(
+                                &pool,
+                                &format!(
+                                    "e{}1401",
+                                    match ep_id {
+                                        Some(value) => value,
+                                        _ => "",
+                                    }
+                                ),
+                                &data,
+                                0,
+                            )
+                            .await;
+                        }
+                    }
+                    Err(_) => (),
                 }
             }
             response_body = body_data;

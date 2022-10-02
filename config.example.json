@@ -135,6 +135,8 @@
     "4": false,
     "3": false
   },
+  "area_cache_open": true,
+  "prefer_area":"hk",
   "report_open": false,
   "report_config": {
     "method": "Post",

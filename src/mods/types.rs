@@ -1,5 +1,6 @@
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -128,6 +129,10 @@ pub struct BiliConfig {
     pub report_open: bool,
     #[serde(default)]
     pub report_config: ReportConfig,
+    #[serde(default = "default_true")]
+    pub area_cache_open: bool,
+    #[serde(default = "default_prefer_area_string")]
+    pub prefer_area: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -208,7 +213,7 @@ impl ReportConfig {
                                     self.url_separate_elements
                                         .push(
                                             vec_char_to_string(&chars,last_end,start_index).unwrap()
-                                        );
+                                    );
                                     last_end = index + 1;
                                 }
                                 None => {}
@@ -251,7 +256,7 @@ impl ReportConfig {
                                     self.content_separate_elements
                                         .push(
                                             vec_char_to_string(&chars,last_end,start_index).unwrap()
-                                        );
+                                    );
                                     last_end = index + 1;
                                 }
                                 None => {}
@@ -372,7 +377,7 @@ impl ReportConfig {
                 }
                 return Ok(content);
             },
-        }
+            }
         
     }
 }
@@ -413,6 +418,10 @@ fn default_true() -> bool {
 
 fn default_string() -> String {
     "".to_string()
+}
+
+fn default_prefer_area_string() -> String {
+    "hk".to_string()
 }
 
 pub fn random_string() -> String {
@@ -584,4 +593,177 @@ pub enum PlayurlType {
     ChinaApp,
     ChinaWeb,
     ChinaTv,
+}
+
+#[derive(Default, Serialize, Deserialize)]
+pub struct AreaCache {
+    #[serde(default = "default_false")]
+    pub cn: bool,
+    #[serde(default = "default_false")]
+    pub cn_checked: bool,
+    #[serde(default = "default_false")]
+    pub hk: bool,
+    #[serde(default = "default_false")]
+    pub hk_checked: bool,
+    #[serde(default = "default_false")]
+    pub tw: bool,
+    #[serde(default = "default_false")]
+    pub tw_checked: bool,
+    #[serde(default = "default_false")]
+    pub th: bool,
+    #[serde(default = "default_false")]
+    pub th_checked: bool,
+    #[serde(default = "default_string")]
+    pub current: String,
+}
+
+impl AreaCache {
+    fn generate_str(&self) -> String {
+        json!({
+            "hk": self.hk,"hk_checked": self.hk_checked,
+            "tw": self.tw,"tw_checked": self.tw_checked,
+            "th": self.th,"th_checked": self.th_checked,
+            "cn": self.cn,"cn_checked": self.cn_checked,
+            "current": self.current
+        })
+        .to_string()
+    }
+    pub fn debug(&self) {
+        println!("cn {} {}", self.cn, self.cn_checked);
+        println!("hk {} {}", self.hk, self.hk_checked);
+        println!("tw {} {}", self.tw, self.tw_checked);
+        println!("th {} {}", self.th, self.th_checked);
+        println!("current: {}", &self.current);
+    }
+    pub fn get_current(&self) -> &String {
+        &self.current
+    }
+    pub fn is_aval(&self, area: &str) -> bool {
+        match area {
+            "hk" => self.hk,
+            "tw" => self.tw,
+            "th" => self.th,
+            "cn" => self.cn,
+            _ => false,
+        }
+    }
+    pub fn is_checked(&self, area: &str) -> bool {
+        match area {
+            "hk" => self.hk_checked,
+            "tw" => self.tw_checked,
+            "th" => self.th_checked,
+            "cn" => self.cn_checked,
+            _ => false,
+        }
+    }
+    pub fn is_failed(&self, area: &str) -> bool {
+        let is_aval = self.is_aval(area);
+        let is_checked = self.is_checked(area);
+        if is_checked && !is_aval {
+            true
+        } else {
+            false
+        }
+    }
+    pub fn update(&mut self, area: &str, prefer_area:&str, body_data_json: &serde_json::Value) -> Result<String, ()> {
+        let code = body_data_json["code"].as_i64().unwrap();
+        let message = body_data_json["message"].as_str().unwrap().clone();
+        /*
+            {"code":10015002,"message":"访问权限不足","ttl":1}
+            {"code":-10403,"message":"大会员专享限制"}
+            {"code":-10403,"message":"抱歉您所使用的平台不可观看！"}
+            {"code":-10403,"message":"抱歉您所在地区不可观看！"}
+            {"code":-400,"message":"请求错误"}
+            {"code":-404,"message":"啥都木有"}
+            {"code":-404,"message":"啥都木有","ttl":1}
+        */
+        let aval = match code {
+            0 => true,
+            -10403 => {
+                if message == "大会员专享限制" || message == "抱歉您所使用的平台不可观看！"
+                {
+                    true
+                } else {
+                    false
+                }
+            }
+            // -404 => {
+            //     if message == "啥都木有"
+            //     {
+            //         false
+            //     } else {
+            //         false
+            //     }
+            // }
+            10015002 => {
+                if message == "访问权限不足" {
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        };
+        let current_area = if !aval {
+            if self.is_aval("hk") && self.is_aval("tw") {
+                prefer_area
+            } else if self.is_aval("hk") {
+                "hk"
+            } else if self.is_aval("tw") {
+                "tw"
+            } else if self.is_aval("th") {
+                "th"
+            } else if self.is_aval("cn") {
+                "cn"
+            } else if self.is_checked("hk")
+                && self.is_checked("tw")
+                && self.is_checked("th")
+                && self.is_checked("cn")
+            {
+                // 全部都寄的情况应该没有吧... 有应该是出错
+                self.hk_checked = false;
+                self.tw_checked = false;
+                self.th_checked = false;
+                self.cn_checked = false;
+                ""
+            } else {
+                ""
+            }
+        } else {
+            area
+        };
+        println!(
+            "code: {} message {} aval {}",
+            code,
+            body_data_json["message"].as_str().unwrap().clone(),
+            aval
+        );
+        match area {
+            "hk" => {
+                self.hk = aval;
+                self.hk_checked = true;
+                self.current = current_area.to_string();
+                Ok(self.generate_str())
+            }
+            "tw" => {
+                self.tw = aval;
+                self.tw_checked = true;
+                self.current = current_area.to_string();
+                Ok(self.generate_str())
+            }
+            "th" => {
+                self.th = aval;
+                self.th_checked = true;
+                self.current = current_area.to_string();
+                Ok(self.generate_str())
+            }
+            "cn" => {
+                self.cn = aval;
+                self.cn_checked = true;
+                self.current = current_area.to_string();
+                Ok(self.generate_str())
+            }
+            _ => Ok(self.generate_str()),
+        }
+    }
 }
