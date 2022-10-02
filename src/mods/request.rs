@@ -186,25 +186,21 @@ pub async fn redis_get(redis: &Pool,key: &str) -> Option<String> {
 
 pub async fn redis_set(redis: &Pool,key: &str,value: &str,expire_time: u64) -> Option<()> {
     let mut conn = redis.get().await.unwrap();
-    //let mut return_data: Option<()>;
-    match cmd("SET")
+    if expire_time != 0 {
+        match cmd("SETEX")
+            .arg(&[key, &format!("{expire_time}"),value])
+            .query_async::<_, ()>(&mut conn)
+            .await {
+                Ok(_) => Some(()),
+                _ => None,
+            }
+    }else{
+        match cmd("SET")
         .arg(&[key, value])
         .query_async::<_, ()>(&mut conn)
         .await {
-            Ok(_) => (),
-            _ => return None,
+            Ok(_) => Some(()),
+            _ => None,
         }
-    if expire_time != 0 {
-        match cmd("EXPIRE")
-            .arg(&[key, &format!("{expire_time}")])
-            .query_async::<_, ()>(&mut conn)
-            .await {
-                Ok(_) => (),
-                _ => return None,
-            }
-        Some(())
-    }else{
-        Some(())
     }
-    
 } 

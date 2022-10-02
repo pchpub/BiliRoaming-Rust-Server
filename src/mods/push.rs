@@ -39,7 +39,6 @@ pub async fn send_report(
                     &health_data.health_type.to_color_char(),
                 )
                 .unwrap();
-            // println!("[Debug] url:{}", url);
             match getwebpage(
                 url,
                 false,
@@ -88,7 +87,6 @@ pub async fn send_report(
                     &health_data.health_type.to_color_char(),
                 )
                 .unwrap();
-            // println!("[Debug] url:{}", url);
             // println!("[Debug] content:{}", content);
             match postwebpage(
                 url,
@@ -106,33 +104,4 @@ pub async fn send_report(
             }
         }
     }
-    // let msg = format!(
-    //                     "大陆 Playurl:              {}\n香港 Playurl:              {}\n台湾 Playurl:              {}\n泰区 Playurl:              {}\n大陆 Search:              {}\n香港 Search:              {}\n台湾 Search:              {}\n泰区 Search:              {}\n泰区 Season:              {}\n\n变动: {} {} -> {}",
-    //                     health_cn_playurl,
-    //                     health_hk_playurl,
-    //                     health_tw_playurl,
-    //                     health_th_playurl,
-    //                     health_cn_search,
-    //                     health_hk_search,
-    //                     health_tw_search,
-    //                     health_th_search,
-    //                     health_th_season,
-    //                     health_data.area_name(),
-    //                     health_data.data_type,
-    //                     health_data.health_type.to_color_char()
-    //                 );
-    // let url = format!(
-    //     "https://api.telegram.org/bot{}/sendMessage",
-    //     &anti_speedtest_cfg.telegram_token
-    // );
-    // let content = format!(
-    //     "chat_id={}&text={msg}",
-    //     &anti_speedtest_cfg.telegram_chat_id
-    // );
-    // if let Err(_) =
-    //     async_postwebpage(&url, &content, &false, "", "BiliRoaming-Rust-Server")
-    //         .await
-    // {
-    //     println!("[Error] 发送监控状态失败");
-    // };
 }

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::thread;
 
 use super::request::redis_get;
+use super::types::{GetEpAreaType, Area};
 use super::{
     request::{download, getwebpage},
     types::PlayurlType,
@@ -68,7 +69,7 @@ pub fn remove_parameters_playurl(
         }
         PlayurlType::ChinaTv => {
             return Ok(());
-        },
+        }
     }
 }
 
@@ -79,12 +80,12 @@ pub fn playurl_get_deadline(
     match playurl_type {
         PlayurlType::Thailand => {
             if data["code"].as_i64().unwrap() == 0 {
-                let items = if let Some(value) = data["data"]["video_info"]["stream_list"].as_array_mut()
-                {
-                    value
-                } else {
-                    return Err(());
-                };
+                let items =
+                    if let Some(value) = data["data"]["video_info"]["stream_list"].as_array_mut() {
+                        value
+                    } else {
+                        return Err(());
+                    };
                 for item in items {
                     match item["dash_video"]["base_url"].as_str() {
                         Some(value) => {
@@ -108,8 +109,7 @@ pub fn playurl_get_deadline(
         }
         PlayurlType::ChinaApp => {
             if data["code"].as_i64().unwrap() == 0 {
-                let items = if let Some(value) = data["dash"]["video"].as_array_mut()
-                {
+                let items = if let Some(value) = data["dash"]["video"].as_array_mut() {
                     value
                 } else {
                     return Err(());
@@ -165,7 +165,7 @@ pub fn playurl_get_deadline(
         }
         PlayurlType::ChinaTv => {
             return Err(());
-        },
+        }
     }
 }
 
@@ -241,18 +241,65 @@ pub fn update_server(is_auto_close: bool) {
 
 pub async fn health_key_to_char(pool: &Pool, key: &str) -> String {
     match redis_get(pool, key).await {
-        Some(value) => {
-            match &value[..] {
-                "0" => return "🟢".to_string(),
-                "1" => return "🟡".to_string(),
-                "2" => return "🟠".to_string(),
-                "3" => return "🟠".to_string(),
-                "4" => return "🔴".to_string(),
-                _ => return "🔴".to_string(),
-            }
-        }
+        Some(value) => match &value[..] {
+            "0" => return "🟢".to_string(),
+            "1" => return "🟡".to_string(),
+            "2" => return "🟠".to_string(),
+            "3" => return "🟠".to_string(),
+            "4" => return "🔴".to_string(),
+            _ => return "🔴".to_string(),
+        },
         None => {
             return "🔴".to_string();
         }
     }
+}
+
+pub async fn get_ep_area(pool: &Pool, ep: &str, area: &str) -> Result<GetEpAreaType, ()> {
+    let key = format!("e{ep}{area}1401");
+    let data_raw = redis_get(pool,&key).await;
+    let area = area.parse::<usize>().unwrap_or(2);
+    if let Some(value) = data_raw {
+        let mut ep_area_data: [u8;4] = [2,2,2,2];
+        let mut is_all_available = true;
+        for (index,char) in value.char_indices() {
+            match char {
+                '0' => {
+                    ep_area_data[index] = 0; //0表示正常
+                },
+                '1' => {
+                    ep_area_data[index] = 1; //非0不正常
+                },
+                '2' => {
+                    is_all_available = false;
+                },
+                _ => {},
+            }
+        }
+
+        if ep_area_data[area-1] == 0 {
+            if area == 2 && ep_area_data[1] == 0 {
+                return Ok(GetEpAreaType::Available(Area::Hk));
+            }else{
+                return Ok(GetEpAreaType::Available(Area::new(area as u8)));
+            }
+        }else{
+            if is_all_available {
+                if ep_area_data[1] == 0 {
+                    return Ok(GetEpAreaType::Available(Area::Hk));
+                }else if ep_area_data[2] == 0 {
+                    return Ok(GetEpAreaType::Available(Area::Tw));
+                }else if ep_area_data[3] == 0 {
+                    return Ok(GetEpAreaType::Available(Area::Th));
+                }else if ep_area_data[3] == 0 {
+                    return Ok(GetEpAreaType::Available(Area::Cn));
+                }else{
+                    return Err(()); //不这样搞的话可能被攻击时会出大问题
+                }
+            }
+        }
+    }else{
+        return Ok(GetEpAreaType::NoCurrentAreaData);
+    };
+    Err(())
 }

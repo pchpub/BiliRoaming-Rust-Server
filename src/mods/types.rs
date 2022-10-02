@@ -585,3 +585,31 @@ pub enum PlayurlType {
     ChinaWeb,
     ChinaTv,
 }
+
+pub enum GetEpAreaType {
+    // NoEpData,
+    NoCurrentAreaData,
+    OnlyHasCurrentAreaData(bool),
+    Available(Area),
+}
+
+pub enum Area {
+    Cn,
+    Hk,
+    Tw,
+    Th,
+}
+
+impl Area {
+    pub fn new(area_num: u8) -> Self {
+        match area_num {
+            1 => Self::Cn,
+            2 => Self::Hk,
+            3 => Self::Tw,
+            4 => Self::Th,
+            _ => {
+                panic!("[Error] 不合法的area_num")
+            },
+        }
+    }
+}

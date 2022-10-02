@@ -258,8 +258,10 @@ pub async fn get_playurl(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRe
     //     resign_info 11
     //     api 12
     //     health 13 eg. 0141301 = playurl th health ver.1
+    //     ep_area 14
     //版本 ：用于处理版本更新后导致的格式变更
     //     now 01
+
     let is_expire: bool;
     let need_flash: bool;
     let mut redis_get_data = String::new();
@@ -1739,26 +1741,6 @@ pub async fn get_subtitle_th(req: &HttpRequest, _: bool, _: bool) -> HttpRespons
     let ep_id = query.get("ep_id").unwrap();
     let dt = Local::now();
     let ts = dt.timestamp() as u64;
-    //查询数据+地区（1位）+类型（2位）+版本（2位）
-    //地区 cn 1
-    //     hk 2
-    //     tw 3
-    //     th 4 （不打算支持，切割泰区，没弹幕我为什么不看nc-raw?）
-    //     default 2
-    //类型 app playurl 01
-    //     app search 02
-    //     app subtitle 03
-    //     app season 04 (留着备用)
-    //     user_info 05
-    //     user_cerinfo 06
-    //     web playurl 07
-    //     web search 08
-    //     web subtitle 09
-    //     web season 10
-    //     token 11
-    //     th subtitle 12
-    //版本 ：用于处理版本更新后导致的格式变更
-    //     now 01
     let key = format!("e{ep_id}41201");
     let is_expire: bool;
     let mut redis_get_data = String::new();
