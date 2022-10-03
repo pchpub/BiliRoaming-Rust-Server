@@ -260,10 +260,10 @@ pub async fn health_key_to_char(pool: &Pool, key: &str) -> String {
     }
 }
 
+#[inline]
 pub async fn get_ep_area(pool: &Pool, ep: &str, area: &u8) -> Result<GetEpAreaType, ()> {
     let key = format!("e{ep}1401");
     let data_raw = redis_get(pool, &key).await;
-    // let area = area.parse::<usize>().unwrap_or(2);
     if let Some(value) = data_raw {
         let mut ep_area_data: [u8; 4] = [2, 2, 2, 2];
         let mut is_all_available = true;
@@ -342,34 +342,46 @@ pub async fn redir_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool)
         if let Ok(value) = get_ep_area(pool, query.get("ep_id").unwrap(), &area_num).await {
             match value {
                 GetEpAreaType::NoCurrentAreaData(key, redis_value) => {
-                    match get_playurl(req, is_app, is_th, query_string, query, area_num).await{
-                        Ok(http_body) => {
-                            match check_ep_available(&http_body) {
-                                Ok(is_available) => {
-                                    if let Err(_) = update_ep_area_cache(pool, &area_num, &key, &redis_value,is_available).await {
-                                        println!("[Error] failed to update ep area cache");
-                                    }
-                                    return build_response(http_body);
-                                },
-                                Err(_) => {
-                                    return build_response(http_body);
-                                },
+                    match get_playurl(req, is_app, is_th, query_string, query, area_num).await {
+                        Ok(http_body) => match check_ep_available(&http_body) {
+                            Ok(is_available) => {
+                                if let Err(_) = update_ep_area_cache(
+                                    pool,
+                                    &area_num,
+                                    &key,
+                                    &redis_value,
+                                    is_available,
+                                )
+                                .await
+                                {
+                                    println!("[Error] failed to update ep area cache");
+                                }
+                                return build_response(http_body);
+                            }
+                            Err(_) => {
+                                return build_response(http_body);
                             }
                         },
                         Err(http_body) => {
                             return build_response(http_body);
-                        },
+                        }
                     }
                 }
                 GetEpAreaType::OnlyHasCurrentAreaData(is_exist) => {
                     if is_exist {
-                        let return_data = match get_playurl(req, is_app, is_th, query_string, query, area_num).await {
-                            Ok(value) => value,
-                            Err(value) => value,
-                        };
-                        return build_response(return_data) ;
+                        let return_data =
+                            match get_playurl(req, is_app, is_th, query_string, query, area_num)
+                                .await
+                            {
+                                Ok(value) => value,
+                                Err(value) => value,
+                            };
+                        return build_response(return_data);
                     } else {
-                        return build_response("{\"code\":8403,\"message\":\"该剧集被判定为没有地区能播放\"}".to_string());
+                        return build_response(
+                            "{\"code\":8403,\"message\":\"该剧集被判定为没有地区能播放\"}"
+                                .to_string(),
+                        );
                     }
                 }
                 GetEpAreaType::Available(area) => {
@@ -382,64 +394,89 @@ pub async fn redir_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool)
                             is_th = false;
                         }
                     }
-                    let return_data = match get_playurl(req, is_app, is_th, query_string, query, area_num).await {
+                    let return_data = match get_playurl(
+                        req,
+                        is_app,
+                        is_th,
+                        query_string,
+                        query,
+                        area_num,
+                    )
+                    .await
+                    {
                         Ok(value) => value,
                         Err(value) => value,
                     };
-                    return build_response(return_data) ;
+                    return build_response(return_data);
                 }
                 GetEpAreaType::NoEpData(key) => {
-                    match get_playurl(req, is_app, is_th, query_string, query, area_num).await{
-                        Ok(http_body) => {
-                            match check_ep_available(&http_body) {
-                                Ok(is_available) => {
-                                    if is_available {
-                                        if let Err(_) = update_ep_area_cache(pool, &area_num, &key, "2222",is_available).await {
-                                            println!("[Error] failed to update ep area cache");
-                                        }
+                    match get_playurl(req, is_app, is_th, query_string, query, area_num).await {
+                        Ok(http_body) => match check_ep_available(&http_body) {
+                            Ok(is_available) => {
+                                if is_available {
+                                    if let Err(_) = update_ep_area_cache(
+                                        pool,
+                                        &area_num,
+                                        &key,
+                                        "2222",
+                                        is_available,
+                                    )
+                                    .await
+                                    {
+                                        println!("[Error] failed to update ep area cache");
                                     }
-                                    return build_response(http_body);
-                                },
-                                Err(_) => {
-                                    return build_response(http_body);
-                                },
+                                }
+                                return build_response(http_body);
+                            }
+                            Err(_) => {
+                                return build_response(http_body);
                             }
                         },
                         Err(http_body) => {
                             return build_response(http_body);
-                        },
+                        }
                     }
                 }
             }
         } else {
-            let return_data = match get_playurl(req, is_app, is_th, query_string, query, area_num).await {
-                Ok(value) => value,
-                Err(value) => value,
-            };
-            return build_response(return_data) ;
+            let return_data =
+                match get_playurl(req, is_app, is_th, query_string, query, area_num).await {
+                    Ok(value) => value,
+                    Err(value) => value,
+                };
+            return build_response(return_data);
         }
     } else {
-        let return_data = match get_playurl(req, is_app, is_th, query_string, query, area_num).await {
+        let return_data = match get_playurl(req, is_app, is_th, query_string, query, area_num).await
+        {
             Ok(value) => value,
             Err(value) => value,
         };
-        return build_response(return_data) ;
+        return build_response(return_data);
     }
 }
 
-async fn update_ep_area_cache(pool: &Pool, area_num: &u8, key: &str, value: &str,is_available: bool) -> Result<(), ()> {
+#[inline]
+async fn update_ep_area_cache(
+    pool: &Pool,
+    area_num: &u8,
+    key: &str,
+    value: &str,
+    is_available: bool,
+) -> Result<(), ()> {
     let area_num = *area_num as usize;
     let new_value = {
         if is_available {
-            value[..area_num-1].to_owned()+"0"+&value[area_num..]
-        }else{
-            value[..area_num-1].to_owned()+"1"+&value[area_num..]
+            value[..area_num - 1].to_owned() + "0" + &value[area_num..]
+        } else {
+            value[..area_num - 1].to_owned() + "1" + &value[area_num..]
         }
     };
     let _ = redis_set(pool, key, &new_value, 0).await;
     Ok(())
 }
 
+#[inline]
 fn check_ep_available(http_body: &str) -> Result<bool, ()> {
     // 此处判断来自 @cxw620
     let http_body_json: serde_json::Value = serde_json::from_str(http_body).unwrap();
@@ -472,7 +509,7 @@ fn check_ep_available(http_body: &str) -> Result<bool, ()> {
             }
         }
         -10500 => {
-            return Ok(true); 
+            return Ok(true);
             // 万恶的米奇妙妙屋,不用家宽就 -10500
             // link: https://t.me/biliroaming_chat/1231065
             //       https://t.me/biliroaming_chat/1231113
@@ -484,6 +521,7 @@ fn check_ep_available(http_body: &str) -> Result<bool, ()> {
     }
 }
 
+#[inline]
 fn build_response(message: String) -> HttpResponse {
     return HttpResponse::Ok()
         .content_type(ContentType::json())

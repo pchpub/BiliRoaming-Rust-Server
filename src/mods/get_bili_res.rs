@@ -25,7 +25,7 @@ pub async fn get_playurl(
     query_string: &str,
     query: QString,
     area_num: u8,
-) -> Result<String,String> {
+) -> Result<String, String> {
     let (pool, config, bilisender) = req
         .app_data::<(Pool, BiliConfig, Arc<Sender<SendData>>)>()
         .unwrap();
@@ -33,13 +33,6 @@ pub async fn get_playurl(
     match req.headers().get("user-agent") {
         Option::Some(_ua) => (),
         _ => {
-            // return HttpResponse::Ok()
-            //     .content_type(ContentType::json())
-            //     .insert_header(("From", "biliroaming-rust-server"))
-            //     .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-            //     .insert_header(("Access-Control-Allow-Credentials", "true"))
-            //     .insert_header(("Access-Control-Allow-Methods", "GET"))
-            //     .body("{\"code\":1403,\"message\":\"草,没ua你看个der\"}");
             return Err("{\"code\":1403,\"message\":\"草,没ua你看个der\"}".to_string());
         }
     }
@@ -93,12 +86,17 @@ pub async fn get_playurl(
     let mut access_key = match query.get("access_key") {
         Option::Some(key) => key.to_string(),
         _ => {
-            return Err("{\"code\":2403,\"message\":\"草,没登陆你看个der,让我凭空拿到你账号是吧\"}".to_string());
+            return Err(
+                "{\"code\":2403,\"message\":\"草,没登陆你看个der,让我凭空拿到你账号是吧\"}"
+                    .to_string(),
+            );
         }
     };
 
     if access_key.len() == 0 {
-        return Err("{\"code\":2403,\"message\":\"没有accesskey,你b站和漫游需要换个版本\"}".to_string());
+        return Err(
+            "{\"code\":2403,\"message\":\"没有accesskey,你b站和漫游需要换个版本\"}".to_string(),
+        );
     }
 
     // let area = match query.get("area") {
@@ -523,7 +521,9 @@ pub async fn get_playurl(
                                 .unwrap_or_default();
                             }
                         }
-                        return Err("{\"code\":7404,\"message\":\"获取播放地址失败喵\"}".to_string());
+                        return Err(
+                            "{\"code\":7404,\"message\":\"获取播放地址失败喵\"}".to_string()
+                        );
                     }
                 };
                 let body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
