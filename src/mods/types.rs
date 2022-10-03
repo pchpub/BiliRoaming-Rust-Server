@@ -129,7 +129,7 @@ pub struct BiliConfig {
     #[serde(default)]
     pub report_config: ReportConfig,
     #[serde(default = "default_false")]
-    pub ep_id_area_cache_open: bool,
+    pub area_cache_open: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -589,8 +589,8 @@ pub enum PlayurlType {
 }
 
 pub enum GetEpAreaType {
-    // NoEpData,
-    NoCurrentAreaData,
+    NoEpData(String), //key
+    NoCurrentAreaData(String,String), //key value
     OnlyHasCurrentAreaData(bool),
     Available(Area),
 }
