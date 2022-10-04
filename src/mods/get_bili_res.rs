@@ -16,7 +16,6 @@ use pcre2::bytes::Regex;
 use qstring::QString;
 use serde_json::{self, json};
 use std::sync::Arc;
-use std::thread::spawn;
 
 pub async fn get_playurl(
     req: &HttpRequest,
@@ -392,7 +391,7 @@ pub async fn get_playurl(
                                 data_type: SesourceType::PlayUrl,
                                 health_type: HealthType::Offline,
                             });
-                            spawn(move || {
+                            tokio::spawn(async move {
                                 //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
                                 match bilisender_cl.try_send(senddata) {
                                     Ok(_) => (),
@@ -498,7 +497,7 @@ pub async fn get_playurl(
                                     data_type: SesourceType::PlayUrl,
                                     health_type: HealthType::Offline,
                                 });
-                                spawn(move || {
+                                tokio::spawn(async move {
                                     //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
                                     match bilisender_cl.try_send(senddata) {
                                         Ok(_) => (),
@@ -565,7 +564,7 @@ pub async fn get_playurl(
                                 data_type: SesourceType::PlayUrl,
                                 health_type: HealthType::Online,
                             });
-                            spawn(move || {
+                            tokio::spawn(async move {
                                 //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
                                 match bilisender_cl.try_send(senddata) {
                                     Ok(_) => (),
@@ -592,7 +591,7 @@ pub async fn get_playurl(
                             data_type: SesourceType::PlayUrl,
                             health_type: HealthType::Online,
                         });
-                        spawn(move || {
+                        tokio::spawn(async move {
                             //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
                             match bilisender_cl.try_send(senddata) {
                                 Ok(_) => (),
@@ -618,7 +617,7 @@ pub async fn get_playurl(
                 area_num,
                 is_app,
             });
-            spawn(move || {
+            tokio::spawn(async move {
                 //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
                 match bilisender_cl.try_send(senddata) {
                     Ok(_) => (),
@@ -961,7 +960,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
                         data_type: SesourceType::PlayUrl,
                         health_type: HealthType::Offline,
                     });
-                    spawn(move || {
+                    tokio::spawn(async move {
                         //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
                         match bilisender_cl.try_send(senddata) {
                             Ok(_) => (),
@@ -1037,7 +1036,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
                     data_type: SesourceType::PlayUrl,
                     health_type: HealthType::Offline,
                 });
-                spawn(move || {
+                tokio::spawn(async move {
                     //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
                     match bilisender_cl.try_send(senddata) {
                         Ok(_) => (),
@@ -1132,7 +1131,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
                         data_type: SesourceType::Search,
                         health_type: HealthType::Online,
                     });
-                    spawn(move || {
+                    tokio::spawn(async move {
                         //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
                         match bilisender_cl.try_send(senddata) {
                             Ok(_) => (),
@@ -1159,7 +1158,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
                     data_type: SesourceType::Search,
                     health_type: HealthType::Online,
                 });
-                spawn(move || {
+                tokio::spawn(async move {
                     //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
                     match bilisender_cl.try_send(senddata) {
                         Ok(_) => (),
@@ -1318,7 +1317,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
                             health_type: HealthType::Offline,
                             area_num: 4,
                         });
-                        spawn(move || {
+                        tokio::spawn(async move {
                             //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
                             match bilisender_cl.try_send(senddata) {
                                 Ok(_) => (),
@@ -1468,7 +1467,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
                             data_type: SesourceType::PlayUrl,
                             health_type: HealthType::Online,
                         });
-                        spawn(move || {
+                        tokio::spawn(async move {
                             //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
                             match bilisender_cl.try_send(senddata) {
                                 Ok(_) => (),
@@ -1495,7 +1494,7 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
                         data_type: SesourceType::PlayUrl,
                         health_type: HealthType::Online,
                     });
-                    spawn(move || {
+                    tokio::spawn(async move {
                         //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
                         match bilisender_cl.try_send(senddata) {
                             Ok(_) => (),
