@@ -285,6 +285,8 @@ pub async fn get_ep_area(pool: &Pool, ep: &str, area: &u8) -> Result<GetEpAreaTy
         if is_all_available {
             if *area == 4 && ep_area_data[3] == 0 {
                 return Ok(GetEpAreaType::Available(Area::Th));
+            } else if ep_area_data[*area as usize - 1] == 0 {
+                return Ok(GetEpAreaType::Available(Area::new(*area)));
             } else {
                 if ep_area_data[1] == 0 {
                     return Ok(GetEpAreaType::Available(Area::Hk));
