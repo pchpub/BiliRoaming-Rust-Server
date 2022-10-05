@@ -341,7 +341,17 @@ pub async fn redir_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool)
         _ => 2,
     };
     if config.area_cache_open {
-        if let Ok(value) = get_ep_area(pool, query.get("ep_id").unwrap(), &area_num).await {
+        let ep_id = if let Some(value) = query.get("ep_id") {
+            value
+        }else{
+            let return_data =
+                match get_playurl(req, is_app, is_th, query_string, query, area_num).await {
+                    Ok(value) => value,
+                    Err(value) => value,
+                };
+            return build_response(return_data);
+        };
+        if let Ok(value) = get_ep_area(pool, ep_id, &area_num).await {
             match value {
                 GetEpAreaType::NoCurrentAreaData(key, redis_value) => {
                     match get_playurl(req, is_app, is_th, query_string, query, area_num).await {
