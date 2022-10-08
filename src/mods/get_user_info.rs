@@ -3,7 +3,7 @@ use std::string::String;
 use md5;
 use chrono::prelude::*;
 use super::request::{redis_get,redis_set,async_getwebpage};
-use super::types::{UserCerinfo, UserInfo, BiliConfig};
+use super::types::{UserCerinfo, UserInfo, BiliConfig, OnlineBlackListConfig};
 
 pub async fn getuser_list(redis: &Pool,access_key: &str,appkey:&str,appsec:&str,user_agent: &str,config: &BiliConfig) -> Result<UserInfo,String> {
     let info: String = match redis_get(&redis,&format!("{access_key}20501")).await {
@@ -90,13 +90,13 @@ pub fn to_usercer_info(usercer_info_str: &str) -> UserCerinfo {
     serde_json::from_str(usercer_info_str).unwrap()
 }
 
-pub async fn getusercer_list(redis: &Pool,uid: &u64) -> Result<UserCerinfo,()> {
+pub async fn getusercer_list(redis: &Pool,config: &OnlineBlackListConfig,uid: &u64) -> Result<UserCerinfo,()> {
     //let user_cerinfo_str = String::new();
     let is_expire: bool;
     let dt = Local::now();
-    let ts = dt.timestamp_millis() as u64;
+    let ts = dt.timestamp() as u64;
     let user_cerinfo: UserCerinfo;
-    let key = format!("{uid}20601");
+    let key = format!("{uid}20602");//turn to ver 02
     match redis_get(redis, &key).await{
         Some(value) => {
             user_cerinfo = to_usercer_info(&value);
@@ -118,7 +118,7 @@ pub async fn getusercer_list(redis: &Pool,uid: &u64) -> Result<UserCerinfo,()> {
     };
     
     if is_expire {
-        let getwebpage_data = match async_getwebpage(&format!("https://black.qimo.ink/status.php?uid={uid}"), &false, "","","").await {
+        let getwebpage_data = match async_getwebpage(&format!("{}{uid}",config.api), &false, "","","").await {
             Ok(data) => data,
             Err(_) => {return Err(())}
         };
@@ -131,7 +131,7 @@ pub async fn getusercer_list(redis: &Pool,uid: &u64) -> Result<UserCerinfo,()> {
                     white: false,
                     status_expire_time: 0,
                 };
-                println!("[Error] 请接入在线黑名单");
+                // println!("[Error] 请接入在线黑名单");
                 return Ok(return_data);
             },
         };
@@ -140,7 +140,20 @@ pub async fn getusercer_list(redis: &Pool,uid: &u64) -> Result<UserCerinfo,()> {
                 uid: getwebpage_json["data"]["uid"].as_u64().unwrap(),
                 black: getwebpage_json["data"]["is_blacklist"].as_bool().unwrap_or(false),
                 white: getwebpage_json["data"]["is_whitelist"].as_bool().unwrap_or(false),
-                status_expire_time: ts+1*24*60*60*1000,
+                status_expire_time: {
+                    match getwebpage_json["data"]["ban_until"].as_u64(){
+                        Some(ban_until) => {
+                            if ban_until > ts && ban_until < ts+1*24*60*60 {
+                                ban_until
+                            }else{
+                                ts+1*24*60*60
+                            }
+                        },
+                        None => {
+                            ts+1*24*60*60
+                        },
+                    }
+                },
             };
             redis_set(redis, &key, &return_data.to_json(), 1*24*60*60).await;
             //println!("[Debug] uid:{}", return_data.uid);
@@ -155,27 +168,38 @@ pub async fn getusercer_list(redis: &Pool,uid: &u64) -> Result<UserCerinfo,()> {
 }
 
 pub async fn auth_user(redis: &Pool,uid: &u64,config: &BiliConfig) -> Result<(bool,bool),String> {
-    match config.local_wblist.get(&uid.to_string()) {
-        Some(value) => {return Ok((value.0, value.1));},
-        None => (),
-    }
-
-    if !config.online_blacklist_open {
-        return Ok((false,false));
-    }
-
-    match getusercer_list(redis, uid).await{
-        Ok(data) => {
-            if config.one_click_run {
-                return Ok((!data.white, data.white));
+    match &config.blacklist_config {
+        super::types::BlackListType::OnlyLocalBlackList => {
+            match config.local_wblist.get(&uid.to_string()) {
+                Some(value) => {return Ok((value.0, value.1));},
+                None => {return Ok((true, false));},
             }
-            return Ok((data.black, data.white));
         },
-        Err(_) => {
-            return Err("鉴权失败了喵".to_string());
-        }
-    };
-
+        super::types::BlackListType::OnlyOnlineBlackList(online_blacklist_config) => {
+            match getusercer_list(redis,online_blacklist_config, uid).await{
+                Ok(data) => {
+                    return Ok((data.black, data.white));
+                },
+                Err(_) => {
+                    return Err("鉴权失败了喵".to_string());
+                }
+            };
+        },
+        super::types::BlackListType::MixedBlackList(online_blacklist_config) => {
+            match config.local_wblist.get(&uid.to_string()) {
+                Some(value) => {return Ok((value.0, value.1));},
+                None => (),
+            }
+            match getusercer_list(redis,online_blacklist_config, uid).await{
+                Ok(data) => {
+                    return Ok((data.black, data.white));
+                },
+                Err(_) => {
+                    return Err("鉴权失败了喵".to_string());
+                }
+            };
+        },
+    }
 }
 
 pub fn appkey_to_sec(appkey:&str) -> Result<String, ()> {

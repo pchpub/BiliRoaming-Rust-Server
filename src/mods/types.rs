@@ -109,13 +109,10 @@ pub struct BiliConfig {
     pub resign_api: HashMap<String, String>,
     #[serde(default = "default_hashmap_string")]
     pub resign_api_sign: HashMap<String, String>,
-
     pub cache: HashMap<String, u64>,
     pub local_wblist: HashMap<String, (bool, bool)>,
-    #[serde(default = "default_true")]
-    pub online_blacklist_open: bool,
-    #[serde(default = "default_false")]
-    pub one_click_run: bool,
+    #[serde(default)]
+    pub blacklist_config: BlackListType,
     pub appsearch_remake: HashMap<String, String>,
     pub websearch_remake: HashMap<String, String>,
     #[serde(default = "default_string")]
@@ -130,6 +127,25 @@ pub struct BiliConfig {
     pub report_config: ReportConfig,
     #[serde(default = "default_false")]
     pub area_cache_open: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub enum BlackListType {
+    OnlyLocalBlackList,
+    OnlyOnlineBlackList(OnlineBlackListConfig),
+    MixedBlackList(OnlineBlackListConfig),
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct OnlineBlackListConfig{
+    pub api: String,
+    pub api_version: u16, //暂时没用，以后向后兼容的时候会用到
+}
+
+impl std::default::Default for BlackListType {
+    fn default() -> Self {
+        Self::MixedBlackList(OnlineBlackListConfig{ api: "https://black.qimo.ink/api/users/".to_string(), api_version: 2 })
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
