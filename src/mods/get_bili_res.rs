@@ -1299,7 +1299,11 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
         )
         .await
         {
-            Ok(data) => data,
+            Ok(data) => {
+                println!("[Debug] ss_id:{}", season_id);
+                println!("[Debug] data:{}", data);
+                data
+            },
             Err(_) => {
                 if config.report_open {
                     let num = redis_get(&pool, "0441301")
