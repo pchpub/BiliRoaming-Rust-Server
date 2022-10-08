@@ -22,7 +22,7 @@ pub fn remove_parameters_playurl(
 ) -> Result<(), ()> {
     match playurl_type {
         PlayurlType::Thailand => {
-            if data["code"].as_i64().unwrap() == 0 {
+            if data["code"].as_i64().unwrap_or(233) == 0 {
                 let items =
                     if let Some(value) = data["data"]["video_info"]["stream_list"].as_array_mut() {
                         value
@@ -39,7 +39,7 @@ pub fn remove_parameters_playurl(
             }
         }
         PlayurlType::ChinaApp => {
-            if data["code"].as_i64().unwrap() == 0 {
+            if data["code"].as_i64().unwrap_or(233) == 0 {
                 let items = if let Some(value) = data["support_formats"].as_array_mut() {
                     value
                 } else {
@@ -56,7 +56,7 @@ pub fn remove_parameters_playurl(
             }
         }
         PlayurlType::ChinaWeb => {
-            if data["code"].as_i64().unwrap() == 0 {
+            if data["code"].as_i64().unwrap_or(233) == 0 {
                 let items = if let Some(value) = data["result"]["support_formats"].as_array_mut() {
                     value
                 } else {
@@ -84,7 +84,7 @@ pub fn playurl_get_deadline(
 ) -> Result<u64, ()> {
     match playurl_type {
         PlayurlType::Thailand => {
-            if data["code"].as_i64().unwrap() == 0 {
+            if data["code"].as_i64().unwrap_or(233) == 0 {
                 let items =
                     if let Some(value) = data["data"]["video_info"]["stream_list"].as_array_mut() {
                         value
@@ -113,7 +113,7 @@ pub fn playurl_get_deadline(
             }
         }
         PlayurlType::ChinaApp => {
-            if data["code"].as_i64().unwrap() == 0 {
+            if data["code"].as_i64().unwrap_or(233) == 0 {
                 let items = if let Some(value) = data["dash"]["video"].as_array_mut() {
                     value
                 } else {
@@ -141,7 +141,7 @@ pub fn playurl_get_deadline(
             }
         }
         PlayurlType::ChinaWeb => {
-            if data["code"].as_i64().unwrap() == 0 {
+            if data["code"].as_i64().unwrap_or(233) == 0 {
                 let items = if let Some(value) = data["result"]["dash"]["video"].as_array_mut() {
                     value
                 } else {
