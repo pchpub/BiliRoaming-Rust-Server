@@ -1299,7 +1299,11 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
         )
         .await
         {
-            Ok(data) => data,
+            Ok(data) => {
+                // println!("[Debug] ss_id:{}", season_id);
+                // println!("[Debug] data:{}", data);
+                data
+            }
             Err(_) => {
                 if config.report_open {
                     let num = redis_get(&pool, "0441301")
@@ -1393,9 +1397,17 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
                     }
                 };
                 let sub_replace_json: serde_json::Value =
-                    serde_json::from_str(&sub_replace_str).unwrap();
-                match sub_replace_json["code"].as_i64().unwrap() {
-                    0 => (),
+                    if let Ok(value) = serde_json::from_str(&sub_replace_str) {
+                        value
+                    } else {
+                        return body_data;
+                    };
+                match sub_replace_json["code"].as_i64().unwrap_or(233) {
+                    0 => {
+                        if body_data_json["result"]["modules"].as_array_mut().unwrap().len() == 0 {
+                            return body_data;
+                        }
+                    },
                     _ => {
                         return body_data;
                     }
