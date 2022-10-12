@@ -9,7 +9,7 @@ use actix_web::http::header::ContentType;
 use actix_web::{HttpRequest, HttpResponse};
 use async_channel::Sender;
 use async_channel::TrySendError;
-use chrono::prelude::*;
+use chrono::prelude::Local;
 use deadpool_redis::Pool;
 use md5;
 use pcre2::bytes::Regex;
@@ -135,15 +135,26 @@ pub async fn get_playurl(
             }
         };
 
-    let (black, white) = match auth_user(pool, &user_info.uid, &config).await {
+    let user_cer_info = match auth_user(pool, &user_info.uid, &config).await {
         Ok(value) => value,
         Err(value) => {
             return Err(value);
         }
     };
-    if black {
-        return Err("{\"code\":4403,\"message\":\"黑名单用户,建议换号重开\"}".to_string());
+
+    let white: bool;
+    match user_cer_info {
+        super::types::UserCerStatus::Black(value) => {
+            return Err(format!(r#"{{"code":4403,"message":"{}"}}"#,value));
+        },
+        super::types::UserCerStatus::White => {
+            white = true;
+        },
+        super::types::UserCerStatus::Normal => {
+            white = false;
+        },
     }
+
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let mut is_vip = 0;
@@ -801,9 +812,8 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
                 }
             };
 
-        let (_, _) = match auth_user(pool, &user_info.uid, &config).await {
-            Ok(value) => value,
-            Err(_) => (false, false),
+        match auth_user(pool, &user_info.uid, &config).await { //为了记录accesskey to uid
+            _ => (),
         };
     }
 

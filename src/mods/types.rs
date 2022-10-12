@@ -468,21 +468,28 @@ fn default_max_version() -> u16 {
     80
 }
 
+fn default_u64() -> u64 {
+    0
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct UserCerinfo {
     pub uid: u64,
     pub black: bool,
     pub white: bool,
+    pub ban_until: u64,
+    #[serde(default = "default_u64")]
     pub status_expire_time: u64,
 }
 
 impl UserCerinfo {
     pub fn to_json(&self) -> String {
-        format!(
-            "{{\"uid\":{},\"black\":{},\"white\":{},\"status_expire_time\":{}}}",
-            self.uid, self.black, self.white, self.status_expire_time
-        )
-        .to_string()
+        serde_json::to_string(&self).unwrap()
+        // format!(
+        //     "{{\"uid\":{},\"black\":{},\"white\":{},\"status_expire_time\":{}}}",
+        //     self.uid, self.black, self.white, self.status_expire_time
+        // )
+        // .to_string()
     }
 }
 
@@ -496,11 +503,18 @@ pub struct UserInfo {
 
 impl UserInfo {
     pub fn to_json(&self) -> String {
-        format!(
-            "{{\"access_key\":\"{}\",\"uid\":{},\"vip_expire_time\":{},\"expire_time\":{}}}",
-            self.access_key, self.uid, self.vip_expire_time, self.expire_time
-        )
+        serde_json::to_string(&self).unwrap()
+        // format!(
+        //     "{{\"access_key\":\"{}\",\"uid\":{},\"vip_expire_time\":{},\"expire_time\":{}}}",
+        //     self.access_key, self.uid, self.vip_expire_time, self.expire_time
+        // )
     }
+}
+
+pub enum UserCerStatus {
+    Black(String),
+    White,
+    Normal,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -513,10 +527,11 @@ pub struct ResignInfo {
 
 impl ResignInfo {
     pub fn to_json(&self) -> String {
-        format!(
-            "{{\"area_num\":{},\"access_key\":\"{}\",\"refresh_token\":\"{}\",\"expire_time\":{}}}",
-            self.area_num, self.access_key, self.refresh_token, self.expire_time
-        )
+        serde_json::to_string(&self).unwrap()
+        // format!(
+        //     "{{\"area_num\":{},\"access_key\":\"{}\",\"refresh_token\":\"{}\",\"expire_time\":{}}}",
+        //     self.area_num, self.access_key, self.refresh_token, self.expire_time
+        // )
     }
 }
 
