@@ -220,13 +220,13 @@ pub async fn auth_user(
                     if value.1 {
                         return Ok(UserCerStatus::White);
                     }else if value.0 {
-                        return Ok(UserCerStatus::Black("1970-01-01 08:00:00".to_string()));
+                        return Ok(UserCerStatus::Black("本地黑名单,服务器不欢迎您".to_string()));
                     }{
                         return Ok(UserCerStatus::Normal);
                     }
                 }
                 None => {
-                    return Ok(UserCerStatus::Black("1970-01-01 08:00:00".to_string()));
+                    return Ok(UserCerStatus::Black("服务器已启用白名单,服务器不欢迎您".to_string()));
                 }
             }
         }
@@ -252,7 +252,7 @@ pub async fn auth_user(
                     if value.1 {
                         return Ok(UserCerStatus::White);
                     }else if value.0 {
-                        return Ok(UserCerStatus::Black("1970-01-01 08:00:00".to_string()));
+                        return Ok(UserCerStatus::Black("本地黑名单,服务器不欢迎您".to_string()));
                     }{
                         return Ok(UserCerStatus::Normal);
                     }
