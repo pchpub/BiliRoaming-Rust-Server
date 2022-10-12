@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ !startsWith(github.event.head_commit.message, '[skip ci]') }}
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: Build
       run: |
@@ -29,7 +29,7 @@ jobs:
         registry.gitlab.com/rust_musl_docker/image:stable-latest \
         cargo build --profile=fast -vv --target=x86_64-unknown-linux-musl
     - name: Upload Build Artifact
-      uses: actions/upload-artifact@v2.2.2
+      uses: actions/upload-artifact@v3.1.0
       with:
         name: biliroaming-rust-server-${{ github.run_number }}
         path: |

@@ -1,65 +1,93 @@
-use deadpool_redis::Pool;
-use std::string::String;
-use md5;
+use super::request::{async_getwebpage, redis_get, redis_set};
+use super::types::{BiliConfig, OnlineBlackListConfig, UserCerinfo, UserInfo, UserCerStatus};
 use chrono::prelude::*;
-use super::request::{redis_get,redis_set,async_getwebpage};
-use super::types::{UserCerinfo, UserInfo, BiliConfig, OnlineBlackListConfig};
+use deadpool_redis::Pool;
+use md5;
+use std::string::String;
+// use chrono::prelude::Local;
 
-pub async fn getuser_list(redis: &Pool,access_key: &str,appkey:&str,appsec:&str,user_agent: &str,config: &BiliConfig) -> Result<UserInfo,String> {
-    let info: String = match redis_get(&redis,&format!("{access_key}20501")).await {
+pub async fn getuser_list(
+    redis: &Pool,
+    access_key: &str,
+    appkey: &str,
+    appsec: &str,
+    user_agent: &str,
+    config: &BiliConfig,
+) -> Result<UserInfo, String> {
+    let info: String = match redis_get(&redis, &format!("{access_key}20501")).await {
         Some(value) => value,
         None => {
             let dt = Local::now();
             let ts = dt.timestamp_millis() as u64;
             let ts_min = dt.timestamp() as u64;
-            let sign = md5::compute(format!("access_key={}&appkey={}&ts={}{}",access_key,appkey,ts_min,appsec));
+            let sign = md5::compute(format!(
+                "access_key={}&appkey={}&ts={}{}",
+                access_key, appkey, ts_min, appsec
+            ));
             let url:String = format!("https://app.bilibili.com/x/v2/account/myinfo?access_key={}&appkey={}&ts={}&sign={:x}",access_key,appkey,ts_min,sign);
             //println!("{}",url);
-            let output = match async_getwebpage(&url,&config.cn_proxy_accesskey_open,&config.cn_proxy_accesskey_url,user_agent,"").await {
+            let output = match async_getwebpage(
+                &url,
+                &config.cn_proxy_accesskey_open,
+                &config.cn_proxy_accesskey_url,
+                user_agent,
+                "",
+            )
+            .await
+            {
                 Ok(data) => data,
                 Err(_) => {
                     // println!("getuser_list函数寄了 url:{}",url);
                     return Err("emmmm解析服务器的网络问题".to_string());
                 }
             };
-            
+
             //println!("{}",output);
             let output_json: serde_json::Value = serde_json::from_str(&output).unwrap();
             let output_struct: UserInfo;
             let code = if let Some(value) = output_json["code"].as_i64() {
                 value
-            }else{
-                println!("{}",output);
+            } else {
+                println!("{}", output);
                 return Err("服务器内部错误".to_string());
             };
             if code == 0 {
-                output_struct = UserInfo{
+                output_struct = UserInfo {
                     access_key: String::from(access_key),
                     uid: output_json["data"]["mid"].as_u64().unwrap(),
                     vip_expire_time: output_json["data"]["vip"]["due_date"].as_u64().unwrap(),
-                    expire_time: ts+25*24*60*60*1000,//用户状态25天强制更新
+                    expire_time: ts + 25 * 24 * 60 * 60 * 1000, //用户状态25天强制更新
                 };
-            }else if code == -400{
+            } else if code == -400 {
                 //println!("getuser_list函数寄了 output_json:{}",output_json);
                 return Err("可能你用的不是手机".to_string());
-            }else if code == -101{
+            } else if code == -101 {
                 //println!("getuser_list函数寄了 output_json:{}",output_json);
                 return Err("账号未登录喵(b站api说的,估计你access_key过期了)".to_string());
-            }else if code == -3{
+            } else if code == -3 {
                 //println!("{}",url); //Debug
                 //println!("getuser_list函数寄了 output_json:{}",output_json);
                 return Err("可能我sign参数算错了,非常抱歉喵".to_string());
-            }else if code == -412{
+            } else if code == -412 {
                 //println!("getuser_list函数寄了 output_json:{}",output_json);
                 return Err("被草到风控了.....".to_string());
-            }else{
+            } else {
                 //println!("getuser_list函数寄了 output_json:{}",output_json);
-                return Err(format!("鼠鼠说:{}",output_json["code"].as_i64().unwrap()));
+                return Err(format!("鼠鼠说:{}", output_json["code"].as_i64().unwrap()));
             }
-            let key  = format!("{access_key}20501");
+            let key = format!("{access_key}20501");
             let value = output_struct.to_json();
-            let _ : () = redis_set(&redis,&key, &value,25*24*60*60).await.unwrap_or_default();
-            let _ : () = redis_set(&redis,&format!("u{}20501",output_struct.uid), &access_key.to_owned(),25*24*60*60).await.unwrap_or_default();
+            let _: () = redis_set(&redis, &key, &value, 25 * 24 * 60 * 60)
+                .await
+                .unwrap_or_default();
+            let _: () = redis_set(
+                &redis,
+                &format!("u{}20501", output_struct.uid),
+                &access_key.to_owned(),
+                25 * 24 * 60 * 60,
+            )
+            .await
+            .unwrap_or_default();
             //查询数据+地区（1位）+类型（2位）+版本（2位）
             //地区 cn 1
             //     hk 2
@@ -90,38 +118,47 @@ pub fn to_usercer_info(usercer_info_str: &str) -> UserCerinfo {
     serde_json::from_str(usercer_info_str).unwrap()
 }
 
-pub async fn getusercer_list(redis: &Pool,config: &OnlineBlackListConfig,uid: &u64) -> Result<UserCerinfo,()> {
+pub async fn getusercer_list(
+    redis: &Pool,
+    config: &OnlineBlackListConfig,
+    uid: &u64,
+) -> Result<UserCerinfo, ()> {
     //let user_cerinfo_str = String::new();
     let is_expire: bool;
     let dt = Local::now();
     let ts = dt.timestamp() as u64;
     let user_cerinfo: UserCerinfo;
-    let key = format!("{uid}20602");//turn to ver 02
-    match redis_get(redis, &key).await{
+    let key = format!("{uid}20602"); //turn to ver 02
+    match redis_get(redis, &key).await {
         Some(value) => {
             user_cerinfo = to_usercer_info(&value);
             if user_cerinfo.status_expire_time < ts {
                 is_expire = true;
-            }else{
+            } else {
                 is_expire = false;
             }
-        },
+        }
         None => {
-            user_cerinfo = UserCerinfo{
+            user_cerinfo = UserCerinfo {
                 uid: 233,
                 black: false,
                 white: false,
                 status_expire_time: 233,
+                ban_until: 0,
             };
             is_expire = true;
-        },
+        }
     };
-    
+
     if is_expire {
-        let getwebpage_data = match async_getwebpage(&format!("{}{uid}",config.api), &false, "","","").await {
-            Ok(data) => data,
-            Err(_) => {return Err(())}
-        };
+        let user_agent = format!("biliroaming-rust-server/{}", env!("CARGO_PKG_VERSION"));
+        let getwebpage_data =
+            match async_getwebpage(&format!("{}{uid}", config.api), &false, "", &user_agent, "")
+                .await
+            {
+                Ok(data) => data,
+                Err(_) => return Err(()),
+            };
         let getwebpage_json: serde_json::Value = match serde_json::from_str(&getwebpage_data) {
             Ok(value) => value,
             Err(_) => {
@@ -129,93 +166,138 @@ pub async fn getusercer_list(redis: &Pool,config: &OnlineBlackListConfig,uid: &u
                     uid: uid.clone(),
                     black: true,
                     white: false,
+                    ban_until: 0,
                     status_expire_time: 0,
                 };
                 // println!("[Error] 请接入在线黑名单");
                 return Ok(return_data);
-            },
+            }
         };
         if getwebpage_json["code"].as_i64().unwrap_or(233) == 0 {
             let return_data = UserCerinfo {
                 uid: getwebpage_json["data"]["uid"].as_u64().unwrap(),
-                black: getwebpage_json["data"]["is_blacklist"].as_bool().unwrap_or(false),
-                white: getwebpage_json["data"]["is_whitelist"].as_bool().unwrap_or(false),
+                black: getwebpage_json["data"]["is_blacklist"]
+                    .as_bool()
+                    .unwrap_or(false),
+                white: getwebpage_json["data"]["is_whitelist"]
+                    .as_bool()
+                    .unwrap_or(false),
                 status_expire_time: {
-                    match getwebpage_json["data"]["ban_until"].as_u64(){
+                    match getwebpage_json["data"]["ban_until"].as_u64() {
                         Some(ban_until) => {
-                            if ban_until > ts && ban_until < ts+1*24*60*60 {
+                            if ban_until > ts && ban_until < ts + 1 * 24 * 60 * 60 {
                                 ban_until
-                            }else{
-                                ts+1*24*60*60
+                            } else {
+                                ts + 1 * 24 * 60 * 60
                             }
-                        },
-                        None => {
-                            ts+1*24*60*60
-                        },
+                        }
+                        None => ts + 1 * 24 * 60 * 60,
                     }
                 },
+                ban_until: getwebpage_json["data"]["ban_until"].as_u64().unwrap_or(0),
             };
-            redis_set(redis, &key, &return_data.to_json(), 1*24*60*60).await;
+            redis_set(redis, &key, &return_data.to_json(), 1 * 24 * 60 * 60).await;
             //println!("[Debug] uid:{}", return_data.uid);
             return Ok(return_data);
-        }else{
+        } else {
             return Err(());
         }
-    }else{
+    } else {
         //println!("[Debug] uid:{}", user_cerinfo.uid);
         return Ok(user_cerinfo);
     }
 }
 
-pub async fn auth_user(redis: &Pool,uid: &u64,config: &BiliConfig) -> Result<(bool,bool),String> {
+pub async fn auth_user(
+    redis: &Pool,
+    uid: &u64,
+    config: &BiliConfig,
+) -> Result<UserCerStatus, String> {
     match &config.blacklist_config {
         super::types::BlackListType::OnlyLocalBlackList => {
             match config.local_wblist.get(&uid.to_string()) {
-                Some(value) => {return Ok((value.0, value.1));},
-                None => {return Ok((true, false));},
+                Some(value) => {
+                    if value.1 {
+                        return Ok(UserCerStatus::White);
+                    }else if value.0 {
+                        return Ok(UserCerStatus::Black("本地黑名单,服务器不欢迎您".to_string()));
+                    }{
+                        return Ok(UserCerStatus::Normal);
+                    }
+                }
+                None => {
+                    return Ok(UserCerStatus::Black("服务器已启用白名单,服务器不欢迎您".to_string()));
+                }
             }
-        },
+        }
         super::types::BlackListType::OnlyOnlineBlackList(online_blacklist_config) => {
-            match getusercer_list(redis,online_blacklist_config, uid).await{
+            match getusercer_list(redis, online_blacklist_config, uid).await {
                 Ok(data) => {
-                    return Ok((data.black, data.white));
-                },
+                    if data.white {
+                        return Ok(UserCerStatus::White);
+                    }else if data.black{
+                        return Ok(UserCerStatus::Black(timestamp_to_time(&data.ban_until)));
+                    }else{
+                        return Ok(UserCerStatus::Normal);
+                    }
+                }
                 Err(_) => {
                     return Err("鉴权失败了喵".to_string());
                 }
             };
-        },
+        }
         super::types::BlackListType::MixedBlackList(online_blacklist_config) => {
             match config.local_wblist.get(&uid.to_string()) {
-                Some(value) => {return Ok((value.0, value.1));},
-                None => (),
+                Some(value) => {
+                    if value.1 {
+                        return Ok(UserCerStatus::White);
+                    }else if value.0 {
+                        return Ok(UserCerStatus::Black("本地黑名单,服务器不欢迎您".to_string()));
+                    }{
+                        return Ok(UserCerStatus::Normal);
+                    }
+                }
+                None => {
+                    ()
+                }
             }
-            match getusercer_list(redis,online_blacklist_config, uid).await{
+            match getusercer_list(redis, online_blacklist_config, uid).await {
                 Ok(data) => {
-                    return Ok((data.black, data.white));
-                },
+                    if data.white {
+                        return Ok(UserCerStatus::White);
+                    }else if data.black{
+                        return Ok(UserCerStatus::Black(timestamp_to_time(&data.ban_until)));
+                    }else{
+                        return Ok(UserCerStatus::Normal);
+                    }
+                }
                 Err(_) => {
                     return Err("鉴权失败了喵".to_string());
                 }
             };
-        },
+        }
     }
 }
 
-pub fn appkey_to_sec(appkey:&str) -> Result<String, ()> {
-	match appkey {
+fn timestamp_to_time(timestamp: &u64) -> String {
+    let dt = Local.timestamp(*timestamp as i64, 0);
+    dt.format("%Y年%m月%日-%H:%M解封\n请耐心等待").to_string()
+}
+
+pub fn appkey_to_sec(appkey: &str) -> Result<String, ()> {
+    match appkey {
         "9d5889cf67e615cd" => Ok("8fd9bb32efea8cef801fd895bef2713d".to_string()), // Ai4cCreatorAndroid
-		"1d8b6e7d45233436" => Ok("560c52ccd288fed045859ed18bffd973".to_string()), // Android 
-		"07da50c9a0bf829f" => Ok("25bdede4e1581c836cab73a48790ca6e".to_string()), // AndroidB
-		"8d23902c1688a798" => Ok("710f0212e62bd499b8d3ac6e1db9302a".to_string()), // AndroidBiliThings
-		"dfca71928277209b" => Ok("b5475a8825547a4fc26c7d518eaaa02e".to_string()), // AndroidHD
-		"bb3101000e232e27" => Ok("36efcfed79309338ced0380abd824ac1".to_string()), // AndroidI
-		"4c6e1021617d40d9" => Ok("e559a59044eb2701b7a8628c86aa12ae".to_string()), // AndroidMallTicket
-		"c034e8b74130a886" => Ok("e4e8966b1e71847dc4a3830f2d078523".to_string()), // AndroidOttSdk
-		"4409e2ce8ffd12b8" => Ok("59b43e04ad6965f34319062b478f83dd".to_string()), // AndroidTV
-		"37207f2beaebf8d7" => Ok("e988e794d4d4b6dd43bc0e89d6e90c43".to_string()), // BiliLink
-		"9a75abf7de2d8947" => Ok("35ca1c82be6c2c242ecc04d88c735f31".to_string()), // BiliScan
-		"7d089525d3611b1c" => Ok("acd495b248ec528c2eed1e862d393126".to_string()), // BstarA
+        "1d8b6e7d45233436" => Ok("560c52ccd288fed045859ed18bffd973".to_string()), // Android
+        "07da50c9a0bf829f" => Ok("25bdede4e1581c836cab73a48790ca6e".to_string()), // AndroidB
+        "8d23902c1688a798" => Ok("710f0212e62bd499b8d3ac6e1db9302a".to_string()), // AndroidBiliThings
+        "dfca71928277209b" => Ok("b5475a8825547a4fc26c7d518eaaa02e".to_string()), // AndroidHD
+        "bb3101000e232e27" => Ok("36efcfed79309338ced0380abd824ac1".to_string()), // AndroidI
+        "4c6e1021617d40d9" => Ok("e559a59044eb2701b7a8628c86aa12ae".to_string()), // AndroidMallTicket
+        "c034e8b74130a886" => Ok("e4e8966b1e71847dc4a3830f2d078523".to_string()), // AndroidOttSdk
+        "4409e2ce8ffd12b8" => Ok("59b43e04ad6965f34319062b478f83dd".to_string()), // AndroidTV
+        "37207f2beaebf8d7" => Ok("e988e794d4d4b6dd43bc0e89d6e90c43".to_string()), // BiliLink
+        "9a75abf7de2d8947" => Ok("35ca1c82be6c2c242ecc04d88c735f31".to_string()), // BiliScan
+        "7d089525d3611b1c" => Ok("acd495b248ec528c2eed1e862d393126".to_string()), // BstarA
         "178cf125136ca8ea" => Ok("34381a26236dd1171185c0beb042e1c6".to_string()), // AndroidB
         "27eb53fc9058f8c3" => Ok("c2ed53a74eeefe3cf99fbd01d8c9c375".to_string()), // ios
         "57263273bc6b67f6" => Ok("a0488e488d1567960d3a765e8d129f90".to_string()), // Android
@@ -230,7 +312,7 @@ pub fn appkey_to_sec(appkey:&str) -> Result<String, ()> {
         "iVGUTjsxvpLeuDCf" => Ok("aHRmhWMLkdeMuILqORnYZocwMBpMEOdt".to_string()), //Android	取流专用
         "YvirImLGlLANCLvM" => Ok("JNlZNgfNGKZEpaDTkCdPQVXntXhuiJEM".to_string()), //ios	取流专用
         //_ => Ok("560c52ccd288fed045859ed18bffd973".to_string()),
-        _ => Err(())
+        _ => Err(()),
     }
 }
 
