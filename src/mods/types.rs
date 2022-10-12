@@ -477,8 +477,8 @@ pub struct UserCerinfo {
     pub uid: u64,
     pub black: bool,
     pub white: bool,
-    pub ban_until: u64,
     #[serde(default = "default_u64")]
+    pub ban_until: u64,
     pub status_expire_time: u64,
 }
 
