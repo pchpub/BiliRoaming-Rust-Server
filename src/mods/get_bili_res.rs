@@ -25,6 +25,7 @@ pub async fn get_playurl(
     query: QString,
     area_num: u8,
 ) -> Result<String, String> {
+    println!("[Debug] 1");
     let (pool, config, bilisender) = req
         .app_data::<(Pool, BiliConfig, Arc<Sender<SendData>>)>()
         .unwrap();
