@@ -280,8 +280,8 @@ pub async fn auth_user(
 }
 
 fn timestamp_to_time(timestamp: &u64) -> String {
-    let dt = Local.timestamp(*timestamp as i64, 0);
-    dt.format("%Y年%m月%日-%H:%M解封\n请耐心等待").to_string()
+    let dt = Utc.timestamp(*timestamp as i64, 0).with_timezone(&FixedOffset::east(8*3600));
+    dt.format(r#"%Y年%m月%d日 %H:%M解封\n请耐心等待"#).to_string()
 }
 
 pub fn appkey_to_sec(appkey: &str) -> Result<String, ()> {

@@ -25,7 +25,6 @@ pub async fn get_playurl(
     query: QString,
     area_num: u8,
 ) -> Result<String, String> {
-    // println!("[Debug] 1");
     let (pool, config, bilisender) = req
         .app_data::<(Pool, BiliConfig, Arc<Sender<SendData>>)>()
         .unwrap();
@@ -146,14 +145,14 @@ pub async fn get_playurl(
     let white: bool;
     match user_cer_info {
         super::types::UserCerStatus::Black(value) => {
-            return Err(format!(r#"{{"code":4403,"message":"{}"}}"#,value));
-        },
+            return Err(format!(r#"{{"code":4403,"message":"{}"}}"#, value));
+        }
         super::types::UserCerStatus::White => {
             white = true;
-        },
+        }
         super::types::UserCerStatus::Normal => {
             white = false;
-        },
+        }
     }
 
     let dt = Local::now();
@@ -813,7 +812,8 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
                 }
             };
 
-        match auth_user(pool, &user_info.uid, &config).await { //为了记录accesskey to uid
+        match auth_user(pool, &user_info.uid, &config).await {
+            //为了记录accesskey to uid
             _ => (),
         };
     }
@@ -1415,10 +1415,15 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
                     };
                 match sub_replace_json["code"].as_i64().unwrap_or(233) {
                     0 => {
-                        if body_data_json["result"]["modules"].as_array_mut().unwrap().len() == 0 {
+                        if body_data_json["result"]["modules"]
+                            .as_array_mut()
+                            .unwrap()
+                            .len()
+                            == 0
+                        {
                             return body_data;
                         }
-                    },
+                    }
                     _ => {
                         return body_data;
                     }
