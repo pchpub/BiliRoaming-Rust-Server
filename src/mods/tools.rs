@@ -322,6 +322,7 @@ pub async fn redir_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool)
         .unwrap();
     let query_string = req.query_string();
     let query = QString::from(query_string);
+
     let area = match query.get("area") {
         Option::Some(area) => area,
         _ => {
@@ -340,10 +341,11 @@ pub async fn redir_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool)
         "th" => 4,
         _ => 2,
     };
+
     if config.area_cache_open {
         let ep_id = if let Some(value) = query.get("ep_id") {
             value
-        }else{
+        } else {
             let return_data =
                 match get_playurl(req, is_app, is_th, query_string, query, area_num).await {
                     Ok(value) => value,
@@ -464,6 +466,7 @@ pub async fn redir_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool)
             Ok(value) => value,
             Err(value) => value,
         };
+
         return build_response(return_data);
     }
 }
