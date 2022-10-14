@@ -1,5 +1,5 @@
 use super::request::{async_getwebpage, redis_get, redis_set};
-use super::types::{BiliConfig, OnlineBlackListConfig, UserCerinfo, UserInfo, UserCerStatus};
+use super::types::{BiliConfig, OnlineBlackListConfig, UserCerStatus, UserCerinfo, UserInfo};
 use chrono::prelude::*;
 use deadpool_redis::Pool;
 use md5;
@@ -219,14 +219,19 @@ pub async fn auth_user(
                 Some(value) => {
                     if value.1 {
                         return Ok(UserCerStatus::White);
-                    }else if value.0 {
-                        return Ok(UserCerStatus::Black("本地黑名单,服务器不欢迎您".to_string()));
-                    }{
+                    } else if value.0 {
+                        return Ok(UserCerStatus::Black(
+                            "本地黑名单,服务器不欢迎您".to_string(),
+                        ));
+                    }
+                    {
                         return Ok(UserCerStatus::Normal);
                     }
                 }
                 None => {
-                    return Ok(UserCerStatus::Black("服务器已启用白名单,服务器不欢迎您".to_string()));
+                    return Ok(UserCerStatus::Black(
+                        "服务器已启用白名单,服务器不欢迎您".to_string(),
+                    ));
                 }
             }
         }
@@ -235,9 +240,9 @@ pub async fn auth_user(
                 Ok(data) => {
                     if data.white {
                         return Ok(UserCerStatus::White);
-                    }else if data.black{
+                    } else if data.black {
                         return Ok(UserCerStatus::Black(timestamp_to_time(&data.ban_until)));
-                    }else{
+                    } else {
                         return Ok(UserCerStatus::Normal);
                     }
                 }
@@ -251,23 +256,24 @@ pub async fn auth_user(
                 Some(value) => {
                     if value.1 {
                         return Ok(UserCerStatus::White);
-                    }else if value.0 {
-                        return Ok(UserCerStatus::Black("本地黑名单,服务器不欢迎您".to_string()));
-                    }{
+                    } else if value.0 {
+                        return Ok(UserCerStatus::Black(
+                            "本地黑名单,服务器不欢迎您".to_string(),
+                        ));
+                    }
+                    {
                         return Ok(UserCerStatus::Normal);
                     }
                 }
-                None => {
-                    ()
-                }
+                None => (),
             }
             match getusercer_list(redis, online_blacklist_config, uid).await {
                 Ok(data) => {
                     if data.white {
                         return Ok(UserCerStatus::White);
-                    }else if data.black{
+                    } else if data.black {
                         return Ok(UserCerStatus::Black(timestamp_to_time(&data.ban_until)));
-                    }else{
+                    } else {
                         return Ok(UserCerStatus::Normal);
                     }
                 }
@@ -280,8 +286,11 @@ pub async fn auth_user(
 }
 
 fn timestamp_to_time(timestamp: &u64) -> String {
-    let dt = Utc.timestamp(*timestamp as i64, 0).with_timezone(&FixedOffset::east(8*3600));
-    dt.format(r#"%Y年%m月%d日 %H:%M解封\n请耐心等待"#).to_string()
+    let dt = Utc
+        .timestamp(*timestamp as i64, 0)
+        .with_timezone(&FixedOffset::east(8 * 3600));
+    dt.format(r#"%Y年%m月%d日 %H:%M解封\n请耐心等待"#)
+        .to_string()
 }
 
 pub fn appkey_to_sec(appkey: &str) -> Result<String, ()> {
