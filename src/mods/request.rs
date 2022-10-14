@@ -35,7 +35,8 @@ pub fn getwebpage(url: String,proxy_open: bool,proxy_url: String,user_agent: Str
         }).unwrap();
         match transfer.perform() {
             Ok(()) => (),
-            _error => {
+            Err(value) => {
+                println!("getwebpage error -> {}", value);
                 return Err(());
             }
         }
@@ -101,7 +102,8 @@ pub fn postwebpage(url: String,content: String,proxy_open: bool,proxy_url: Strin
             .unwrap();
         match transfer.perform() {
             Ok(()) => (),
-            _error => {
+            Err(value) => {
+                println!("postwebpage error -> {}", value);
                 return Err(());
             }
         }
