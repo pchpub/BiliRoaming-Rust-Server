@@ -1,6 +1,6 @@
 use std::fs::{self, File};
 
-use super::types::{BiliConfig};
+use super::types::BiliConfig;
 
 pub fn load_biliconfig(config_type: Option<&str>) -> Result<BiliConfig, String> {
     let config: BiliConfig;
@@ -53,7 +53,7 @@ pub fn load_biliconfig(config_type: Option<&str>) -> Result<BiliConfig, String> 
 //     let config_version: u16;
 //     match config_type.unwrap() {
 //         "json" => {
-//             let config: serde_json::Value; 
+//             let config: serde_json::Value;
 //             config = serde_json::from_reader(config_file).unwrap();
 //             match  config.get("config_version") {//判断下是不是老的配置
 //                 Some(value) => {
@@ -65,7 +65,7 @@ pub fn load_biliconfig(config_type: Option<&str>) -> Result<BiliConfig, String> 
 //             }
 //         },
 //         "yml" => {
-//             let config: serde_yaml::Value; 
+//             let config: serde_yaml::Value;
 //             config = serde_yaml::from_reader(config_file).unwrap();
 //             match  config.get("config_version") {//判断下是不是老的配置
 //                 Some(value) => {
@@ -81,9 +81,7 @@ pub fn load_biliconfig(config_type: Option<&str>) -> Result<BiliConfig, String> 
 //         }
 //     }
 //     if config_version == 1 {
-//         // config.report_config = 
+//         // config.report_config =
 //     }
 //     Err(())
 // }
-
-
