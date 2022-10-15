@@ -1,6 +1,7 @@
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use urlencoding::encode;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct BiliConfig {
@@ -153,9 +154,74 @@ impl std::default::Default for BlackListType {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ReportConfig {
+    pub use_method: String,
+    pub tg_bot_config: ReportConfigTgBot,
+    pub pushplus_config: ReportConfigPushplus,
+    pub custom_config: ReportConfigCustom,
+}
+impl ReportConfig {
+    pub fn init(&mut self) -> Result<ReportMethod, ()> {
+        let use_method = self.use_method.to_ascii_lowercase();
+        // should verify input config
+        match use_method.as_str() {
+            "tg_bot" => {
+                if self.tg_bot_config.tg_bot_token.is_empty()
+                    || self.tg_bot_config.tg_chat_id.is_empty()
+                {
+                    println!("[ERROR] tg_bot相关设置无效, 请检查是否填入tg_bot_token或tg_chat_id!");
+                    Ok(ReportMethod::ReportConfigNone)
+                } else {
+                    Ok(ReportMethod::ReportConfigTgBot(self.tg_bot_config.clone()))
+                }
+            }
+            "pushplus" => {
+                if self.pushplus_config.pushplus_secret.is_empty() {
+                    println!("[ERROR] pushplus相关设置无效, 请检查是否填入pushplus_secret!");
+                    Ok(ReportMethod::ReportConfigNone)
+                } else {
+                    Ok(ReportMethod::ReportConfigPushplus(
+                        self.pushplus_config.clone(),
+                    ))
+                }
+            }
+            "custom" => {
+                self.custom_config.init().unwrap();
+                Ok(ReportMethod::ReportConfigCustom(self.custom_config.clone()))
+            }
+            _ => {
+                println!("[ERROR] 服务器相关设置无效! use_method应填入以下三个之一: tg_bot, pushplus, custom");
+                Ok(ReportMethod::ReportConfigNone)
+            }
+        }
+    }
+}
+#[derive(Debug)]
+pub enum ReportMethod {
+    ReportConfigTgBot(ReportConfigTgBot),
+    ReportConfigPushplus(ReportConfigPushplus),
+    ReportConfigCustom(ReportConfigCustom),
+    ReportConfigNone,
+}
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ReportConfigTgBot {
+    pub tg_bot_token: String,
+    pub tg_chat_id: String,
+    pub tg_proxy_api_open: bool,
+    pub tg_proxy_url: String,
+}
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ReportConfigPushplus {
+    pub pushplus_push_title: String,
+    pub pushplus_secret: String,
+    pub pushplus_group_id: String,
+}
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ReportConfigCustom {
     pub method: Method,
     pub url: String,
     pub content: String,
+    pub proxy_open: bool,
+    pub proxy_url: String,
     #[serde(skip)]
     url_separate_elements: Vec<String>,
     #[serde(skip)]
@@ -169,9 +235,49 @@ pub struct ReportConfig {
 impl std::default::Default for ReportConfig {
     fn default() -> Self {
         Self {
+            use_method: "".to_string(),
+            tg_bot_config: ReportConfigTgBot {
+                ..Default::default()
+            },
+            pushplus_config: ReportConfigPushplus {
+                ..Default::default()
+            },
+            custom_config: ReportConfigCustom {
+                ..Default::default()
+            },
+        }
+    }
+}
+
+impl std::default::Default for ReportConfigTgBot {
+    fn default() -> Self {
+        Self {
+            tg_bot_token: "".to_string(),
+            tg_chat_id: "".to_string(),
+            tg_proxy_api_open: false,
+            tg_proxy_url: "".to_string(),
+        }
+    }
+}
+
+impl std::default::Default for ReportConfigPushplus {
+    fn default() -> Self {
+        Self {
+            pushplus_push_title: "Biliroaming-Rust-Server Status".to_string(),
+            pushplus_secret: "".to_string(),
+            pushplus_group_id: "".to_string(),
+        }
+    }
+}
+
+impl std::default::Default for ReportConfigCustom {
+    fn default() -> Self {
+        Self {
             method: Method::Post,
             url: r#"https://api.telegram.org/bot{your_token}/sendMessage"#.to_string(),
             content: "chat_id={your_chat_id}&text=大陆 Playurl:              {CnPlayurl}\n香港 Playurl:              {HkPlayurl}\n台湾 Playurl:              {TwPlayurl}\n泰区 Playurl:              {ThPlayurl}\n大陆 Search:              {CnSearch}\n香港 Search:              {HkSearch}\n台湾 Search:              {TwSearch}\n泰区 Search:              {ThSearch}\n泰区 Season:              {ThSeason}\n\n变动: {ChangedAreaName} {ChangedDataType} -> {ChangedHealthType}".to_string(),
+            proxy_open: false,
+            proxy_url: "".to_string(),
             url_separate_elements: Default::default(),
             url_insert_order: Default::default(),
             content_separate_elements: Default::default(),
@@ -188,7 +294,7 @@ fn vec_char_to_string(content: &Vec<String>, start: usize, end: usize) -> Result
     Ok(string)
 }
 
-impl ReportConfig {
+impl ReportConfigCustom {
     pub fn init(&mut self) -> Result<(), ()> {
         let key2order = HashMap::from([
             ("CnPlayurl", ReportOrderName::CnPlayurl),
@@ -336,7 +442,23 @@ impl ReportConfig {
         if len_order != len_elements {
             url = url + &self.url_separate_elements[index];
         }
-        return Ok(url);
+        // must encode params before getwebpage
+        let encoded_url = match url.split_once("?") {
+            Some((url_host, url_params)) => {
+                let url_params_vec = url_params.split("&");
+                let mut new_url_params_vec: Vec<(&str, String)> = vec![];
+                let mut encoded_value;
+                for item in url_params_vec {
+                    let (key, value) = item.split_once("=").unwrap();
+                    encoded_value = encode(value).to_string();
+                    new_url_params_vec.push((key, encoded_value));
+                }
+                format!("{}?{}", url_host, qstring::QString::new(new_url_params_vec))
+            }
+            None => url,
+        };
+        // println!("DEBUG {}", encoded_url);
+        return Ok(encoded_url);
     }
 
     pub fn build_content(
@@ -395,7 +517,7 @@ impl ReportConfig {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug)]
 enum ReportOrderName {
     CnPlayurl,
     HkPlayurl,
@@ -411,10 +533,70 @@ enum ReportOrderName {
     ChangedHealthType,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Method {
     Get,
     Post,
+}
+
+pub struct ReportHealthData {
+    pub health_cn_playurl: String,
+    pub health_hk_playurl: String,
+    pub health_tw_playurl: String,
+    pub health_th_playurl: String,
+    pub health_cn_search: String,
+    pub health_hk_search: String,
+    pub health_tw_search: String,
+    pub health_th_search: String,
+    pub health_th_season: String,
+}
+impl ReportHealthData {
+    // 定义发送内容
+    pub fn generate_msg(
+        &self,
+        report_config: &ReportMethod,
+        health_data: &SendHealthData,
+    ) -> String {
+        match report_config {
+            ReportMethod::ReportConfigTgBot(_) => return self.generate_tg_text(health_data),
+            ReportMethod::ReportConfigPushplus(_) => return self.generate_type_html(health_data),
+            _ => return "".to_string(),
+        };
+    }
+    fn generate_tg_text(&self, health_data: &SendHealthData) -> String {
+        return format!(
+            "大陆 Playurl:              {}\n香港 Playurl:              {}\n台湾 Playurl:              {}\n泰区 Playurl:              {}\n大陆 Search:              {}\n香港 Search:              {}\n台湾 Search:              {}\n泰区 Search:              {}\n泰区 Season:              {}\n\n变动: {} {} -> {}",
+            self.health_cn_playurl,
+            self.health_hk_playurl,
+            self.health_tw_playurl,
+            self.health_th_playurl,
+            self.health_cn_search,
+            self.health_hk_search,
+            self.health_tw_search,
+            self.health_th_search,
+            self.health_th_season,
+            health_data.area_name(),
+            health_data.data_type,
+            health_data.health_type.to_color_char()
+        );
+    }
+    fn generate_type_html(&self, health_data: &SendHealthData) -> String {
+        return format!(
+            "大陆 Playurl: {}<br>香港 Playurl: {}<br>台湾 Playurl: {}<br>泰区 Playurl: {}<br>大陆 Search: {}<br>香港 Search: {}<br>台湾 Search: {}<br>泰区 Search: {}<br>泰区 Season: {}<br>变动: {} {} -> {}",
+            self.health_cn_playurl,
+            self.health_hk_playurl,
+            self.health_tw_playurl,
+            self.health_th_playurl,
+            self.health_cn_search,
+            self.health_hk_search,
+            self.health_tw_search,
+            self.health_th_search,
+            self.health_th_season,
+            health_data.area_name(),
+            health_data.data_type,
+            health_data.health_type.to_color_char()
+        );
+    }
 }
 
 fn config_version() -> u16 {

@@ -24,6 +24,7 @@ ctrlc = "3.2.3"
 rand = "0.8.5"
 actix-governor = "0.3.1"
 governor = "0.4.2"
+urlencoding = "2.1.2"
 
 [profile.fast]
 inherits = "release"

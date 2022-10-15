@@ -10,8 +10,8 @@ use biliroaming_rust_server::mods::get_bili_res::{
 use biliroaming_rust_server::mods::pub_api::get_api_accesskey;
 use biliroaming_rust_server::mods::push::send_report;
 use biliroaming_rust_server::mods::rate_limit::BiliUserToken;
-use biliroaming_rust_server::mods::tools::{update_server, redir_playurl_request};
-use biliroaming_rust_server::mods::types::{BiliConfig, SendData};
+use biliroaming_rust_server::mods::tools::{redir_playurl_request, update_server};
+use biliroaming_rust_server::mods::types::{BiliConfig, ReportMethod, SendData};
 use deadpool_redis::{Config, Pool, Runtime};
 use futures::join;
 use std::fs;
@@ -171,8 +171,11 @@ fn main() -> std::io::Result<()> {
         //     println!("[Error] channel was closed");
         // }
         let mut report_config = anti_speedtest_cfg.report_config.clone();
+        let mut report_method;
         if anti_speedtest_cfg.report_open {
-            report_config.init().unwrap();
+            report_method = report_config.init().unwrap();
+        } else {
+            report_method = ReportMethod::ReportConfigNone;
         }
         loop {
             let receive_data = match r.recv().await {
@@ -193,7 +196,8 @@ fn main() -> std::io::Result<()> {
                     };
                 }
                 SendData::Health(value) => {
-                    if let Err(_) = send_report(&pool_background,&mut report_config, &value).await {
+                    if let Err(_) = send_report(&pool_background, &mut report_method, &value).await
+                    {
                         println!("[Error] failed to send health report");
                     }
                 }
