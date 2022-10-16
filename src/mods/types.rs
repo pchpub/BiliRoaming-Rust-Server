@@ -153,55 +153,38 @@ impl std::default::Default for BlackListType {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct ReportConfig {
-    pub use_method: String,
-    pub tg_bot_config: ReportConfigTgBot,
-    pub pushplus_config: ReportConfigPushplus,
-    pub custom_config: ReportConfigCustom,
+pub enum ReportConfig {
+    TgBot(ReportConfigTgBot),
+    PushPlus(ReportConfigPushplus),
+    Custom(ReportConfigCustom),
 }
+
 impl ReportConfig {
-    pub fn init(&mut self) -> Result<ReportMethod, ()> {
-        let use_method = self.use_method.to_ascii_lowercase();
-        // should verify input config
-        match use_method.as_str() {
-            "tg_bot" => {
-                if self.tg_bot_config.tg_bot_token.is_empty()
-                    || self.tg_bot_config.tg_chat_id.is_empty()
+    pub fn init(&mut self) -> Result<(), String> {
+        match self {
+            ReportConfig::TgBot(config) => {
+                if config.tg_bot_token.is_empty()
+                    || config.tg_chat_id.is_empty()
                 {
-                    println!("[ERROR] tg_bot相关设置无效, 请检查是否填入tg_bot_token或tg_chat_id!");
-                    Ok(ReportMethod::ReportConfigNone)
+                    Err("[ERROR] tg_bot相关设置无效, 请检查是否填入tg_bot_token或tg_chat_id!".to_string())
                 } else {
-                    Ok(ReportMethod::ReportConfigTgBot(self.tg_bot_config.clone()))
+                    Ok(())
                 }
-            }
-            "pushplus" => {
-                if self.pushplus_config.pushplus_secret.is_empty() {
-                    println!("[ERROR] pushplus相关设置无效, 请检查是否填入pushplus_secret!");
-                    Ok(ReportMethod::ReportConfigNone)
+            },
+            ReportConfig::PushPlus(config) => {
+                if config.pushplus_secret.is_empty() {
+                    Err("[ERROR] pushplus相关设置无效, 请检查是否填入pushplus_secret!".to_string())
                 } else {
-                    Ok(ReportMethod::ReportConfigPushplus(
-                        self.pushplus_config.clone(),
-                    ))
+                    Ok(())
                 }
-            }
-            "custom" => {
-                self.custom_config.init().unwrap();
-                Ok(ReportMethod::ReportConfigCustom(self.custom_config.clone()))
-            }
-            _ => {
-                println!("[ERROR] 服务器相关设置无效! use_method应填入以下三个之一: tg_bot, pushplus, custom");
-                Ok(ReportMethod::ReportConfigNone)
-            }
+            },
+            ReportConfig::Custom(config) => {
+                config.init()
+            },
         }
     }
 }
-#[derive(Debug)]
-pub enum ReportMethod {
-    ReportConfigTgBot(ReportConfigTgBot),
-    ReportConfigPushplus(ReportConfigPushplus),
-    ReportConfigCustom(ReportConfigCustom),
-    ReportConfigNone,
-}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ReportConfigTgBot {
     pub tg_bot_token: String,
@@ -234,18 +217,7 @@ pub struct ReportConfigCustom {
 
 impl std::default::Default for ReportConfig {
     fn default() -> Self {
-        Self {
-            use_method: "".to_string(),
-            tg_bot_config: ReportConfigTgBot {
-                ..Default::default()
-            },
-            pushplus_config: ReportConfigPushplus {
-                ..Default::default()
-            },
-            custom_config: ReportConfigCustom {
-                ..Default::default()
-            },
-        }
+        Self::TgBot(ReportConfigTgBot::default())
     }
 }
 
@@ -295,7 +267,7 @@ fn vec_char_to_string(content: &Vec<String>, start: usize, end: usize) -> Result
 }
 
 impl ReportConfigCustom {
-    pub fn init(&mut self) -> Result<(), ()> {
+    pub fn init(&mut self) -> Result<(), String> {
         let key2order = HashMap::from([
             ("CnPlayurl", ReportOrderName::CnPlayurl),
             ("HkPlayurl", ReportOrderName::HkPlayurl),
@@ -400,32 +372,24 @@ impl ReportConfigCustom {
 
     pub fn build_url(
         &self,
-        cn_playurl: &str,
-        hk_playurl: &str,
-        tw_playurl: &str,
-        th_playurl: &str,
-        cn_search: &str,
-        hk_search: &str,
-        tw_search: &str,
-        th_search: &str,
-        th_season: &str,
+        report_health_data: &ReportHealthData,
         changed_area_name: &str,
         changed_data_type: &str,
         changed_health_type: &str,
     ) -> Result<String, ()> {
         let health_values = HashMap::from([
-            (ReportOrderName::CnPlayurl, cn_playurl),
-            (ReportOrderName::HkPlayurl, hk_playurl),
-            (ReportOrderName::TwPlayurl, tw_playurl),
-            (ReportOrderName::ThPlayurl, th_playurl),
-            (ReportOrderName::CnSearch, cn_search),
-            (ReportOrderName::HkSearch, hk_search),
-            (ReportOrderName::TwSearch, tw_search),
-            (ReportOrderName::ThSearch, th_search),
-            (ReportOrderName::ThSeason, th_season),
-            (ReportOrderName::ChangedAreaName, changed_area_name),
-            (ReportOrderName::ChangedDataType, changed_data_type),
-            (ReportOrderName::ChangedHealthType, changed_health_type),
+            (ReportOrderName::CnPlayurl, report_health_data.health_cn_playurl.clone()),
+            (ReportOrderName::HkPlayurl, report_health_data.health_hk_playurl.clone()),
+            (ReportOrderName::TwPlayurl, report_health_data.health_tw_playurl.clone()),
+            (ReportOrderName::ThPlayurl, report_health_data.health_th_playurl.clone()),
+            (ReportOrderName::CnSearch, report_health_data.health_cn_search.clone()),
+            (ReportOrderName::HkSearch, report_health_data.health_hk_search.clone()),
+            (ReportOrderName::TwSearch, report_health_data.health_tw_search.clone()),
+            (ReportOrderName::ThSearch, report_health_data.health_th_search.clone()),
+            (ReportOrderName::ThSeason, report_health_data.health_th_season.clone()),
+            (ReportOrderName::ChangedAreaName, changed_area_name.to_owned()),
+            (ReportOrderName::ChangedDataType, changed_data_type.to_owned()),
+            (ReportOrderName::ChangedHealthType, changed_health_type.to_owned()),
         ]);
         let mut url = String::new();
         let len_elements = self.url_separate_elements.len();
@@ -436,7 +400,7 @@ impl ReportConfigCustom {
             url = url
                 + health_values
                     .get(&self.url_insert_order[index])
-                    .unwrap_or(&&"");
+                    .unwrap_or(&"".to_owned());
             index += 1;
         }
         if len_order != len_elements {
@@ -463,15 +427,7 @@ impl ReportConfigCustom {
 
     pub fn build_content(
         &self,
-        cn_playurl: &str,
-        hk_playurl: &str,
-        tw_playurl: &str,
-        th_playurl: &str,
-        cn_search: &str,
-        hk_search: &str,
-        tw_search: &str,
-        th_search: &str,
-        th_season: &str,
+        report_health_data: &ReportHealthData,
         changed_area_name: &str,
         changed_data_type: &str,
         changed_health_type: &str,
@@ -483,18 +439,18 @@ impl ReportConfigCustom {
             }
             Method::Post => {
                 let health_values = HashMap::from([
-                    (ReportOrderName::CnPlayurl, cn_playurl),
-                    (ReportOrderName::HkPlayurl, hk_playurl),
-                    (ReportOrderName::TwPlayurl, tw_playurl),
-                    (ReportOrderName::ThPlayurl, th_playurl),
-                    (ReportOrderName::CnSearch, cn_search),
-                    (ReportOrderName::HkSearch, hk_search),
-                    (ReportOrderName::TwSearch, tw_search),
-                    (ReportOrderName::ThSearch, th_search),
-                    (ReportOrderName::ThSeason, th_season),
-                    (ReportOrderName::ChangedAreaName, changed_area_name),
-                    (ReportOrderName::ChangedDataType, changed_data_type),
-                    (ReportOrderName::ChangedHealthType, changed_health_type),
+                    (ReportOrderName::CnPlayurl, report_health_data.health_cn_playurl.clone()),
+                    (ReportOrderName::HkPlayurl, report_health_data.health_hk_playurl.clone()),
+                    (ReportOrderName::TwPlayurl, report_health_data.health_tw_playurl.clone()),
+                    (ReportOrderName::ThPlayurl, report_health_data.health_th_playurl.clone()),
+                    (ReportOrderName::CnSearch, report_health_data.health_cn_search.clone()),
+                    (ReportOrderName::HkSearch, report_health_data.health_hk_search.clone()),
+                    (ReportOrderName::TwSearch, report_health_data.health_tw_search.clone()),
+                    (ReportOrderName::ThSearch, report_health_data.health_th_search.clone()),
+                    (ReportOrderName::ThSeason, report_health_data.health_th_season.clone()),
+                    (ReportOrderName::ChangedAreaName, changed_area_name.to_owned()),
+                    (ReportOrderName::ChangedDataType, changed_data_type.to_owned()),
+                    (ReportOrderName::ChangedHealthType, changed_health_type.to_owned()),
                 ]);
                 let mut content = String::new();
                 let len_elements = self.content_separate_elements.len();
@@ -505,7 +461,7 @@ impl ReportConfigCustom {
                     content = content
                         + health_values
                             .get(&self.content_insert_order[index])
-                            .unwrap_or(&&"");
+                            .unwrap_or(&"".to_owned());
                     index += 1;
                 }
                 if len_order != len_elements {
@@ -554,13 +510,19 @@ impl ReportHealthData {
     // 定义发送内容
     pub fn generate_msg(
         &self,
-        report_config: &ReportMethod,
+        report_config: &ReportConfig,
         health_data: &SendHealthData,
     ) -> String {
         match report_config {
-            ReportMethod::ReportConfigTgBot(_) => return self.generate_tg_text(health_data),
-            ReportMethod::ReportConfigPushplus(_) => return self.generate_type_html(health_data),
-            _ => return "".to_string(),
+            ReportConfig::TgBot(_config) => {
+                return self.generate_tg_text(health_data)
+            },
+            ReportConfig::PushPlus(_config) => {
+                return self.generate_type_html(health_data)
+            },
+            ReportConfig::Custom(_config) => {
+                return "".to_owned();
+            },
         };
     }
     fn generate_tg_text(&self, health_data: &SendHealthData) -> String {
