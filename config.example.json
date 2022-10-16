@@ -142,9 +142,25 @@
   },
   "report_open": false,
   "report_config": {
-    "method": "Post",
-    "url": "https://api.telegram.org/bot{your_token}/sendMessage",
-    "content": "chat_id={your_chat_id}&text=大陆 Playurl:              {CnPlayurl}\n香港 Playurl:              {HkPlayurl}\n台湾 Playurl:              {TwPlayurl}\n泰区 Playurl:              {ThPlayurl}\n大陆 Search:              {CnSearch}\n香港 Search:              {HkSearch}\n台湾 Search:              {TwSearch}\n泰区 Search:              {ThSearch}\n泰区 Season:              {ThSeason}\n\n变动: {ChangedAreaName} {ChangedDataType} -> {ChangedHealthType}"
+    "use_method": "tg_bot",
+    "tg_bot_config": {
+      "tg_bot_token": "",
+      "tg_chat_id": "",
+      "tg_proxy_api_open": false,
+      "tg_proxy_url": ""
+    },
+    "pushplus_config": {
+      "pushplus_push_title": "",
+      "pushplus_secret": "",
+      "pushplus_group_id": ""
+    },
+    "custom_config": {
+      "method": "Post",
+      "url": "https://api.telegram.org/bot{your_token}/sendMessage",
+      "content": "chat_id={your_chat_id}&text=大陆 Playurl:              {CnPlayurl}\n香港 Playurl:              {HkPlayurl}\n台湾 Playurl:              {TwPlayurl}\n泰区 Playurl:              {ThPlayurl}\n大陆 Search:              {CnSearch}\n香港 Search:              {HkSearch}\n台湾 Search:              {TwSearch}\n泰区 Search:              {ThSearch}\n泰区 Season:              {ThSeason}\n\n变动: {ChangedAreaName} {ChangedDataType} -> {ChangedHealthType}",
+      "proxy_open": false,
+      "proxy_url": ""
+    }
   },
   "area_cache_open": false
 }

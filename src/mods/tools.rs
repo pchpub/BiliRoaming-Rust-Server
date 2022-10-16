@@ -244,22 +244,6 @@ pub fn update_server(is_auto_close: bool) {
     });
 }
 
-pub async fn health_key_to_char(pool: &Pool, key: &str) -> String {
-    match redis_get(pool, key).await {
-        Some(value) => match &value[..] {
-            "0" => return "🟢".to_string(),
-            "1" => return "🟡".to_string(),
-            "2" => return "🟠".to_string(),
-            "3" => return "🟠".to_string(),
-            "4" => return "🔴".to_string(),
-            _ => return "🔴".to_string(),
-        },
-        None => {
-            return "🔴".to_string();
-        }
-    }
-}
-
 #[inline]
 pub async fn get_ep_area(pool: &Pool, ep: &str, area: &u8) -> Result<GetEpAreaType, ()> {
     let key = format!("e{ep}1401");
