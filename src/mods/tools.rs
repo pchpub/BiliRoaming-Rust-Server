@@ -15,6 +15,53 @@ use super::{
     request::{download, getwebpage},
     types::PlayurlType,
 };
+pub fn check_playurl_need_vip(
+    playurl_type: PlayurlType,
+    data: &serde_json::Value,
+) -> Result<bool,()> {
+    match playurl_type {
+        PlayurlType::Thailand => {
+            Err(())
+        },
+        PlayurlType::ChinaApp => {
+            if data["code"].as_i64().unwrap_or(233) == 0 {
+                let items = if let Some(value) = data["support_formats"].as_array() {
+                    value
+                } else {
+                    return Err(());
+                };
+                for item in items {
+                    if item["need_vip"].as_bool().unwrap_or(false) {
+                        return Ok(true);
+                    }
+                }
+                return Ok(false);
+            } else {
+                return Err(());
+            }
+        },
+        PlayurlType::ChinaWeb => {
+            if data["code"].as_i64().unwrap_or(233) == 0 {
+                let items = if let Some(value) = data["result"]["support_formats"].as_array() {
+                    value
+                } else {
+                    return Err(());
+                };
+                for item in items {
+                    if item["need_vip"].as_bool().unwrap_or(false) {
+                        return Ok(true);
+                    }
+                }
+                return Ok(false);
+            } else {
+                return Err(());
+            }
+        },
+        PlayurlType::ChinaTv => {
+            Err(())
+        },
+    }
+}
 
 pub fn remove_parameters_playurl(
     playurl_type: PlayurlType,
