@@ -13,10 +13,12 @@ pub async fn getuser_list(
     appsec: &str,
     user_agent: &str,
     config: &BiliConfig,
+    force_update: bool,
 ) -> Result<UserInfo, String> {
-    let info: String = match redis_get(&redis, &format!("{access_key}20501")).await {
-        Some(value) => value,
-        None => {
+    
+    let info: String = match (redis_get(&redis, &format!("{access_key}20501")).await,force_update) {
+        (Some(value),false) => value,
+        _ => {
             let dt = Local::now();
             let ts = dt.timestamp_millis() as u64;
             let ts_min = dt.timestamp() as u64;
@@ -56,7 +58,13 @@ pub async fn getuser_list(
                     access_key: String::from(access_key),
                     uid: output_json["data"]["mid"].as_u64().unwrap(),
                     vip_expire_time: output_json["data"]["vip"]["due_date"].as_u64().unwrap(),
-                    expire_time: ts + 25 * 24 * 60 * 60 * 1000, //用户状态25天强制更新
+                    expire_time: {
+                        if ts < output_json["data"]["vip"]["due_date"].as_u64().unwrap() && output_json["data"]["vip"]["due_date"].as_u64().unwrap() < ts + 25 * 24 * 60 * 60 * 1000 {
+                            output_json["data"]["vip"]["due_date"].as_u64().unwrap()
+                        }else{
+                            ts + 25 * 24 * 60 * 60 * 1000
+                        }
+                    }, //用户状态25天强制更新
                 };
             } else if code == -400 {
                 //println!("getuser_list函数寄了 output_json:{}",output_json);
@@ -77,14 +85,15 @@ pub async fn getuser_list(
             }
             let key = format!("{access_key}20501");
             let value = output_struct.to_json();
-            let _: () = redis_set(&redis, &key, &value, 25 * 24 * 60 * 60)
+            let expire_time = (output_struct.expire_time - ts)/1000;
+            let _: () = redis_set(&redis, &key, &value, expire_time)
                 .await
                 .unwrap_or_default();
             let _: () = redis_set(
                 &redis,
                 &format!("u{}20501", output_struct.uid),
                 &access_key.to_owned(),
-                25 * 24 * 60 * 60,
+                expire_time,
             )
             .await
             .unwrap_or_default();

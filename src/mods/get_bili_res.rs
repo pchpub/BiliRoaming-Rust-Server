@@ -1,6 +1,6 @@
 use super::get_user_info::{appkey_to_sec, auth_user, getuser_list};
 use super::request::{async_getwebpage, async_postwebpage, redis_get, redis_set};
-use super::tools::{playurl_get_deadline, remove_parameters_playurl};
+use super::tools::{playurl_get_deadline, remove_parameters_playurl, check_playurl_need_vip};
 use super::types::{
     random_string, BiliConfig, HealthType, PlayurlType, ResignInfo, SendData, SendHealthData,
     SendPlayurlData, SesourceType,
@@ -128,7 +128,7 @@ pub async fn get_playurl(
     };
 
     let user_info =
-        match getuser_list(pool, &access_key, appkey, &appsec, &user_agent, &config).await {
+        match getuser_list(pool, &access_key, appkey, &appsec, &user_agent, &config,false).await {
             Ok(value) => value,
             Err(value) => {
                 return Err(format!("{{\"code\":4403,\"message\":\"{value}\"}}"));
@@ -188,6 +188,7 @@ pub async fn get_playurl(
                 &appsec,
                 &user_agent,
                 &config,
+                false,
             )
             .await
             {
@@ -213,7 +214,7 @@ pub async fn get_playurl(
         None => is_tv = false,
     }
 
-    let key = match is_app {
+    let mut key = match is_app {
         true => {
             if is_tv {
                 format!(
@@ -375,6 +376,7 @@ pub async fn get_playurl(
             },
         };
         if is_expire {
+            let need_change_vip_status: bool; // 标记是否需要将is_vip变成1
             let mut body_data = match async_getwebpage(
                 &format!("{api}?{signed_url}"),
                 proxy_open,
@@ -430,6 +432,34 @@ pub async fn get_playurl(
                 }
             };
             let mut body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
+            
+            if {
+                if area_num != 4 && is_vip == 0 {
+                    if is_app {
+                        check_playurl_need_vip(PlayurlType::ChinaApp, &body_data_json).unwrap_or(false)
+                    }else{
+                        check_playurl_need_vip(PlayurlType::ChinaWeb, &body_data_json).unwrap_or(false)
+                    }
+                }else{
+                    false
+                }
+            }{
+                match getuser_list(pool, &access_key, appkey, &appsec, &user_agent, &config,true).await {
+                    Ok(value) => {
+                        if value.vip_expire_time >= ts {
+                            need_change_vip_status = true;
+                        }else{
+                            need_change_vip_status = false;
+                        }
+                    },
+                    Err(_) => {
+                        need_change_vip_status = false;
+                    },
+                }
+            }else{
+                need_change_vip_status = false;
+            }
+            
             if area_num == 4 {
                 remove_parameters_playurl(PlayurlType::Thailand, &mut body_data_json)
                     .unwrap_or_default();
@@ -442,6 +472,7 @@ pub async fn get_playurl(
                         .unwrap_or_default();
                 }
             }
+            
             let mut code = body_data_json["code"].as_i64().unwrap().clone();
             let backup_policy = match area_num {
                 1 => &config.cn_proxy_playurl_backup_policy,
@@ -559,6 +590,9 @@ pub async fn get_playurl(
                 .clone(),
             };
             let value = format!("{}{body_data}", ts + expire_time * 1000);
+            if need_change_vip_status {
+                key = format!("{}1{}",&key[..key.len()-8],&key[key.len()-7..]);
+            }
             let _: () = redis_set(&pool, &key, &value, expire_time)
                 .await
                 .unwrap_or_default();
@@ -803,7 +837,7 @@ pub async fn get_search(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpRes
 
     if is_app && (!is_th) {
         let user_info =
-            match getuser_list(pool, access_key, appkey, &appsec, &user_agent, &config).await {
+            match getuser_list(pool, access_key, appkey, &appsec, &user_agent, &config,false).await {
                 Ok(value) => value,
                 Err(value) => {
                     return HttpResponse::Ok()
