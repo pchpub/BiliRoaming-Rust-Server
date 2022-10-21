@@ -18,7 +18,10 @@ pub async fn getuser_list(
     
     let info: String = match (redis_get(&redis, &format!("{access_key}20501")).await,force_update) {
         (Some(value),false) => value,
-        _ => {
+        value => {
+            if value.1 {
+                println!("{:?}",value);
+            }
             let dt = Local::now();
             let ts = dt.timestamp_millis() as u64;
             let ts_min = dt.timestamp() as u64;
