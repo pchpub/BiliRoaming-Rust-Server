@@ -15,12 +15,14 @@ pub async fn getuser_list(
     config: &BiliConfig,
     force_update: bool,
 ) -> Result<UserInfo, String> {
-    
+    if force_update {
+        println!("[Debug] force_update");
+    }
     let info: String = match (redis_get(&redis, &format!("{access_key}20501")).await,force_update) {
         (Some(value),false) => value,
         value => {
             if value.1 {
-                println!("{:?}",value);
+                println!("[Debug] {:?}",value);
             }
             let dt = Local::now();
             let ts = dt.timestamp_millis() as u64;
