@@ -1,8 +1,11 @@
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 use urlencoding::encode;
 
+/*
+* the following is server config related
+*/
 #[derive(Serialize, Deserialize, Clone)]
 pub struct BiliConfig {
     #[serde(default = "config_version")]
@@ -152,35 +155,214 @@ impl std::default::Default for BlackListType {
     }
 }
 
+/*
+* the following is background task related struct & impl
+*/
+// pub enum SendData {
+//     Cache(CacheTask),
+//     Health(HealthReportType),
+// }
+pub enum BackgroundTaskType {
+    HealthTask(HealthTask),
+    CacheTask(CacheTask),
+}
+pub enum HealthTask {
+    HealthCheck(HealthCheck),
+    HealthReport(HealthReportType),
+}
+pub struct HealthCheck {
+    pub need_check_area: Vec<u8>,
+}
+impl HealthCheck {
+    pub fn add_area(&mut self, area: Area) {
+        self.need_check_area.push(area.num())
+    }
+}
+pub enum CacheTask {
+    UserInfoCacheRefresh(UserInfo),
+    PlayurlCacheRefresh(PlayurlParamsStatic),
+    EpInfoCacheRefresh,
+    EpAreaCacheRefresh(String),
+}
+
+/*
+* the following is server health related struct & impl
+*/
+pub struct UpstreamReply {
+    pub code: i64,
+    pub message: String,
+    pub proxy_open: bool,
+    pub proxy_url: String,
+}
+impl std::default::Default for UpstreamReply {
+    fn default() -> Self {
+        Self {
+            code: 0,
+            message: String::new(),
+            proxy_open: false,
+            proxy_url: String::new(),
+        }
+    }
+}
+impl UpstreamReply {
+    pub fn is_available(&self) -> bool {
+        // for playurl health check only
+        let code = self.code;
+        match code {
+            0 => true,
+            -10403 => {
+                if self.message == "大会员专享限制"
+                    || self.message == "抱歉您所使用的平台不可观看！"
+                {
+                    true
+                } else {
+                    false
+                }
+            }
+            10015002 => {
+                if self.message == "访问权限不足" {
+                    true
+                } else {
+                    false
+                }
+            }
+            // 万恶的米奇妙妙屋,不用家宽就 -10500
+            // link: https://t.me/biliroaming_chat/1231065
+            //       https://t.me/biliroaming_chat/1231113
+            -10500 => true,
+            -404 => false,
+            _ => false,
+        }
+    }
+}
+pub struct HealthData {
+    pub area_num: u8,
+    // network available
+    pub is_200_ok: bool,
+    pub upstream_reply: UpstreamReply,
+    pub is_custom: bool,
+    pub custom_message: String,
+}
+impl std::default::Default for HealthData {
+    fn default() -> Self {
+        Self {
+            area_num: 0,
+            is_200_ok: true,
+            upstream_reply: UpstreamReply {
+                ..Default::default()
+            },
+            is_custom: false,
+            custom_message: String::new(),
+        }
+    }
+}
+impl HealthData {
+    pub fn init(area: Area, is_200_ok: bool, upstream_reply: UpstreamReply) -> HealthData {
+        let area_num = area.num();
+        return HealthData {
+            area_num,
+            is_200_ok,
+            upstream_reply,
+            ..Default::default()
+        };
+    }
+    pub fn init_custom(area: Area, is_200_ok: bool, custom_message: &str) -> HealthData {
+        // custom HealthData only for send custom message
+        let area_num = area.num();
+        return HealthData {
+            area_num,
+            is_200_ok,
+            is_custom: true,
+            custom_message: custom_message.to_string(),
+            ..Default::default()
+        };
+    }
+}
+pub enum HealthReportType {
+    Playurl(HealthData),
+    Search(HealthData),
+    ThSeason(HealthData),
+    Others(HealthData),
+}
+impl HealthReportType {
+    pub fn incident_attr(&self) -> (String, String) {
+        return match self {
+            HealthReportType::Playurl(value) => (
+                "PlayUrl".to_string(),
+                match value.area_num {
+                    1 => "大陆",
+                    2 => "香港",
+                    3 => "台湾",
+                    4 => "泰区",
+                    _ => "[Error] 未预期的错误",
+                }
+                .to_string(),
+            ),
+            HealthReportType::Search(value) => (
+                "Search".to_string(),
+                match value.area_num {
+                    1 => "大陆",
+                    2 => "香港",
+                    3 => "台湾",
+                    4 => "泰区",
+                    _ => "[Error] 未预期的错误",
+                }
+                .to_string(),
+            ),
+            HealthReportType::ThSeason(value) => (
+                "Season".to_string(),
+                match value.area_num {
+                    1 => "大陆",
+                    2 => "香港",
+                    3 => "台湾",
+                    4 => "泰区",
+                    _ => "[Error] 未预期的错误",
+                }
+                .to_string(),
+            ),
+            HealthReportType::Others(_) => (String::new(), String::new()),
+        };
+    }
+    pub fn status_color_char(&self) -> String {
+        if match self {
+            HealthReportType::Playurl(value) => value.is_200_ok,
+            HealthReportType::Search(value) => value.is_200_ok,
+            HealthReportType::ThSeason(value) => value.is_200_ok,
+            HealthReportType::Others(value) => value.is_200_ok,
+        } {
+            "🟢".to_string()
+        } else {
+            "🔴".to_string()
+        }
+    }
+}
 #[derive(Serialize, Deserialize, Clone)]
 pub enum ReportConfig {
     TgBot(ReportConfigTgBot),
     PushPlus(ReportConfigPushplus),
     Custom(ReportConfigCustom),
 }
-
 impl ReportConfig {
     pub fn init(&mut self) -> Result<(), String> {
         match self {
             ReportConfig::TgBot(config) => {
-                if config.tg_bot_token.is_empty()
-                    || config.tg_chat_id.is_empty()
-                {
-                    Err("[ERROR] tg_bot相关设置无效, 请检查是否填入tg_bot_token或tg_chat_id!".to_string())
+                if config.tg_bot_token.is_empty() || config.tg_chat_id.is_empty() {
+                    Err(
+                        "[ERROR] tg_bot相关设置无效, 请检查是否填入tg_bot_token或tg_chat_id!"
+                            .to_string(),
+                    )
                 } else {
                     Ok(())
                 }
-            },
+            }
             ReportConfig::PushPlus(config) => {
                 if config.pushplus_secret.is_empty() {
                     Err("[ERROR] pushplus相关设置无效, 请检查是否填入pushplus_secret!".to_string())
                 } else {
                     Ok(())
                 }
-            },
-            ReportConfig::Custom(config) => {
-                config.init()
-            },
+            }
+            ReportConfig::Custom(config) => config.init(),
         }
     }
 }
@@ -200,7 +382,7 @@ pub struct ReportConfigPushplus {
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ReportConfigCustom {
-    pub method: Method,
+    pub method: ReportRequestMethod,
     pub url: String,
     pub content: String,
     pub proxy_open: bool,
@@ -224,10 +406,10 @@ impl std::default::Default for ReportConfig {
 impl std::default::Default for ReportConfigTgBot {
     fn default() -> Self {
         Self {
-            tg_bot_token: "".to_string(),
-            tg_chat_id: "".to_string(),
+            tg_bot_token: String::new(),
+            tg_chat_id: String::new(),
             tg_proxy_api_open: false,
-            tg_proxy_url: "".to_string(),
+            tg_proxy_url: String::new(),
         }
     }
 }
@@ -236,8 +418,8 @@ impl std::default::Default for ReportConfigPushplus {
     fn default() -> Self {
         Self {
             pushplus_push_title: "Biliroaming-Rust-Server Status".to_string(),
-            pushplus_secret: "".to_string(),
-            pushplus_group_id: "".to_string(),
+            pushplus_secret: String::new(),
+            pushplus_group_id: String::new(),
         }
     }
 }
@@ -245,11 +427,11 @@ impl std::default::Default for ReportConfigPushplus {
 impl std::default::Default for ReportConfigCustom {
     fn default() -> Self {
         Self {
-            method: Method::Post,
+            method: ReportRequestMethod::Post,
             url: r#"https://api.telegram.org/bot{your_token}/sendMessage"#.to_string(),
             content: "chat_id={your_chat_id}&text=大陆 Playurl:              {CnPlayurl}\n香港 Playurl:              {HkPlayurl}\n台湾 Playurl:              {TwPlayurl}\n泰区 Playurl:              {ThPlayurl}\n大陆 Search:              {CnSearch}\n香港 Search:              {HkSearch}\n台湾 Search:              {TwSearch}\n泰区 Search:              {ThSearch}\n泰区 Season:              {ThSeason}\n\n变动: {ChangedAreaName} {ChangedDataType} -> {ChangedHealthType}".to_string(),
             proxy_open: false,
-            proxy_url: "".to_string(),
+            proxy_url: String::new(),
             url_separate_elements: Default::default(),
             url_insert_order: Default::default(),
             content_separate_elements: Default::default(),
@@ -378,18 +560,54 @@ impl ReportConfigCustom {
         changed_health_type: &str,
     ) -> Result<String, ()> {
         let health_values = HashMap::from([
-            (ReportOrderName::CnPlayurl, report_health_data.health_cn_playurl.clone()),
-            (ReportOrderName::HkPlayurl, report_health_data.health_hk_playurl.clone()),
-            (ReportOrderName::TwPlayurl, report_health_data.health_tw_playurl.clone()),
-            (ReportOrderName::ThPlayurl, report_health_data.health_th_playurl.clone()),
-            (ReportOrderName::CnSearch, report_health_data.health_cn_search.clone()),
-            (ReportOrderName::HkSearch, report_health_data.health_hk_search.clone()),
-            (ReportOrderName::TwSearch, report_health_data.health_tw_search.clone()),
-            (ReportOrderName::ThSearch, report_health_data.health_th_search.clone()),
-            (ReportOrderName::ThSeason, report_health_data.health_th_season.clone()),
-            (ReportOrderName::ChangedAreaName, changed_area_name.to_owned()),
-            (ReportOrderName::ChangedDataType, changed_data_type.to_owned()),
-            (ReportOrderName::ChangedHealthType, changed_health_type.to_owned()),
+            (
+                ReportOrderName::CnPlayurl,
+                report_health_data.health_cn_playurl.clone(),
+            ),
+            (
+                ReportOrderName::HkPlayurl,
+                report_health_data.health_hk_playurl.clone(),
+            ),
+            (
+                ReportOrderName::TwPlayurl,
+                report_health_data.health_tw_playurl.clone(),
+            ),
+            (
+                ReportOrderName::ThPlayurl,
+                report_health_data.health_th_playurl.clone(),
+            ),
+            (
+                ReportOrderName::CnSearch,
+                report_health_data.health_cn_search.clone(),
+            ),
+            (
+                ReportOrderName::HkSearch,
+                report_health_data.health_hk_search.clone(),
+            ),
+            (
+                ReportOrderName::TwSearch,
+                report_health_data.health_tw_search.clone(),
+            ),
+            (
+                ReportOrderName::ThSearch,
+                report_health_data.health_th_search.clone(),
+            ),
+            (
+                ReportOrderName::ThSeason,
+                report_health_data.health_th_season.clone(),
+            ),
+            (
+                ReportOrderName::ChangedAreaName,
+                changed_area_name.to_owned(),
+            ),
+            (
+                ReportOrderName::ChangedDataType,
+                changed_data_type.to_owned(),
+            ),
+            (
+                ReportOrderName::ChangedHealthType,
+                changed_health_type.to_owned(),
+            ),
         ]);
         let mut url = String::new();
         let len_elements = self.url_separate_elements.len();
@@ -433,24 +651,60 @@ impl ReportConfigCustom {
         changed_health_type: &str,
     ) -> Result<String, ()> {
         match self.method {
-            Method::Get => {
+            ReportRequestMethod::Get => {
                 println!("[Error] GET has no context");
                 return Err(());
             }
-            Method::Post => {
+            ReportRequestMethod::Post => {
                 let health_values = HashMap::from([
-                    (ReportOrderName::CnPlayurl, report_health_data.health_cn_playurl.clone()),
-                    (ReportOrderName::HkPlayurl, report_health_data.health_hk_playurl.clone()),
-                    (ReportOrderName::TwPlayurl, report_health_data.health_tw_playurl.clone()),
-                    (ReportOrderName::ThPlayurl, report_health_data.health_th_playurl.clone()),
-                    (ReportOrderName::CnSearch, report_health_data.health_cn_search.clone()),
-                    (ReportOrderName::HkSearch, report_health_data.health_hk_search.clone()),
-                    (ReportOrderName::TwSearch, report_health_data.health_tw_search.clone()),
-                    (ReportOrderName::ThSearch, report_health_data.health_th_search.clone()),
-                    (ReportOrderName::ThSeason, report_health_data.health_th_season.clone()),
-                    (ReportOrderName::ChangedAreaName, changed_area_name.to_owned()),
-                    (ReportOrderName::ChangedDataType, changed_data_type.to_owned()),
-                    (ReportOrderName::ChangedHealthType, changed_health_type.to_owned()),
+                    (
+                        ReportOrderName::CnPlayurl,
+                        report_health_data.health_cn_playurl.clone(),
+                    ),
+                    (
+                        ReportOrderName::HkPlayurl,
+                        report_health_data.health_hk_playurl.clone(),
+                    ),
+                    (
+                        ReportOrderName::TwPlayurl,
+                        report_health_data.health_tw_playurl.clone(),
+                    ),
+                    (
+                        ReportOrderName::ThPlayurl,
+                        report_health_data.health_th_playurl.clone(),
+                    ),
+                    (
+                        ReportOrderName::CnSearch,
+                        report_health_data.health_cn_search.clone(),
+                    ),
+                    (
+                        ReportOrderName::HkSearch,
+                        report_health_data.health_hk_search.clone(),
+                    ),
+                    (
+                        ReportOrderName::TwSearch,
+                        report_health_data.health_tw_search.clone(),
+                    ),
+                    (
+                        ReportOrderName::ThSearch,
+                        report_health_data.health_th_search.clone(),
+                    ),
+                    (
+                        ReportOrderName::ThSeason,
+                        report_health_data.health_th_season.clone(),
+                    ),
+                    (
+                        ReportOrderName::ChangedAreaName,
+                        changed_area_name.to_owned(),
+                    ),
+                    (
+                        ReportOrderName::ChangedDataType,
+                        changed_data_type.to_owned(),
+                    ),
+                    (
+                        ReportOrderName::ChangedHealthType,
+                        changed_health_type.to_owned(),
+                    ),
                 ]);
                 let mut content = String::new();
                 let len_elements = self.content_separate_elements.len();
@@ -490,7 +744,7 @@ enum ReportOrderName {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum Method {
+pub enum ReportRequestMethod {
     Get,
     Post,
 }
@@ -511,21 +765,19 @@ impl ReportHealthData {
     pub fn generate_msg(
         &self,
         report_config: &ReportConfig,
-        health_data: &SendHealthData,
+        health_report_type: &HealthReportType,
     ) -> String {
         match report_config {
-            ReportConfig::TgBot(_config) => {
-                return self.generate_tg_text(health_data)
-            },
-            ReportConfig::PushPlus(_config) => {
-                return self.generate_type_html(health_data)
-            },
+            ReportConfig::TgBot(_config) => return self.generate_tg_text(health_report_type),
+            ReportConfig::PushPlus(_config) => return self.generate_type_html(health_report_type),
             ReportConfig::Custom(_config) => {
                 return "".to_owned();
-            },
+            }
         };
     }
-    fn generate_tg_text(&self, health_data: &SendHealthData) -> String {
+    fn generate_tg_text(&self, health_report_type: &HealthReportType) -> String {
+        let (area_name, data_type) = health_report_type.incident_attr();
+        let color_char = health_report_type.status_color_char();
         return format!(
             "大陆 Playurl:              {}\n香港 Playurl:              {}\n台湾 Playurl:              {}\n泰区 Playurl:              {}\n大陆 Search:              {}\n香港 Search:              {}\n台湾 Search:              {}\n泰区 Search:              {}\n泰区 Season:              {}\n\n变动: {} {} -> {}",
             self.health_cn_playurl,
@@ -537,12 +789,14 @@ impl ReportHealthData {
             self.health_tw_search,
             self.health_th_search,
             self.health_th_season,
-            health_data.area_name(),
-            health_data.data_type,
-            health_data.health_type.to_color_char()
+            area_name,
+            data_type,
+            color_char
         );
     }
-    fn generate_type_html(&self, health_data: &SendHealthData) -> String {
+    fn generate_type_html(&self, health_report_type: &HealthReportType) -> String {
+        let (area_name, data_type) = health_report_type.incident_attr();
+        let color_char = health_report_type.status_color_char();
         return format!(
             "大陆 Playurl: {}<br>香港 Playurl: {}<br>台湾 Playurl: {}<br>泰区 Playurl: {}<br>大陆 Search: {}<br>香港 Search: {}<br>台湾 Search: {}<br>泰区 Search: {}<br>泰区 Season: {}<br>变动: {} {} -> {}",
             self.health_cn_playurl,
@@ -554,13 +808,16 @@ impl ReportHealthData {
             self.health_tw_search,
             self.health_th_search,
             self.health_th_season,
-            health_data.area_name(),
-            health_data.data_type,
-            health_data.health_type.to_color_char()
+            area_name,
+            data_type,
+            color_char
         );
     }
 }
 
+/*
+* the following is general types
+*/
 fn config_version() -> u16 {
     2
 }
@@ -616,6 +873,39 @@ fn default_u64() -> u64 {
     0
 }
 
+pub enum Area {
+    Cn,
+    Hk,
+    Tw,
+    Th,
+}
+
+impl Area {
+    pub fn new(area_num: u8) -> Self {
+        match area_num {
+            1 => Self::Cn,
+            2 => Self::Hk,
+            3 => Self::Tw,
+            4 => Self::Th,
+            _ => {
+                panic!("[Error] 不合法的area_num")
+            }
+        }
+    }
+
+    pub fn num(&self) -> u8 {
+        match self {
+            Area::Cn => 1,
+            Area::Hk => 2,
+            Area::Tw => 3,
+            Area::Th => 4,
+        }
+    }
+}
+
+/*
+* the following is user related struct & impl
+*/
 #[derive(Serialize, Deserialize, Clone)]
 pub struct UserCerinfo {
     pub uid: u64,
@@ -653,6 +943,15 @@ impl UserInfo {
         //     self.access_key, self.uid, self.vip_expire_time, self.expire_time
         // )
     }
+    pub fn user_is_vip(&self) -> bool {
+        let dt = chrono::Local::now();
+        let ts = dt.timestamp_millis() as u64;
+        if self.vip_expire_time > ts {
+            true
+        } else {
+            false
+        }
+    }
 }
 
 pub enum UserCerStatus {
@@ -660,16 +959,23 @@ pub enum UserCerStatus {
     White,
     Normal,
 }
+pub struct UserInfoDetail {
+    pub ip: String,
+    pub uid: u64,
+    pub access_key: String,
+    pub ua: String,
+    pub auth: UserCerinfo,
+}
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct ResignInfo {
+pub struct UserResignInfo {
     pub area_num: i32,
     pub access_key: String,
     pub refresh_token: String,
     pub expire_time: u64,
 }
 
-impl ResignInfo {
+impl UserResignInfo {
     pub fn to_json(&self) -> String {
         serde_json::to_string(&self).unwrap()
         // format!(
@@ -679,83 +985,122 @@ impl ResignInfo {
     }
 }
 
-pub enum SendData {
-    Playurl(SendPlayurlData),
-    Health(SendHealthData),
-}
-
-pub struct SendPlayurlData {
-    pub key: String,
-    pub url: String,
-    pub proxy_open: bool,
-    pub user_agent: String,
-    pub proxy_url: String,
+/*
+* the following is playurl related struct & impl
+*/
+pub struct PlayurlParamsStatic {
+    pub access_key: String,
+    pub app_key: String,
+    pub app_sec: String,
+    pub ep_id: String,
+    pub cid: String,
+    pub build: String,
+    pub device: String,
+    // extra info
     pub is_app: bool,
+    pub is_tv: bool,
+    pub is_th: bool,
+    pub is_vip: bool,
+    pub area: String,
     pub area_num: u8,
+    pub user_agent: String,
 }
-
-pub struct SendHealthData {
+// lessen usage of to_string() for better perf
+pub struct PlayurlParams<'playurl_params> {
+    pub access_key: &'playurl_params str,
+    pub app_key: &'playurl_params str,
+    pub app_sec: &'playurl_params str,
+    pub ep_id: &'playurl_params str,
+    pub cid: &'playurl_params str,
+    pub build: &'playurl_params str,
+    pub device: &'playurl_params str,
+    // extra info
+    pub is_app: bool,
+    pub is_tv: bool,
+    pub is_th: bool,
+    pub is_vip: bool,
+    pub area: &'playurl_params str,
     pub area_num: u8,
-    pub data_type: SesourceType,
-    pub health_type: HealthType,
+    pub user_agent: &'playurl_params str,
 }
 
-impl SendHealthData {
-    pub fn area_name(&self) -> String {
-        match self.area_num {
-            1 => "大陆".to_string(),
-            2 => "香港".to_string(),
-            3 => "台湾".to_string(),
-            4 => "泰区".to_string(),
-            _ => "[Error] 未预期的错误".to_string(),
+impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl> Default
+    for PlayurlParams<'playurl_params_impl>
+{
+    fn default() -> PlayurlParams<'playurl_params_impl> {
+        PlayurlParams {
+            access_key: "",
+            app_key: "1d8b6e7d45233436",
+            app_sec: "560c52ccd288fed045859ed18bffd973",
+            ep_id: "",
+            cid: "",
+            build: "6800300",
+            device: "android",
+            is_app: true,
+            is_tv: false,
+            is_th: false,
+            is_vip: false,
+            area: "hk",
+            area_num: 2,
+            user_agent: "Dalvik/2.1.0 (Linux; U; Android 12; PFEM10 Build/SKQ1.211019.001)",
         }
     }
 }
-
-pub enum SesourceType {
-    PlayUrl,
-    Search,
-    Season,
-    Token,
-}
-
-impl std::fmt::Display for SesourceType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SesourceType::PlayUrl => {
-                write!(f, "PlayUrl")
-            }
-            SesourceType::Search => {
-                write!(f, "Search")
-            }
-            SesourceType::Season => {
-                write!(f, "Season")
-            }
-            SesourceType::Token => {
-                write!(f, "Token")
+impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl>
+    PlayurlParams<'playurl_params_impl>
+{
+    fn ep_area_to_area_num(&mut self) {
+        match self.area {
+            "cn" => self.area_num = 1,
+            "hk" => self.area_num = 2,
+            "tw" => self.area_num = 3,
+            "th" => self.area_num = 4,
+            _ => {
+                self.area = "hk";
+                self.area_num = 2;
             }
         }
     }
-}
-
-pub enum HealthType {
-    Online,
-    Offline,
-    Unknown,
-    Closed,
-}
-
-impl HealthType {
-    pub fn to_color_char(&self) -> String {
-        match self {
-            HealthType::Online => return "🟢".to_string(),
-            HealthType::Offline => return "🔴".to_string(),
-            HealthType::Unknown => return "🟡".to_string(),
-            HealthType::Closed => return "🟤".to_string(),
+    pub fn appkey_to_sec(&mut self) -> Result<(), ()> {
+        if self.is_th {
+            self.app_key = "7d089525d3611b1c";
         }
+        self.app_sec = match self.app_key {
+            "9d5889cf67e615cd" => "8fd9bb32efea8cef801fd895bef2713d", // Ai4cCreatorAndroid
+            "1d8b6e7d45233436" => "560c52ccd288fed045859ed18bffd973", // Android
+            "07da50c9a0bf829f" => "25bdede4e1581c836cab73a48790ca6e", // AndroidB
+            "8d23902c1688a798" => "710f0212e62bd499b8d3ac6e1db9302a", // AndroidBiliThings
+            "dfca71928277209b" => "b5475a8825547a4fc26c7d518eaaa02e", // AndroidHD
+            "bb3101000e232e27" => "36efcfed79309338ced0380abd824ac1", // AndroidI
+            "4c6e1021617d40d9" => "e559a59044eb2701b7a8628c86aa12ae", // AndroidMallTicket
+            "c034e8b74130a886" => "e4e8966b1e71847dc4a3830f2d078523", // AndroidOttSdk
+            "4409e2ce8ffd12b8" => "59b43e04ad6965f34319062b478f83dd", // AndroidTV
+            "37207f2beaebf8d7" => "e988e794d4d4b6dd43bc0e89d6e90c43", // BiliLink
+            "9a75abf7de2d8947" => "35ca1c82be6c2c242ecc04d88c735f31", // BiliScan
+            "7d089525d3611b1c" => "acd495b248ec528c2eed1e862d393126", // BstarA
+            "178cf125136ca8ea" => "34381a26236dd1171185c0beb042e1c6", // AndroidB
+            "27eb53fc9058f8c3" => "c2ed53a74eeefe3cf99fbd01d8c9c375", // ios
+            "57263273bc6b67f6" => "a0488e488d1567960d3a765e8d129f90", // Android
+            "7d336ec01856996b" => "a1ce6983bc89e20a36c37f40c4f1a0dd", // AndroidB
+            "85eb6835b0a1034e" => "2ad42749773c441109bdc0191257a664", // unknown
+            "84956560bc028eb7" => "94aba54af9065f71de72f5508f1cd42e", // unknown
+            "8e16697a1b4f8121" => "f5dd03b752426f2e623d7badb28d190a", // AndroidI
+            "aae92bc66f3edfab" => "af125a0d5279fd576c1b4418a3e8276d", // PC	投稿工具
+            "ae57252b0c09105d" => "c75875c596a69eb55bd119e74b07cfe3", // AndroidI
+            "bca7e84c2d947ac6" => "60698ba2f68e01ce44738920a0ffe768", // login
+            "4ebafd7c4951b366" => "8cb98205e9b2ad3669aad0fce12a4c13", // iPhone
+            "iVGUTjsxvpLeuDCf" => "aHRmhWMLkdeMuILqORnYZocwMBpMEOdt", //Android	取流专用
+            "YvirImLGlLANCLvM" => "JNlZNgfNGKZEpaDTkCdPQVXntXhuiJEM", //ios	取流专用
+            //_ => Ok("560c52ccd288fed045859ed18bffd973"),
+            _ => return Err(()),
+        };
+        Ok(())
+    }
+    pub fn init_params(&mut self) {
+        self.ep_area_to_area_num();
+        self.appkey_to_sec().unwrap();
     }
 }
-
 pub enum PlayurlType {
     Thailand,
     ChinaApp,
@@ -763,39 +1108,278 @@ pub enum PlayurlType {
     ChinaTv,
 }
 
-pub enum GetEpAreaType {
-    NoEpData(String),                  //key
+/*
+* the following is search related struct & impl
+*/
+pub struct SearchParams<'search_params> {
+    pub access_key: &'search_params str,
+    pub app_key: &'search_params str,
+    pub app_sec: &'search_params str,
+    pub build: &'search_params str,
+    pub device: &'search_params str,
+    pub pn: &'search_params str,
+    pub ts: &'search_params str,
+    pub fnval: &'search_params str,
+    pub statistics: &'search_params str,
+    pub keyword: &'search_params str,
+    // extra info
+    pub is_app: bool,
+    pub is_tv: bool,
+    pub is_th: bool,
+    pub is_vip: bool,
+    pub area: &'search_params str,
+    pub area_num: i32,
+    pub user_agent: &'search_params str,
+    pub cookie: &'search_params str,
+}
+impl<'search_params: 'search_params_impl, 'search_params_impl> Default
+    for SearchParams<'search_params_impl>
+{
+    fn default() -> SearchParams<'search_params_impl> {
+        SearchParams {
+            access_key: "",
+            app_key: "1d8b6e7d45233436",
+            app_sec: "560c52ccd288fed045859ed18bffd973",
+            build: "6400000",
+            device: "android",
+            pn: "1",
+            ts: "",
+            fnval: "",
+            statistics: "",
+            keyword: "Bilibili",
+            is_app: true,
+            is_tv: false,
+            is_th: false,
+            is_vip: false,
+            area: "hk",
+            area_num: 2,
+            user_agent: "Dalvik/2.1.0 (Linux; U; Android 12; PFEM10 Build/SKQ1.211019.001)",
+            cookie: "",
+        }
+    }
+}
+impl<'search_params: 'search_params_impl, 'search_params_impl> SearchParams<'search_params_impl> {
+    fn ep_area_to_area_num(&mut self) {
+        match self.area {
+            "cn" => self.area_num = 1,
+            "hk" => self.area_num = 2,
+            "tw" => self.area_num = 3,
+            "th" => self.area_num = 4,
+            _ => {
+                self.area = "hk";
+                self.area_num = 2;
+            }
+        }
+    }
+    pub fn appkey_to_sec(&mut self) -> Result<(), ()> {
+        if self.is_th {
+            self.app_key = "7d089525d3611b1c";
+        }
+        self.app_sec = match self.app_key {
+            "9d5889cf67e615cd" => "8fd9bb32efea8cef801fd895bef2713d", // Ai4cCreatorAndroid
+            "1d8b6e7d45233436" => "560c52ccd288fed045859ed18bffd973", // Android
+            "07da50c9a0bf829f" => "25bdede4e1581c836cab73a48790ca6e", // AndroidB
+            "8d23902c1688a798" => "710f0212e62bd499b8d3ac6e1db9302a", // AndroidBiliThings
+            "dfca71928277209b" => "b5475a8825547a4fc26c7d518eaaa02e", // AndroidHD
+            "bb3101000e232e27" => "36efcfed79309338ced0380abd824ac1", // AndroidI
+            "4c6e1021617d40d9" => "e559a59044eb2701b7a8628c86aa12ae", // AndroidMallTicket
+            "c034e8b74130a886" => "e4e8966b1e71847dc4a3830f2d078523", // AndroidOttSdk
+            "4409e2ce8ffd12b8" => "59b43e04ad6965f34319062b478f83dd", // AndroidTV
+            "37207f2beaebf8d7" => "e988e794d4d4b6dd43bc0e89d6e90c43", // BiliLink
+            "9a75abf7de2d8947" => "35ca1c82be6c2c242ecc04d88c735f31", // BiliScan
+            "7d089525d3611b1c" => "acd495b248ec528c2eed1e862d393126", // BstarA
+            "178cf125136ca8ea" => "34381a26236dd1171185c0beb042e1c6", // AndroidB
+            "27eb53fc9058f8c3" => "c2ed53a74eeefe3cf99fbd01d8c9c375", // ios
+            "57263273bc6b67f6" => "a0488e488d1567960d3a765e8d129f90", // Android
+            "7d336ec01856996b" => "a1ce6983bc89e20a36c37f40c4f1a0dd", // AndroidB
+            "85eb6835b0a1034e" => "2ad42749773c441109bdc0191257a664", // unknown
+            "84956560bc028eb7" => "94aba54af9065f71de72f5508f1cd42e", // unknown
+            "8e16697a1b4f8121" => "f5dd03b752426f2e623d7badb28d190a", // AndroidI
+            "aae92bc66f3edfab" => "af125a0d5279fd576c1b4418a3e8276d", // PC	投稿工具
+            "ae57252b0c09105d" => "c75875c596a69eb55bd119e74b07cfe3", // AndroidI
+            "bca7e84c2d947ac6" => "60698ba2f68e01ce44738920a0ffe768", // login
+            "4ebafd7c4951b366" => "8cb98205e9b2ad3669aad0fce12a4c13", // iPhone
+            "iVGUTjsxvpLeuDCf" => "aHRmhWMLkdeMuILqORnYZocwMBpMEOdt", //Android	取流专用
+            "YvirImLGlLANCLvM" => "JNlZNgfNGKZEpaDTkCdPQVXntXhuiJEM", //ios	取流专用
+            //_ => Ok("560c52ccd288fed045859ed18bffd973"),
+            _ => return Err(()),
+        };
+        Ok(())
+    }
+    pub fn init_params(&mut self) {
+        self.ep_area_to_area_num();
+        self.appkey_to_sec().unwrap();
+    }
+}
+
+/*
+* the following is anime info related struct & impl
+*/
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SeasonInfo {
+    pub title: String,
+    pub newest_ep: u64,
+    pub ep_id_map: HashMap<u64, u64>,
+}
+impl SeasonInfo {
+    pub fn init(
+        title: String,
+        newest_ep: u64,
+        ep_id_vec: Vec<(u64, u64)>,
+    ) -> Result<SeasonInfo, ()> {
+        // let newest_ep = if let newest_ep_u64 = newest_ep.parse::<u64>().unwrap() {
+        //     newest_ep_u64
+        // } else {
+        //     return Err(())
+        // };
+        let season_info: SeasonInfo = SeasonInfo {
+            title,
+            newest_ep,
+            ep_id_map: ep_id_vec.into_iter().collect(),
+        };
+        Ok(season_info)
+    }
+    pub fn serialize(&self) -> String {
+        return serde_json::to_string(&self).unwrap();
+    }
+    pub fn deserialize(season_info: &str) -> SeasonInfo {
+        return serde_json::from_str(season_info).unwrap();
+    }
+    pub fn get_newest_ep(&self) -> String {
+        return self.newest_ep.to_string();
+    }
+}
+pub struct EpInfo {
+    pub need_vip: String,
+    pub is_finish: bool,
+    pub series_title: String,
+    pub season_id: String,
+    pub season_info: SeasonInfo,
+}
+
+pub enum EpAreaCacheType {
+    NoEpData,                  //key
     NoCurrentAreaData(String, String), //key value
     OnlyHasCurrentAreaData(bool),
     Available(Area),
 }
 
-pub enum Area {
-    Cn,
-    Hk,
-    Tw,
-    Th,
+/*
+* the following is log related struct & impl
+*/
+pub struct LogPlayUrl {
+    pub ts: i64,
+    pub ip: String,
+    pub uid: u64,
+    pub access_key: String,
+    pub season_id: u32,
+    pub ep_id: u32,
+    pub area_num: u8,
+}
+pub struct LogSearch {
+    pub ts: i64,
+    pub ip: String,
+    pub uid: u64,
+    pub access_key: String,
+    pub keywords: String,
+    pub area_num: u8,
+}
+pub struct LogAreaAvailable {
+    pub ts: i64,
+    pub area_num: u8,
+    pub error_code: i32,
+    // {"code":0,"message":"0","ttl":1,"data":{"addr":"","country":"","province":"","isp":"","latitude":0,"longitude":0,"zone_id":0,"country_code":0}}
+    pub health_check_code: i8,
+    pub health_check_content: String,
+}
+pub struct LogAccess {
+    pub ts: i64,
+    pub ip: String,
+    pub uid: u64,
+    pub access_key: String,
+    pub content: String,
+}
+pub struct Log {
+    pub access_count: u64,
+    // uid -> total access count
+    pub access_uid_log: HashMap<u64, u64>,
+    // ep_id -> ep access count
+    pub access_playurl_log: HashMap<u64, String>,
+    // keyword -> keyword search count
+    pub access_search_log: HashMap<String, u64>,
+    // ip -> invalid req details vec
+    pub access_invaid_log: HashMap<String, u64>,
+    pub area_health_log: HashMap<u8, bool>,
+    pub ep_health_log: HashMap<u8, bool>,
 }
 
-impl Area {
-    pub fn new(area_num: u8) -> Self {
-        match area_num {
-            1 => Self::Cn,
-            2 => Self::Hk,
-            3 => Self::Tw,
-            4 => Self::Th,
-            _ => {
-                panic!("[Error] 不合法的area_num")
-            }
-        }
-    }
+// pub enum ServerError {
+//     ServerNetworkError,
+//     ServerBlacklistServerError,
+//     UserIsBlacklisted(UserIsBlacklistedExpiredTime),
+//     UserIsNotLogined,
+//     ServerOtherError(ServerOtherErrorContent),
+//     UserOtherError(UserOtherErrorContent),
+// }
+// pub struct ServerNetworkErrorHealth {
+//     cn_playurl_proxy: String,
+//     cn_playurl_proxy_available: bool,
+//     hk_playurl_proxy: String,
+//     hk_playurl_proxy_available: bool,
+//     tw_playurl_proxy: String,
+//     tw_playurl_proxy_available: bool,
+//     th_playurl_proxy: String,
+//     th_playurl_proxy_available: bool,
+//     cn_playurl_backup_proxy: String,
+//     cn_playurl_proxy_backup_available: bool,
+//     hk_playurl_backup_proxy: String,
+//     hk_playurl_proxy_backup_available: bool,
+//     tw_playurl_backup_proxy: String,
+//     tw_playurl_proxy_backup_available: bool,
+//     th_playurl_backup_proxy: String,
+//     th_playurl_proxy_backup_available: bool,
+// }
+// pub struct ServerNetworkErrorHealthArea {
+//     playurl_proxy: String,
+//     playurl_proxy_available: bool,
+//     playurl_backup_proxy: String,
+//     playurl_proxy_backup_available: bool,
+// }
+// pub struct UserIsBlacklistedExpiredTime {
+//     status_expired_time: i32,
+// }
+// pub struct ServerOtherErrorContent {
+//     content: String,
+// }
+// pub struct UserOtherErrorContent {
+//     content: String,
+// }
+// impl ServerError {
+//     pub fn generate_tip(&self) -> String {
+//         match self {
+//             ServerError::ServerNetworkError => {
+//                 r#"{"code":-500, "message": "服务器内部错误"}"#.to_string()
+//             }
+//             ServerError::ServerBlacklistServerError => {
+//                 r#"{"code":-500, "message": "服务器内部错误"}"#.to_string()
+//             }
+//             ServerError::UserIsBlacklisted(value) => {
+//                 // ready for adding
+//                 r#"{"code":-10403, "message": "您当前没有权限访问"}"#.to_string()
+//             }
+//             ServerError::UserIsNotLogined => {
+//                 r#"{"code":-101, "message": "用户未登录"}"#.to_string()
+//             }
+//             ServerError::ServerOtherError(value) => {
+//                 r#"{"code":-500, "message": "服务器内部错误"}"#.to_string()
+//             }
+//             ServerError::UserOtherError(value) => {
+//                 r#"{"code":-500, "message": "服务器内部错误"}"#.to_string()
+//             }
+//         }
+//     }
+// }
 
-    pub fn num(&self) -> u8 {
-        match self {
-            Area::Cn => 1,
-            Area::Hk => 2,
-            Area::Tw => 3,
-            Area::Th => 4,
-        }
-    }
-}
+// impl ServerNetworkErrorHealth {
+//     pub fn generate_report() {}
+// }

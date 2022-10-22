@@ -3,15 +3,15 @@ use actix_governor::{Governor, GovernorConfigBuilder};
 use actix_web::http::header::ContentType;
 use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use async_channel::{Receiver, Sender};
+use biliroaming_rust_server::mods::background_tasks::*;
 use biliroaming_rust_server::mods::config::load_biliconfig;
-use biliroaming_rust_server::mods::get_bili_res::{
-    errorurl_reg, get_playurl_background, get_search, get_season, get_subtitle_th,
+use biliroaming_rust_server::mods::handler::{
+    errorurl_reg, get_season, get_subtitle_th, handle_playurl_request, handle_search_request,
 };
 use biliroaming_rust_server::mods::pub_api::get_api_accesskey;
-use biliroaming_rust_server::mods::push::send_report;
 use biliroaming_rust_server::mods::rate_limit::BiliUserToken;
-use biliroaming_rust_server::mods::tools::{redir_playurl_request, update_server};
-use biliroaming_rust_server::mods::types::{BiliConfig, SendData};
+use biliroaming_rust_server::mods::tools::update_server;
+use biliroaming_rust_server::mods::types::{BackgroundTaskType, BiliConfig};
 use deadpool_redis::{Config, Pool, Runtime};
 use futures::join;
 use std::fs;
@@ -48,12 +48,12 @@ async fn web_default(req: HttpRequest) -> impl Responder {
             .body("{\"code\":-404,\"message\":\"请检查填入的服务器地址是否有效\"}");
     };
     match res_type {
-        1 => redir_playurl_request(&req, true, false).await,
-        2 => redir_playurl_request(&req, false, false).await,
-        3 => redir_playurl_request(&req, true, true).await,
-        4 => get_search(&req, true, false).await,
-        5 => get_search(&req, false, false).await,
-        6 => get_search(&req, true, true).await,
+        1 => handle_playurl_request(&req, true, false).await,
+        2 => handle_playurl_request(&req, false, false).await,
+        3 => handle_playurl_request(&req, true, true).await,
+        4 => handle_search_request(&req, true, false).await,
+        5 => handle_search_request(&req, false, false).await,
+        6 => handle_search_request(&req, true, true).await,
         7 => get_season(&req, true, true).await,
         8 => get_subtitle_th(&req, false, true).await,
         _ => {
@@ -72,7 +72,7 @@ async fn web_default(req: HttpRequest) -> impl Responder {
 #[get("/donate")]
 async fn donate(req: HttpRequest) -> impl Responder {
     let (_, config, _) = req
-        .app_data::<(Pool, BiliConfig, Arc<Sender<SendData>>)>()
+        .app_data::<(Pool, BiliConfig, Arc<Sender<BackgroundTaskType>>)>()
         .unwrap();
     return HttpResponse::Found()
         .insert_header(("Location", &config.donate_url[..]))
@@ -81,32 +81,32 @@ async fn donate(req: HttpRequest) -> impl Responder {
 
 #[get("/pgc/player/api/playurl")]
 async fn zhplayurl_app(req: HttpRequest) -> impl Responder {
-    redir_playurl_request(&req, true, false).await
+    handle_playurl_request(&req, true, false).await
 }
 
 #[get("/pgc/player/web/playurl")]
 async fn zhplayurl_web(req: HttpRequest) -> impl Responder {
-    redir_playurl_request(&req, false, false).await
+    handle_playurl_request(&req, false, false).await
 }
 
 #[get("/intl/gateway/v2/ogv/playurl")]
 async fn thplayurl_app(req: HttpRequest) -> impl Responder {
-    redir_playurl_request(&req, true, true).await
+    handle_playurl_request(&req, true, true).await
 }
 
 #[get("/x/v2/search/type")]
 async fn zhsearch_app(req: HttpRequest) -> impl Responder {
-    get_search(&req, true, false).await
+    handle_search_request(&req, true, false).await
 }
 
 #[get("/x/web-interface/search/type")]
 async fn zhsearch_web(req: HttpRequest) -> impl Responder {
-    get_search(&req, false, false).await
+    handle_search_request(&req, false, false).await
 }
 
 #[get("/intl/gateway/v2/app/search/type")]
 async fn thsearch_app(req: HttpRequest) -> impl Responder {
-    get_search(&req, true, true).await //emmmm 油猴脚本也用的这个
+    handle_search_request(&req, true, true).await //emmmm 油猴脚本也用的这个
 }
 
 #[get("/intl/gateway/v2/ogv/view/app/season")]
@@ -149,7 +149,7 @@ fn main() -> std::io::Result<()> {
 
     //fs::write("config.example.yml", serde_yaml::to_string(&config).unwrap()).unwrap(); //Debug 方便生成示例配置
 
-    let mut anti_speedtest_cfg = config.clone();
+    let background_server_config = config.clone();
     let woker_num = config.woker_num;
     let port = config.port.clone();
 
@@ -157,29 +157,34 @@ fn main() -> std::io::Result<()> {
         update_server(config.auto_close.clone());
     }
 
-    let (s, r): (Sender<SendData>, Receiver<SendData>) = async_channel::bounded(120);
+    let (s, r): (Sender<BackgroundTaskType>, Receiver<BackgroundTaskType>) =
+        async_channel::bounded(120);
     let bilisender = Arc::new(s);
     // let bilisender_live = bilisender.clone();
-    let anti_speedtest_redis_cfg = Config::from_url(&config.redis);
-    let pool_background = anti_speedtest_redis_cfg
+    let background_redis_cfg = Config::from_url(&config.redis);
+    let background_redis_pool = background_redis_cfg
         .create_pool(Some(Runtime::Tokio1))
         .unwrap();
+    let mut report_config = background_server_config.report_config.clone();
+    if background_server_config.report_open {
+        match report_config.init() {
+            Ok(_) => (),
+            Err(value) => {
+                println!("{}", value);
+                // background_server_config.report_open = false;
+            }
+        }
+    }
     let web_background = async move {
         //a thread try to update cache
         // println!("[Debug] spawn web_background");
         // if bilisender_live.is_closed() {
         //     println!("[Error] channel was closed");
         // }
-        let mut report_config = anti_speedtest_cfg.report_config.clone();
-        if anti_speedtest_cfg.report_open {
-            match report_config.init() {
-                Ok(_) => (),
-                Err(value) => {
-                    println!("{}", value);
-                    anti_speedtest_cfg.report_open = false;
-                },
-            }
-        }
+        // // 热点路径大量使用.clone(), 大忌大忌, 关键是延长生命周期, but how
+        let background_server_config = Arc::new(background_server_config);
+        let background_redis_pool = Arc::new(background_redis_pool);
+        let report_config = Arc::new(report_config);
         loop {
             let receive_data = match r.recv().await {
                 Ok(it) => it,
@@ -189,22 +194,22 @@ fn main() -> std::io::Result<()> {
                 }
             };
             //println!("[Debug] r:{}",r.len());
-            match receive_data {
-                SendData::Playurl(value) => {
-                    match get_playurl_background(&pool_background, &value, &anti_speedtest_cfg)
-                        .await
-                    {
-                        Ok(_) => (),
-                        Err(value) => println!("{value}"),
-                    };
-                }
-                SendData::Health(value) => {
-                    if let Err(_) = send_report(&pool_background, &report_config, &value).await
-                    {
-                        println!("[Error] failed to send health report");
-                    }
-                }
-            }
+            let background_server_config = Arc::clone(&background_server_config);
+            let background_redis_pool = Arc::clone(&background_redis_pool);
+            let report_config = Arc::clone(&report_config);
+            tokio::spawn(async move {
+                match background_task_run(
+                    receive_data,
+                    background_server_config,
+                    report_config,
+                    background_redis_pool,
+                )
+                .await
+                {
+                    Ok(_) => (),
+                    Err(value) => println!("{value}"),
+                };
+            });
         }
         //println!("[Debug] exit web_background");
     };

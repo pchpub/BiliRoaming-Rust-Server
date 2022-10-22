@@ -22,6 +22,10 @@
     + resign_info 11
     + api 12
     + health 13 eg. 0141301 = playurl th health ver.1
+      + health_check_used_access_key: a1301
     + ep_area 14
+    + ep_info 15
+      + ep_need_vip 01 eg. e23333150101 ep_id = 23333 need_vip ver.1
+      + ep_season_id 02 eg. e23333150201 ep_id = 23333 season_id ver.1
 + 版本 ：用于处理版本更新后导致的格式变更
     + now 01

@@ -1,5 +1,5 @@
-use super::get_bili_res::get_resign_accesskey;
-use super::types::{BiliConfig, SendData};
+use super::handler::get_resign_accesskey;
+use super::types::{BiliConfig, BackgroundTaskType};
 use actix_web::http::header::ContentType;
 use actix_web::{HttpRequest, HttpResponse};
 use async_channel::Sender;
@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 pub async fn get_api_accesskey(req: &HttpRequest) -> HttpResponse {
     let (pool, config, _bilisender) = req
-        .app_data::<(Pool, BiliConfig, Arc<Sender<SendData>>)>()
+        .app_data::<(Pool, BiliConfig, Arc<Sender<BackgroundTaskType>>)>()
         .unwrap();
     let query_string = req.query_string();
     let query = QString::from(query_string);
