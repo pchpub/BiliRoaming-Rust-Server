@@ -294,64 +294,64 @@ pub async fn get_upstream_bili_playurl(
         Err(_) => return Err("{\"code\":-404,\"message\":\"获取播放地址失败喵\"}".to_string()),
     };
     let mut body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
-    let mut code = body_data_json["code"].as_i64().unwrap().clone();
+    let code = body_data_json["code"].as_i64().unwrap().clone();
     remove_parameters_playurl(&playurl_type, &mut body_data_json).unwrap_or_default();
 
-    let backup_policy = match params.area_num {
-        1 => &config.cn_proxy_playurl_backup_policy,
-        2 => &config.hk_proxy_playurl_backup_policy,
-        3 => &config.tw_proxy_playurl_backup_policy,
-        4 => &config.th_proxy_playurl_backup_policy,
-        _ => &false,
-    };
+    // let backup_policy = match params.area_num {
+    //     1 => &config.cn_proxy_playurl_backup_policy,
+    //     2 => &config.hk_proxy_playurl_backup_policy,
+    //     3 => &config.tw_proxy_playurl_backup_policy,
+    //     4 => &config.th_proxy_playurl_backup_policy,
+    //     _ => &false,
+    // };
     // TODO: 优化错误码处理, 即利用health_check机制
-    if code == -10500 as i64 && *backup_policy {
-        let api = match params.is_app {
-            true => match params.area_num {
-                1 => &config.cn_app_playurl_backup_api,
-                2 => &config.hk_app_playurl_backup_api,
-                3 => &config.tw_app_playurl_backup_api,
-                4 => &config.th_app_playurl_backup_api,
-                _ => &config.tw_app_playurl_backup_api,
-            },
-            false => match params.area_num {
-                1 => &config.cn_web_playurl_backup_api,
-                2 => &config.hk_web_playurl_backup_api,
-                3 => &config.tw_web_playurl_backup_api,
-                4 => &config.th_web_playurl_backup_api,
-                _ => &config.tw_web_playurl_backup_api,
-            },
-        };
-        let proxy_open = match params.area_num {
-            1 => &config.cn_proxy_playurl_backup_open,
-            2 => &config.hk_proxy_playurl_backup_open,
-            3 => &config.tw_proxy_playurl_backup_open,
-            4 => &config.th_proxy_playurl_backup_open,
-            _ => &config.tw_proxy_playurl_backup_open,
-        };
-        let proxy_url = match params.area_num {
-            1 => &config.cn_proxy_playurl_backup_url,
-            2 => &config.hk_proxy_playurl_backup_url,
-            3 => &config.tw_proxy_playurl_backup_url,
-            4 => &config.th_proxy_playurl_backup_url,
-            _ => &config.tw_proxy_playurl_backup_url,
-        };
-        body_data = match async_getwebpage(
-            &format!("{api}?{signed_url}"),
-            proxy_open,
-            proxy_url,
-            params.user_agent,
-            "",
-        )
-        .await
-        {
-            Ok(data) => data,
-            Err(_) => return Err("{\"code\":-404,\"message\":\"获取播放地址失败喵\"}".to_string()),
-        };
-        body_data_json = serde_json::from_str(&body_data).unwrap();
-        // code = body_data_json["code"].as_i64().unwrap();
-    }
-    code = body_data_json["code"].as_i64().unwrap_or(-233);
+    // if code == -10500 as i64 && *backup_policy {
+    //     let api = match params.is_app {
+    //         true => match params.area_num {
+    //             1 => &config.cn_app_playurl_backup_api,
+    //             2 => &config.hk_app_playurl_backup_api,
+    //             3 => &config.tw_app_playurl_backup_api,
+    //             4 => &config.th_app_playurl_backup_api,
+    //             _ => &config.tw_app_playurl_backup_api,
+    //         },
+    //         false => match params.area_num {
+    //             1 => &config.cn_web_playurl_backup_api,
+    //             2 => &config.hk_web_playurl_backup_api,
+    //             3 => &config.tw_web_playurl_backup_api,
+    //             4 => &config.th_web_playurl_backup_api,
+    //             _ => &config.tw_web_playurl_backup_api,
+    //         },
+    //     };
+    //     let proxy_open = match params.area_num {
+    //         1 => &config.cn_proxy_playurl_backup_open,
+    //         2 => &config.hk_proxy_playurl_backup_open,
+    //         3 => &config.tw_proxy_playurl_backup_open,
+    //         4 => &config.th_proxy_playurl_backup_open,
+    //         _ => &config.tw_proxy_playurl_backup_open,
+    //     };
+    //     let proxy_url = match params.area_num {
+    //         1 => &config.cn_proxy_playurl_backup_url,
+    //         2 => &config.hk_proxy_playurl_backup_url,
+    //         3 => &config.tw_proxy_playurl_backup_url,
+    //         4 => &config.th_proxy_playurl_backup_url,
+    //         _ => &config.tw_proxy_playurl_backup_url,
+    //     };
+    //     body_data = match async_getwebpage(
+    //         &format!("{api}?{signed_url}"),
+    //         proxy_open,
+    //         proxy_url,
+    //         params.user_agent,
+    //         "",
+    //     )
+    //     .await
+    //     {
+    //         Ok(data) => data,
+    //         Err(_) => return Err("{\"code\":-404,\"message\":\"获取播放地址失败喵\"}".to_string()),
+    //     };
+    //     body_data_json = serde_json::from_str(&body_data).unwrap();
+    //     // code = body_data_json["code"].as_i64().unwrap();
+    // }
+    // code = body_data_json["code"].as_i64().unwrap_or(-233);
     //TODO: update user's vip status if cached non-vip user successfully get vip's ep
     if !params.is_vip {
         if let Ok(value) = check_playurl_need_vip(playurl_type, &body_data_json) {

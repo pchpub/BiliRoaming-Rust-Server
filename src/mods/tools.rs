@@ -32,12 +32,16 @@ pub fn check_playurl_need_vip(
                 match data["code"].as_i64().unwrap_or(2) {
                     1 => {
                         return Ok(true);
-                    },
+                    }
                     0 => {
                         return Ok(false);
-                    },
+                    }
                     value => {
-                        println!("[Debug] New vip_status Found: {} data: {}",value,serde_json::to_string_pretty(data).unwrap_or_default());
+                        println!(
+                            "[Debug] New vip_status Found: {} data: {}",
+                            value,
+                            serde_json::to_string_pretty(data).unwrap_or_default()
+                        );
                         return Err(());
                     }
                 }
@@ -205,8 +209,12 @@ pub fn resp_error(error_type: ErrorType) -> HttpResponse {
             format!("{{\"code\":-10403,\"message\":\"{tips}\"}}")
         }
         ErrorType::UserNonVIPError => format!("{{\"code\":-10403,\"message\":\"大会员专享限制\"}}"),
-        ErrorType::UserNotLoginedError => format!("{{\"code\":-101,\"message\":\"账号未登录\",\"ttl\":1}}"),
-        ErrorType::OtherError((err_code, err_msg)) => format!("{{\"code\":{err_code},\"message\":\"{err_msg}\"}}"),
+        ErrorType::UserNotLoginedError => {
+            format!("{{\"code\":-101,\"message\":\"账号未登录\",\"ttl\":1}}")
+        }
+        ErrorType::OtherError((err_code, err_msg)) => {
+            format!("{{\"code\":{err_code},\"message\":\"{err_msg}\"}}")
+        }
     };
     return HttpResponse::Ok()
         .content_type(ContentType::json())
