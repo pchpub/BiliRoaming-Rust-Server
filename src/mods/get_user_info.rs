@@ -15,7 +15,6 @@ pub async fn getuser_list(
     config: &BiliConfig,
     force_update: bool,
 ) -> Result<UserInfo, String> {
-    
     let info: String = match (redis_get(&redis, &format!("{access_key}20501")).await,force_update) {
         (Some(value),false) => value,
         _ => {

@@ -98,25 +98,6 @@ pub async fn get_playurl(
         );
     }
 
-    // let area = match query.get("area") {
-    //     Option::Some(area) => area,
-    //     _ => {
-    //         if is_th {
-    //             "th"
-    //         } else {
-    //             "hk"
-    //         }
-    //     }
-    // };
-
-    // let area_num: u8 = match area {
-    //     "cn" => 1,
-    //     "hk" => 2,
-    //     "tw" => 3,
-    //     "th" => 4,
-    //     _ => 2,
-    // };
-
     let ep_id = match query.get("ep_id") {
         Option::Some(key) => Some(key),
         _ => None,
@@ -237,34 +218,6 @@ pub async fn get_playurl(
         ),
     };
 
-    //查询数据+地区（1位）+类型（2位）+版本（2位）
-    //查询数据 a asscesskey
-    //        e epid
-    //        c cid
-    //        v is_vip
-    //        t is_tv
-    //地区 cn 1
-    //     hk 2
-    //     tw 3
-    //     th 4
-    //     default 2
-    //类型 app playurl 01
-    //     app search 02
-    //     app subtitle 03
-    //     app season 04
-    //     user_info 05
-    //     user_cerinfo 06
-    //     web playurl 07
-    //     web search 08
-    //     web subtitle 09
-    //     web season 10
-    //     resign_info 11
-    //     api 12
-    //     health 13 eg. 0141301 = playurl th health ver.1
-    //     ep_area 14
-    //版本 ：用于处理版本更新后导致的格式变更
-    //     now 01
-
     let is_expire: bool;
     let need_flash: bool;
     let mut redis_get_data = String::new();
@@ -377,7 +330,7 @@ pub async fn get_playurl(
         };
         if is_expire {
             let need_change_vip_status: bool; // 标记是否需要将is_vip变成1
-            let mut body_data = match async_getwebpage(
+            let body_data = match async_getwebpage(
                 &format!("{api}?{signed_url}"),
                 proxy_open,
                 proxy_url,
@@ -473,103 +426,103 @@ pub async fn get_playurl(
                 }
             }
             
-            let mut code = body_data_json["code"].as_i64().unwrap().clone();
-            let backup_policy = match area_num {
-                1 => &config.cn_proxy_playurl_backup_policy,
-                2 => &config.hk_proxy_playurl_backup_policy,
-                3 => &config.tw_proxy_playurl_backup_policy,
-                4 => &config.th_proxy_playurl_backup_policy,
-                _ => &false,
-            };
-            if code == -10500 as i64 && *backup_policy {
-                let api = match is_app {
-                    true => match area_num {
-                        1 => &config.cn_app_playurl_backup_api,
-                        2 => &config.hk_app_playurl_backup_api,
-                        3 => &config.tw_app_playurl_backup_api,
-                        4 => &config.th_app_playurl_backup_api,
-                        _ => &config.tw_app_playurl_backup_api,
-                    },
-                    false => match area_num {
-                        1 => &config.cn_web_playurl_backup_api,
-                        2 => &config.hk_web_playurl_backup_api,
-                        3 => &config.tw_web_playurl_backup_api,
-                        4 => &config.th_web_playurl_backup_api,
-                        _ => &config.tw_web_playurl_backup_api,
-                    },
-                };
-                let proxy_open = match area_num {
-                    1 => &config.cn_proxy_playurl_backup_open,
-                    2 => &config.hk_proxy_playurl_backup_open,
-                    3 => &config.tw_proxy_playurl_backup_open,
-                    4 => &config.th_proxy_playurl_backup_open,
-                    _ => &config.tw_proxy_playurl_backup_open,
-                };
-                let proxy_url = match area_num {
-                    1 => &config.cn_proxy_playurl_backup_url,
-                    2 => &config.hk_proxy_playurl_backup_url,
-                    3 => &config.tw_proxy_playurl_backup_url,
-                    4 => &config.th_proxy_playurl_backup_url,
-                    _ => &config.tw_proxy_playurl_backup_url,
-                };
-                body_data = match async_getwebpage(
-                    &format!("{api}?{signed_url}"),
-                    proxy_open,
-                    proxy_url,
-                    &user_agent,
-                    "",
-                )
-                .await
-                {
-                    Ok(data) => data,
-                    Err(_) => {
-                        if config.report_open {
-                            let num = redis_get(&pool, &format!("01{}1301", area_num))
-                                .await
-                                .unwrap_or("0".to_string())
-                                .as_str()
-                                .parse::<u32>()
-                                .unwrap();
-                            if num == 4 {
-                                redis_set(&pool, &format!("01{}1301", area_num), "1", 0)
-                                    .await
-                                    .unwrap_or_default();
-                                let senddata = SendData::Health(SendHealthData {
-                                    area_num,
-                                    data_type: SesourceType::PlayUrl,
-                                    health_type: HealthType::Offline,
-                                });
-                                tokio::spawn(async move {
-                                    //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
-                                    match bilisender_cl.try_send(senddata) {
-                                        Ok(_) => (),
-                                        Err(TrySendError::Full(_)) => {
-                                            println!("[Error] channel is full");
-                                        }
-                                        Err(TrySendError::Closed(_)) => {
-                                            println!("[Error] channel is closed");
-                                        }
-                                    };
-                                });
-                            } else {
-                                redis_set(
-                                    &pool,
-                                    &format!("01{}1301", area_num),
-                                    &(num + 1).to_string(),
-                                    0,
-                                )
-                                .await
-                                .unwrap_or_default();
-                            }
-                        }
-                        return Err(
-                            "{\"code\":7404,\"message\":\"获取播放地址失败喵\"}".to_string()
-                        );
-                    }
-                };
-                let body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
-                code = body_data_json["code"].as_i64().unwrap();
-            }
+            let code = body_data_json["code"].as_i64().unwrap().clone();
+            // let backup_policy = match area_num {
+            //     1 => &config.cn_proxy_playurl_backup_policy,
+            //     2 => &config.hk_proxy_playurl_backup_policy,
+            //     3 => &config.tw_proxy_playurl_backup_policy,
+            //     4 => &config.th_proxy_playurl_backup_policy,
+            //     _ => &false,
+            // };
+            // if code == -10500 as i64 && *backup_policy {
+            //     let api = match is_app {
+            //         true => match area_num {
+            //             1 => &config.cn_app_playurl_backup_api,
+            //             2 => &config.hk_app_playurl_backup_api,
+            //             3 => &config.tw_app_playurl_backup_api,
+            //             4 => &config.th_app_playurl_backup_api,
+            //             _ => &config.tw_app_playurl_backup_api,
+            //         },
+            //         false => match area_num {
+            //             1 => &config.cn_web_playurl_backup_api,
+            //             2 => &config.hk_web_playurl_backup_api,
+            //             3 => &config.tw_web_playurl_backup_api,
+            //             4 => &config.th_web_playurl_backup_api,
+            //             _ => &config.tw_web_playurl_backup_api,
+            //         },
+            //     };
+            //     let proxy_open = match area_num {
+            //         1 => &config.cn_proxy_playurl_backup_open,
+            //         2 => &config.hk_proxy_playurl_backup_open,
+            //         3 => &config.tw_proxy_playurl_backup_open,
+            //         4 => &config.th_proxy_playurl_backup_open,
+            //         _ => &config.tw_proxy_playurl_backup_open,
+            //     };
+            //     let proxy_url = match area_num {
+            //         1 => &config.cn_proxy_playurl_backup_url,
+            //         2 => &config.hk_proxy_playurl_backup_url,
+            //         3 => &config.tw_proxy_playurl_backup_url,
+            //         4 => &config.th_proxy_playurl_backup_url,
+            //         _ => &config.tw_proxy_playurl_backup_url,
+            //     };
+            //     body_data = match async_getwebpage(
+            //         &format!("{api}?{signed_url}"),
+            //         proxy_open,
+            //         proxy_url,
+            //         &user_agent,
+            //         "",
+            //     )
+            //     .await
+            //     {
+            //         Ok(data) => data,
+            //         Err(_) => {
+            //             if config.report_open {
+            //                 let num = redis_get(&pool, &format!("01{}1301", area_num))
+            //                     .await
+            //                     .unwrap_or("0".to_string())
+            //                     .as_str()
+            //                     .parse::<u32>()
+            //                     .unwrap();
+            //                 if num == 4 {
+            //                     redis_set(&pool, &format!("01{}1301", area_num), "1", 0)
+            //                         .await
+            //                         .unwrap_or_default();
+            //                     let senddata = SendData::Health(SendHealthData {
+            //                         area_num,
+            //                         data_type: SesourceType::PlayUrl,
+            //                         health_type: HealthType::Offline,
+            //                     });
+            //                     tokio::spawn(async move {
+            //                         //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+            //                         match bilisender_cl.try_send(senddata) {
+            //                             Ok(_) => (),
+            //                             Err(TrySendError::Full(_)) => {
+            //                                 println!("[Error] channel is full");
+            //                             }
+            //                             Err(TrySendError::Closed(_)) => {
+            //                                 println!("[Error] channel is closed");
+            //                             }
+            //                         };
+            //                     });
+            //                 } else {
+            //                     redis_set(
+            //                         &pool,
+            //                         &format!("01{}1301", area_num),
+            //                         &(num + 1).to_string(),
+            //                         0,
+            //                     )
+            //                     .await
+            //                     .unwrap_or_default();
+            //                 }
+            //             }
+            //             return Err(
+            //                 "{\"code\":7404,\"message\":\"获取播放地址失败喵\"}".to_string()
+            //             );
+            //         }
+            //     };
+            //     let body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
+            //     code = body_data_json["code"].as_i64().unwrap();
+            // }
             let playurl_type: PlayurlType;
             if is_th {
                 playurl_type = PlayurlType::Thailand;
