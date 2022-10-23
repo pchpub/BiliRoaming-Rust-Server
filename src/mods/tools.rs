@@ -35,7 +35,20 @@ pub fn check_playurl_need_vip(
                         return Ok(true);
                     }
                 }
-                return Ok(false);
+                // return Ok(false);
+                // try to get vip status from "vip_status" while "need_vip" was not found
+                match data["code"].as_i64().unwrap_or(2) {
+                    1 => {
+                        return Ok(true);
+                    },
+                    0 => {
+                        return Ok(false);
+                    },
+                    value => {
+                        println!("[Debug] New vip_status Found: {} data: {}",value,serde_json::to_string_pretty(data).unwrap_or_default());
+                        return Err(());
+                    }
+                }
             } else {
                 return Err(());
             }

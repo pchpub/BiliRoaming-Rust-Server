@@ -225,7 +225,7 @@ pub async fn redis_get(redis: &Pool, key: &str) -> Option<String> {
 }
 
 pub async fn redis_set(redis: &Pool, key: &str, value: &str, expire_time: u64) -> Option<()> {
-    println!("key:{} value:{}", key,value);
+    // println!("key:{} value:{}", key,value);
     let mut conn = redis.get().await.unwrap();
     if expire_time != 0 {
         match cmd("SETEX")

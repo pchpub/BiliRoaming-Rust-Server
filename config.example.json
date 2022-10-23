@@ -16,14 +16,6 @@
   "tw_web_playurl_api": "https://api.bilibili.com/pgc/player/web/playurl",
   "hk_web_playurl_api": "https://api.bilibili.com/pgc/player/web/playurl",
   "th_web_playurl_api": "https://app.biliintl.com/intl/gateway/v2/ogv/playurl",
-  "cn_app_playurl_backup_api": "https://api.bilibili.com/pgc/player/api/playurl",
-  "tw_app_playurl_backup_api": "https://api.bilibili.com/pgc/player/api/playurl",
-  "hk_app_playurl_backup_api": "https://api.bilibili.com/pgc/player/api/playurl",
-  "th_app_playurl_backup_api": "https://app.biliintl.com/intl/gateway/v2/ogv/playurl",
-  "cn_web_playurl_backup_api": "https://api.bilibili.com/pgc/player/web/playurl",
-  "tw_web_playurl_backup_api": "https://api.bilibili.com/pgc/player/web/playurl",
-  "hk_web_playurl_backup_api": "https://api.bilibili.com/pgc/player/web/playurl",
-  "th_web_playurl_backup_api": "https://app.biliintl.com/intl/gateway/v2/ogv/playurl",
   "cn_app_search_api": "https://app.bilibili.com/x/v2/search/type",
   "tw_app_search_api": "https://app.bilibili.com/x/v2/search/type",
   "hk_app_search_api": "https://app.bilibili.com/x/v2/search/type",
@@ -44,18 +36,6 @@
   "hk_proxy_playurl_open": false,
   "tw_proxy_playurl_open": false,
   "th_proxy_playurl_open": false,
-  "cn_proxy_playurl_backup_policy": false,
-  "hk_proxy_playurl_backup_policy": false,
-  "tw_proxy_playurl_backup_policy": false,
-  "th_proxy_playurl_backup_policy": false,
-  "cn_proxy_playurl_backup_url": "127.0.0.1:7890",
-  "hk_proxy_playurl_backup_url": "127.0.0.1:7890",
-  "tw_proxy_playurl_backup_url": "127.0.0.1:7890",
-  "th_proxy_playurl_backup_url": "127.0.0.1:7890",
-  "cn_proxy_playurl_backup_open": false,
-  "hk_proxy_playurl_backup_open": false,
-  "tw_proxy_playurl_backup_open": false,
-  "th_proxy_playurl_backup_open": false,
   "cn_proxy_search_url": "127.0.0.1:7890",
   "hk_proxy_search_url": "127.0.0.1:7890",
   "tw_proxy_search_url": "127.0.0.1:7890",
@@ -75,10 +55,10 @@
   "aid": 127001,
   "aid_replace_open": true,
   "resign_pub": {
-    "1": false,
-    "4": false,
     "2": false,
-    "3": false
+    "3": false,
+    "4": false,
+    "1": false
   },
   "resign_open": {
     "1": false,
@@ -87,27 +67,27 @@
     "2": false
   },
   "resign_api_policy": {
-    "2": false,
-    "4": false,
     "1": false,
-    "3": false
+    "4": false,
+    "3": false,
+    "2": false
   },
   "resign_api": {
     "1": "",
+    "4": "",
     "2": "",
-    "3": "",
-    "4": ""
+    "3": ""
   },
   "resign_api_sign": {
+    "1": "",
     "2": "",
     "3": "",
-    "1": "",
     "4": ""
   },
   "cache": {
     "0": 6480,
-    "-10403": 6480,
     "other": 1380,
+    "-10403": 6480,
     "thsub": 14400,
     "-404": 1380,
     "-412": 1380
@@ -134,10 +114,10 @@
   },
   "donate_url": "https://afdian.net/@***",
   "api_assesskey_open": {
-    "2": false,
     "4": false,
-    "1": false,
-    "3": false
+    "2": false,
+    "3": false,
+    "1": false
   },
   "report_open": false,
   "report_config": {
