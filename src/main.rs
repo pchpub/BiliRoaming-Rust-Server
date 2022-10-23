@@ -214,9 +214,20 @@ fn main() -> std::io::Result<()> {
         //println!("[Debug] exit web_background");
     };
 
+    let rate_limit_per_second = if config.rate_limit_per_second == 0 {
+        1
+    } else {
+        config.rate_limit_per_second
+    };
+    let rate_limit_burst = if config.rate_limit_burst == 0 {
+        // 并发数
+        1919810
+    } else {
+        config.rate_limit_burst
+    };
     let rate_limit_conf = GovernorConfigBuilder::default()
-        .per_second(3)
-        .burst_size(20)
+        .per_second(rate_limit_per_second)
+        .burst_size(rate_limit_burst)
         .key_extractor(BiliUserToken)
         .finish()
         .unwrap();

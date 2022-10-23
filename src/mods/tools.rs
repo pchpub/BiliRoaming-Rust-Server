@@ -1,6 +1,9 @@
+use actix_web::{http::header::ContentType, HttpResponse};
+use chrono::{FixedOffset, TimeZone, Utc};
+
 use super::{
     request::{download, getwebpage},
-    types::PlayurlType,
+    types::{ErrorType, PlayurlType},
 };
 use std::env;
 use std::path::PathBuf;
@@ -64,7 +67,7 @@ pub fn check_playurl_need_vip(
 }
 
 pub fn remove_parameters_playurl(
-    playurl_type: PlayurlType,
+    playurl_type: &PlayurlType,
     data: &mut serde_json::Value,
 ) -> Result<(), ()> {
     match playurl_type {
@@ -181,4 +184,35 @@ pub fn update_server(is_auto_close: bool) {
             thread::sleep(std::time::Duration::from_secs(6 * 60 * 60));
         }
     });
+}
+
+pub fn resp_error(error_type: ErrorType) -> HttpResponse {
+    let message = match error_type {
+        ErrorType::ServerGeneralError => {
+            format!("{{\"code\":-500,\"message\":\"服务器内部错误\"}}")
+        }
+        ErrorType::ServerNetworkError(value) => {
+            format!("{{\"code\":-500,\"message\":\"服务器网络错误: {value}\"}}")
+        }
+        // ErrorType::ReqFreqError(_) => todo!(),
+        ErrorType::ReqSignError => format!("{{\"code\":-3,\"message\":\"API校验密匙错误\"}}"),
+        ErrorType::ReqUAError => format!("{{\"code\":-412,\"message\":\"请求被拦截\"}}"),
+        ErrorType::UserBlacklistedError(timestamp) => {
+            let dt = Utc
+                .timestamp(if timestamp > 0 { timestamp } else { 63072000 }, 0)
+                .with_timezone(&FixedOffset::east(8 * 3600));
+            let tips = dt.format(r#"服务器不欢迎您: %Y年%m月%d日 %H:%M解封\n请耐心等待"#);
+            format!("{{\"code\":-10403,\"message\":\"{tips}\"}}")
+        }
+        ErrorType::UserNonVIPError => format!("{{\"code\":-10403,\"message\":\"大会员专享限制\"}}"),
+        ErrorType::UserNotLoginedError => format!("{{\"code\":-101,\"message\":\"账号未登录\",\"ttl\":1}}"),
+        ErrorType::OtherError((err_code, err_msg)) => format!("{{\"code\":{err_code},\"message\":\"{err_msg}\"}}"),
+    };
+    return HttpResponse::Ok()
+        .content_type(ContentType::json())
+        .insert_header(("From", "biliroaming-rust-server"))
+        .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+        .insert_header(("Access-Control-Allow-Credentials", "true"))
+        .insert_header(("Access-Control-Allow-Methods", "GET"))
+        .body(message);
 }

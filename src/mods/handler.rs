@@ -107,7 +107,7 @@ pub async fn handle_playurl_request(
                 ))
             ) != &query_string[query_string.len() - 32..])
         {
-            return build_response("{\"code\":-10403,\"message\":\"校验失败\"}".to_string());
+            return build_response("{\"code\":-3,\"message\":\"API校验密匙错误\"}".to_string());
         }
     }
 
@@ -167,17 +167,19 @@ pub async fn handle_playurl_request(
     .await
     {
         Ok(value) => value,
-        Err(value) => {
-            return build_response(format!("{{\"code\":-10403,\"message\":\"{value}\"}}"));
+        Err((err_code, err_msg)) => {
+            return build_response(format!("{{\"code\":{err_code},\"message\":\"{err_msg}\"}}"));
         }
     };
+
+    params.is_vip = user_info.user_is_vip();
 
     // TODO: add check ep vip status here, forbid non-vip user get vip
 
     let user_cer_info = match get_blacklist_info(&user_info.uid, &config, redis_pool).await {
         Ok(value) => value,
-        Err(value) => {
-            return build_response(value);
+        Err((err_code, err_msg)) => {
+            return build_response(format!("{{\"code\":{err_code},\"message\":\"{err_msg}\"}}"));
         }
     };
     let white: bool;
@@ -234,8 +236,8 @@ pub async fn handle_playurl_request(
             .await
             {
                 Ok(value) => value,
-                Err(value) => {
-                    return build_response(format!("{{\"code\":-10403,\"message\":\"{value}\"}}"));
+                Err((err_code, err_msg)) => {
+                    return build_response(format!("{{\"code\":{err_code},\"message\":\"{err_msg}\"}}"));
                 }
             };
             params.is_vip = user_info.user_is_vip();
@@ -244,18 +246,26 @@ pub async fn handle_playurl_request(
 
     if config.area_cache_open {
         if params.ep_id == "" {
-            let return_data =
-                match get_upstream_bili_playurl(&params, &config, bilisender, user_info).await {
-                    Ok(value) => value,
-                    Err(value) => value,
-                };
+            let return_data = match get_upstream_bili_playurl(
+                &mut params,
+                &config,
+                bilisender,
+                user_info,
+            )
+            .await
+            {
+                Ok(value) => value,
+                Err(value) => value,
+            };
             return build_response(return_data);
         };
         if let Ok(value) = get_cached_ep_area(&params, redis_pool).await {
             let http_body_return = match value {
                 // if without current area cache data then such ep is never accessed, of course doesnt have cache
                 EpAreaCacheType::NoCurrentAreaData(key, redis_value) => {
-                    match get_upstream_bili_playurl(&params, &config, bilisender, user_info).await {
+                    match get_upstream_bili_playurl(&mut params, &config, bilisender, user_info)
+                        .await
+                    {
                         Ok(http_body) => {
                             update_area_cache(&http_body, &params, &key, &redis_value, redis_pool)
                                 .await;
@@ -271,7 +281,10 @@ pub async fn handle_playurl_request(
                                 Ok(data) => data,
                                 Err(_) => {
                                     match get_upstream_bili_playurl(
-                                        &params, &config, bilisender, user_info,
+                                        &mut params,
+                                        &config,
+                                        bilisender,
+                                        user_info,
                                     )
                                     .await
                                     {
@@ -305,7 +318,10 @@ pub async fn handle_playurl_request(
                         match get_cached_playurl(&params, &bilisender_cl, redis_pool).await {
                             Ok(data) => data,
                             Err(_) => match get_upstream_bili_playurl(
-                                &params, &config, bilisender, user_info,
+                                &mut params,
+                                &config,
+                                bilisender,
+                                user_info,
                             )
                             .await
                             {
@@ -318,7 +334,9 @@ pub async fn handle_playurl_request(
                 EpAreaCacheType::NoEpData => {
                     // if havent any cache info, try to manally update area cache for later use
                     update_area_cache_force(bilisender_cl, params.ep_id).await;
-                    match get_upstream_bili_playurl(&params, &config, bilisender, user_info).await {
+                    match get_upstream_bili_playurl(&mut params, &config, bilisender, user_info)
+                        .await
+                    {
                         Ok(http_body) => http_body,
                         Err(http_body) => http_body,
                     }
@@ -326,16 +344,22 @@ pub async fn handle_playurl_request(
             };
             return build_response(http_body_return);
         } else {
-            let return_data =
-                match get_upstream_bili_playurl(&params, &config, bilisender, user_info).await {
-                    Ok(value) => value,
-                    Err(value) => value,
-                };
+            let return_data = match get_upstream_bili_playurl(
+                &mut params,
+                &config,
+                bilisender,
+                user_info,
+            )
+            .await
+            {
+                Ok(value) => value,
+                Err(value) => value,
+            };
             return build_response(return_data);
         }
     } else {
         let return_data =
-            match get_upstream_bili_playurl(&params, &config, bilisender, user_info).await {
+            match get_upstream_bili_playurl(&mut params, &config, bilisender, user_info).await {
                 Ok(value) => value,
                 Err(value) => value,
             };
@@ -448,8 +472,8 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         .await
         {
             Ok(value) => value,
-            Err(value) => {
-                return build_response(format!("{{\"code\":-10403,\"message\":\"{value}\"}}"));
+            Err((err_code, err_msg)) => {
+                return build_response(format!("{{\"code\":{err_code},\"message\":\"{err_msg}\"}}"));
             }
         };
 

@@ -1,6 +1,6 @@
 use super::cache::{get_cached_blacklist_info, get_cached_user_info, update_cached_user_info};
 use super::request::{async_getwebpage, async_postwebpage, redis_get, redis_set};
-use super::types::{BiliConfig, UserResignInfo, UserInfo, UserCerStatus};
+use super::types::{BiliConfig, UserResignInfo, UserInfo, UserCerStatus, SERVER_NETWORK_ERROR_MESSAGE};
 use super::upstream_res::{get_upstream_bili_account_info, get_upstream_blacklist_info};
 use chrono::prelude::*;
 use deadpool_redis::Pool;
@@ -15,7 +15,7 @@ pub async fn get_user_info(
     force_update: bool,
     config: &BiliConfig,
     redis_pool: &Pool,
-) -> Result<UserInfo, String> {
+) -> Result<UserInfo, (i64, String)> {
     // mixed with blacklist function
     if force_update {
         match get_upstream_bili_account_info(
@@ -49,7 +49,7 @@ pub async fn get_blacklist_info(
     uid: &u64,
     config: &BiliConfig,
     redis_pool: &Pool,
-) -> Result<UserCerStatus, String> {
+) -> Result<UserCerStatus, (i64, String)> {
     fn timestamp_to_time(timestamp: &u64) -> String {
         let dt = Utc
             .timestamp(*timestamp as i64, 0)
@@ -87,7 +87,7 @@ pub async fn get_blacklist_info(
                     if value.status_expire_time < ts {
                         match get_upstream_blacklist_info(online_blacklist_config, uid).await {
                             Some(value) => value,
-                            None => return Err("鉴权失败了喵".to_string()),
+                            None => return Err((-500, format!("{SERVER_NETWORK_ERROR_MESSAGE}: 鉴权失败了喵"))),
                         }
                     } else {
                         value
@@ -95,7 +95,7 @@ pub async fn get_blacklist_info(
                 }
                 None => match get_upstream_blacklist_info(online_blacklist_config, uid).await {
                     Some(value) => value,
-                    None => return Err("鉴权失败了喵".to_string()),
+                    None => return Err((-500, format!("{SERVER_NETWORK_ERROR_MESSAGE}: 鉴权失败了喵"))),
                 },
             };
             if data.white {
@@ -129,7 +129,7 @@ pub async fn get_blacklist_info(
                     if value.status_expire_time < ts {
                         match get_upstream_blacklist_info(online_blacklist_config, uid).await {
                             Some(value) => value,
-                            None => return Err("鉴权失败了喵".to_string()),
+                            None => return Err((-500, format!("{SERVER_NETWORK_ERROR_MESSAGE}: 鉴权失败了喵"))),
                         }
                     } else {
                         value
@@ -137,7 +137,7 @@ pub async fn get_blacklist_info(
                 }
                 None => match get_upstream_blacklist_info(online_blacklist_config, uid).await {
                     Some(value) => value,
-                    None => return Err("鉴权失败了喵".to_string()),
+                    None => return Err((-500, format!("{SERVER_NETWORK_ERROR_MESSAGE}: 鉴权失败了喵"))),
                 },
             };
             if data.white {
@@ -322,7 +322,7 @@ pub async fn get_user_info_background(
     user_agent: &str,
     config: &BiliConfig,
     redis_pool: &Pool,
-) -> Result<UserInfo, String> {
+) -> Result<UserInfo, (i64, String)> {
     // mixed with blacklist function
     match get_cached_user_info(access_key, redis_pool).await {
         Some(value) => Ok(value),

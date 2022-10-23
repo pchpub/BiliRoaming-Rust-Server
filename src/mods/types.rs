@@ -2,6 +2,8 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, hash::Hash};
 use urlencoding::encode;
+pub const SERVER_GENERAL_ERROR_MESSAGE: &str = "服务器内部错误";
+pub const SERVER_NETWORK_ERROR_MESSAGE: &str = "服务器网络错误";
 
 /*
 * the following is server config related
@@ -23,6 +25,10 @@ pub struct BiliConfig {
     pub limit_biliroaming_version_min: u16, //u8其实够了(0-255),但为了保险点,用u16(0-32768)
     #[serde(default = "default_max_version")]
     pub limit_biliroaming_version_max: u16,
+    #[serde(default = "default_rate_limit_per_second")]
+    pub rate_limit_per_second: u64,
+    #[serde(default = "default_rate_limit_burst")]
+    pub rate_limit_burst: u32,
     pub cn_app_playurl_api: String,
     pub tw_app_playurl_api: String,
     pub hk_app_playurl_api: String,
@@ -179,9 +185,9 @@ impl HealthCheck {
     }
 }
 pub enum CacheTask {
-    UserInfoCacheRefresh(UserInfo),
+    UserInfoCacheRefresh(String),
     PlayurlCacheRefresh(PlayurlParamsStatic),
-    EpInfoCacheRefresh,
+    EpInfoCacheRefresh((bool, Vec<EpInfo>)),
     EpAreaCacheRefresh(String),
 }
 
@@ -277,6 +283,45 @@ impl HealthData {
             ..Default::default()
         };
     }
+    pub fn is_available(&self) -> bool {
+        let code = self.upstream_reply.code;
+        let message = &self.upstream_reply.message;
+        /*
+            {"code":10015002,"message":"访问权限不足","ttl":1}
+            {"code":-10403,"message":"大会员专享限制"}
+            {"code":-10403,"message":"抱歉您所使用的平台不可观看！"}
+            {"code":-10403,"message":"抱歉您所在地区不可观看！"}
+            {"code":-400,"message":"请求错误"}
+            {"code":-404,"message":"啥都木有"}
+            {"code":-404,"message":"啥都木有","ttl":1}
+        */
+        match code {
+            0 => true,
+            -10403 => {
+                if message == "大会员专享限制" || message == "抱歉您所使用的平台不可观看！"
+                {
+                    true
+                } else {
+                    false
+                }
+            }
+            10015002 => {
+                if message == "访问权限不足" {
+                    true
+                } else {
+                    false
+                }
+            }
+            -10500 => {
+                true
+                // 万恶的米奇妙妙屋,不用家宽就 -10500
+                // link: https://t.me/biliroaming_chat/1231065
+                //       https://t.me/biliroaming_chat/1231113
+            }
+            -404 => false,
+            _ => false,
+        }
+    }
 }
 pub enum HealthReportType {
     Playurl(HealthData),
@@ -325,14 +370,22 @@ impl HealthReportType {
     }
     pub fn status_color_char(&self) -> String {
         if match self {
-            HealthReportType::Playurl(value) => value.is_200_ok,
-            HealthReportType::Search(value) => value.is_200_ok,
-            HealthReportType::ThSeason(value) => value.is_200_ok,
-            HealthReportType::Others(value) => value.is_200_ok,
+            HealthReportType::Playurl(value) => value.is_available(),
+            HealthReportType::Search(value) => value.is_available(),
+            HealthReportType::ThSeason(value) => value.is_available(),
+            HealthReportType::Others(_) => true,
         } {
             "🟢".to_string()
         } else {
             "🔴".to_string()
+        }
+    }
+    pub fn is_available(&self) -> bool {
+        match self {
+            HealthReportType::Playurl(value) => value.is_available(),
+            HealthReportType::Search(value) => value.is_available(),
+            HealthReportType::ThSeason(value) => value.is_available(),
+            HealthReportType::Others(_) => false,
         }
     }
 }
@@ -869,6 +922,14 @@ fn default_max_version() -> u16 {
     80
 }
 
+fn default_rate_limit_per_second() -> u64 {
+    3
+}
+
+fn default_rate_limit_burst() -> u32 {
+    20
+}
+
 fn default_u64() -> u64 {
     0
 }
@@ -1005,6 +1066,19 @@ pub struct PlayurlParamsStatic {
     pub area_num: u8,
     pub user_agent: String,
 }
+impl PlayurlParamsStatic {
+    pub fn get_playurl_type(&self) -> PlayurlType {
+        if self.is_app {
+            PlayurlType::ChinaApp
+        } else if self.is_tv {
+            PlayurlType::ChinaTv
+        } else if self.is_th {
+            PlayurlType::Thailand
+        } else {
+            PlayurlType::ChinaWeb
+        }
+    }
+}
 // lessen usage of to_string() for better perf
 pub struct PlayurlParams<'playurl_params> {
     pub access_key: &'playurl_params str,
@@ -1099,6 +1173,17 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl>
     pub fn init_params(&mut self) {
         self.ep_area_to_area_num();
         self.appkey_to_sec().unwrap();
+    }
+    pub fn get_playurl_type(&self) -> PlayurlType {
+        if self.is_app {
+            PlayurlType::ChinaApp
+        } else if self.is_tv {
+            PlayurlType::ChinaTv
+        } else if self.is_th {
+            PlayurlType::Thailand
+        } else {
+            PlayurlType::ChinaWeb
+        }
     }
 }
 pub enum PlayurlType {
@@ -1249,16 +1334,27 @@ impl SeasonInfo {
         return self.newest_ep.to_string();
     }
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct EpInfo {
-    pub need_vip: String,
-    pub is_finish: bool,
-    pub series_title: String,
-    pub season_id: String,
-    pub season_info: SeasonInfo,
+    pub ep_id: u64,
+    pub need_vip: bool,
+    pub title: String,
+    pub season_id: u64,
+}
+impl std::default::Default for EpInfo {
+    fn default() -> Self {
+        Self {
+            ep_id: 0,
+            need_vip: false,
+            title: String::new(),
+            season_id: 0,
+        }
+    }
 }
 
 pub enum EpAreaCacheType {
-    NoEpData,                  //key
+    NoEpData,                          //key
     NoCurrentAreaData(String, String), //key value
     OnlyHasCurrentAreaData(bool),
     Available(Area),
@@ -1313,73 +1409,14 @@ pub struct Log {
     pub ep_health_log: HashMap<u8, bool>,
 }
 
-// pub enum ServerError {
-//     ServerNetworkError,
-//     ServerBlacklistServerError,
-//     UserIsBlacklisted(UserIsBlacklistedExpiredTime),
-//     UserIsNotLogined,
-//     ServerOtherError(ServerOtherErrorContent),
-//     UserOtherError(UserOtherErrorContent),
-// }
-// pub struct ServerNetworkErrorHealth {
-//     cn_playurl_proxy: String,
-//     cn_playurl_proxy_available: bool,
-//     hk_playurl_proxy: String,
-//     hk_playurl_proxy_available: bool,
-//     tw_playurl_proxy: String,
-//     tw_playurl_proxy_available: bool,
-//     th_playurl_proxy: String,
-//     th_playurl_proxy_available: bool,
-//     cn_playurl_backup_proxy: String,
-//     cn_playurl_proxy_backup_available: bool,
-//     hk_playurl_backup_proxy: String,
-//     hk_playurl_proxy_backup_available: bool,
-//     tw_playurl_backup_proxy: String,
-//     tw_playurl_proxy_backup_available: bool,
-//     th_playurl_backup_proxy: String,
-//     th_playurl_proxy_backup_available: bool,
-// }
-// pub struct ServerNetworkErrorHealthArea {
-//     playurl_proxy: String,
-//     playurl_proxy_available: bool,
-//     playurl_backup_proxy: String,
-//     playurl_proxy_backup_available: bool,
-// }
-// pub struct UserIsBlacklistedExpiredTime {
-//     status_expired_time: i32,
-// }
-// pub struct ServerOtherErrorContent {
-//     content: String,
-// }
-// pub struct UserOtherErrorContent {
-//     content: String,
-// }
-// impl ServerError {
-//     pub fn generate_tip(&self) -> String {
-//         match self {
-//             ServerError::ServerNetworkError => {
-//                 r#"{"code":-500, "message": "服务器内部错误"}"#.to_string()
-//             }
-//             ServerError::ServerBlacklistServerError => {
-//                 r#"{"code":-500, "message": "服务器内部错误"}"#.to_string()
-//             }
-//             ServerError::UserIsBlacklisted(value) => {
-//                 // ready for adding
-//                 r#"{"code":-10403, "message": "您当前没有权限访问"}"#.to_string()
-//             }
-//             ServerError::UserIsNotLogined => {
-//                 r#"{"code":-101, "message": "用户未登录"}"#.to_string()
-//             }
-//             ServerError::ServerOtherError(value) => {
-//                 r#"{"code":-500, "message": "服务器内部错误"}"#.to_string()
-//             }
-//             ServerError::UserOtherError(value) => {
-//                 r#"{"code":-500, "message": "服务器内部错误"}"#.to_string()
-//             }
-//         }
-//     }
-// }
-
-// impl ServerNetworkErrorHealth {
-//     pub fn generate_report() {}
-// }
+pub enum ErrorType {
+    ServerGeneralError,
+    ServerNetworkError(String),
+    // ReqFreqError(u8),
+    ReqSignError,
+    ReqUAError,
+    UserBlacklistedError(i64),
+    UserNonVIPError,
+    UserNotLoginedError,
+    OtherError((i64, String)),
+}

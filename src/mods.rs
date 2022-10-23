@@ -1,6 +1,7 @@
 pub mod background_tasks;
 pub mod cache;
 pub mod config;
+pub mod ep_info;
 pub mod handler;
 pub mod health;
 pub mod pub_api;

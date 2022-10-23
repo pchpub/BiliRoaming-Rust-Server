@@ -1,7 +1,7 @@
+use super::ep_info::get_ep_need_vip;
 use super::request::{redis_get, redis_set};
 use super::types::PlayurlParams;
 use super::types::*;
-use super::upstream_res::get_upstream_bili_ep_vip_status;
 use async_channel::Sender;
 use async_channel::TrySendError;
 use chrono::prelude::*;
@@ -170,12 +170,16 @@ pub async fn get_cached_user_info(access_key: &str, redis_pool: &Pool) -> Option
     }
 }
 
-pub async fn update_cached_user_info(new_user_info: &UserInfo, access_key: &str, redis_pool: &Pool) {
+pub async fn update_cached_user_info(
+    new_user_info: &UserInfo,
+    access_key: &str,
+    redis_pool: &Pool,
+) {
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let key = format!("{access_key}20501");
     let value = new_user_info.to_json();
-    let expire_time = (new_user_info.expire_time - ts)/1000;
+    let expire_time = (new_user_info.expire_time - ts) / 1000;
     let _: () = redis_set(redis_pool, &key, &value, expire_time)
         .await
         .unwrap_or_default();
@@ -187,6 +191,24 @@ pub async fn update_cached_user_info(new_user_info: &UserInfo, access_key: &str,
     )
     .await
     .unwrap_or_default();
+}
+
+#[inline]
+pub async fn update_cached_user_info_force(bilisender: Arc<Sender<BackgroundTaskType>>, access_key: String) {
+    let background_task_data =
+        BackgroundTaskType::CacheTask(CacheTask::UserInfoCacheRefresh(access_key));
+    tokio::spawn(async move {
+        //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+        match bilisender.try_send(background_task_data) {
+            Ok(_) => (),
+            Err(TrySendError::Full(_)) => {
+                println!("[Error] channel is full");
+            }
+            Err(TrySendError::Closed(_)) => {
+                println!("[Error] channel is closed");
+            }
+        };
+    });
 }
 
 pub async fn get_cached_blacklist_info(uid: &u64, redis_pool: &Pool) -> Option<UserCerinfo> {
@@ -226,6 +248,7 @@ pub async fn get_cached_playurl(
         params.is_vip,
         false,
         redis_pool,
+        bilisender
     )
     .await;
 
@@ -297,6 +320,7 @@ pub async fn update_cached_playurl(
     body_data: &str,
     redis_pool: &Pool,
     config: &BiliConfig,
+    bilisender: &Arc<Sender<BackgroundTaskType>>,
 ) {
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
@@ -309,6 +333,7 @@ pub async fn update_cached_playurl(
         params.is_vip,
         true,
         redis_pool,
+        bilisender
     )
     .await;
 
@@ -349,11 +374,15 @@ async fn get_plaurl_cache_key(
     is_vip: bool,
     need_redis_key: bool,
     redis_pool: &Pool,
+    bilisender: &Arc<Sender<BackgroundTaskType>>,
 ) -> String {
     let need_vip = if need_redis_key {
-        get_cached_bili_ep_vip_status(ep_id, redis_pool)
-            .await
-            .unwrap_or(1)
+        if let Some(value) = get_ep_need_vip(ep_id, redis_pool, bilisender).await {
+            value as u8
+        } else {
+            // should not
+            is_vip as u8
+        }
     } else {
         is_vip as u8
     };
@@ -475,19 +504,6 @@ fn get_playurl_deadline(
     }
 }
 
-pub async fn get_cached_bili_ep_vip_status(ep_id: &str, redis_pool: &Pool) -> Result<u8, ()> {
-    // when using update_cached_playurl, should use this func to get ep need_vip status instead of user's vip status
-    match redis_get(redis_pool, &format!("e{ep_id}150101")).await {
-        Some(value) => {
-            if let Ok(value) = value.parse::<u8>() {
-                return Ok(value);
-            }
-        }
-        None => (),
-    };
-    return get_upstream_bili_ep_vip_status(ep_id).await;
-}
-
 /*
 东南亚区season缓存
 */
@@ -529,8 +545,78 @@ pub async fn update_cached_season(
 }
 
 /*
-ep/season信息缓存
+ep info信息缓存
 */
-pub async fn get_cached_ep_info(_redis_pool: &Pool, _ep_id: &str) -> Result<EpInfo, ()> {
-    todo!()
+pub async fn get_cached_ep_info(ep_id: &str, redis_pool: &Pool) -> Result<EpInfo, ()> {
+    let key = format!("e{ep_id}1501");
+    // data stucture: {ep_id},{0},{title},{season_id}
+    match redis_get(redis_pool, &key).await {
+        Some(value) => {
+            // 热点路径频繁序列化/反序列化十分耗资源, 确认如此?
+            let ep_info: EpInfo = if let Ok(ep_info) = serde_json::from_str(&value) {
+                ep_info
+            } else {
+                // should not
+                println!(
+                    "[EP INFO] EP {ep_id} | Parsing cached data error: {}",
+                    value
+                );
+                return Err(());
+            };
+            Ok(ep_info)
+        }
+        None => {
+            // println!("[EP INFO] EP {ep_id} | No cached data");
+            Err(())
+        }
+    }
+}
+
+/** `update_cached_ep_info` 
+ * 在获取上游ep_info后, get_upstream_bili_ep_info同时返回, 通过后台任务刷新ep_info缓存
+*/
+pub async fn update_cached_ep_info(
+    force_update: bool,
+    ep_info_vec: Vec<EpInfo>,
+    bilisender: &Arc<Sender<BackgroundTaskType>>,
+) {
+    let bilisender_cl = Arc::clone(bilisender);
+    let background_task_data =
+        BackgroundTaskType::CacheTask(CacheTask::EpInfoCacheRefresh((force_update, ep_info_vec)));
+    tokio::spawn(async move {
+        //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+        match bilisender_cl.try_send(background_task_data) {
+            Ok(_) => (),
+            Err(TrySendError::Full(_)) => {
+                println!("[Error] channel is full");
+            }
+            Err(TrySendError::Closed(_)) => {
+                println!("[Error] channel is closed");
+            }
+        };
+    });
+}
+
+pub async fn update_cached_ep_info_redis(ep_info: EpInfo, redis_pool: &Pool) {
+    redis_set(
+        &redis_pool,
+        &format!("e{}150101", ep_info.ep_id),
+        &(ep_info.need_vip as u8).to_string(),
+        0,
+    )
+    .await;
+    redis_set(
+        &redis_pool,
+        &format!("e{}150201", ep_info.ep_id),
+        &ep_info.title,
+        0,
+    )
+    .await;
+    redis_set(
+        &redis_pool,
+        &format!("e{}150301", ep_info.ep_id),
+        &ep_info.season_id.to_string(),
+        0,
+    )
+    .await;
 }

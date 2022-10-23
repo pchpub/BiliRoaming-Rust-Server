@@ -1,6 +1,6 @@
 use super::{
-    request::{async_getwebpage, redis_get, redis_set},
-    types::{Area, BiliConfig, HealthReportType, BackgroundTaskType, HealthTask},
+    request::{async_getwebpage, redis_get},
+    types::{Area, BackgroundTaskType, BiliConfig, HealthReportType, HealthTask},
 };
 use async_channel::{Sender, TrySendError};
 use deadpool_redis::Pool;
@@ -8,74 +8,23 @@ use serde_json::json;
 use std::{collections::HashMap, sync::Arc};
 
 pub async fn report_health(
-    incident_attr: HealthReportType,
-    config: &BiliConfig,
-    redis_pool: &Pool,
-    bilisender: &Arc<Sender<BackgroundTaskType>>,
+    health_report_type: HealthReportType,
+    bilisender: Arc<Sender<BackgroundTaskType>>,
 ) {
-    let (_area_num, redis_key) = match &incident_attr {
-        HealthReportType::Playurl(value) => {
-            let redis_key_vec: Vec<u8> = vec![01, value.area_num, 13, 01];
-            (value.area_num, String::from_utf8(redis_key_vec).unwrap())
-        }
-        HealthReportType::Search(value) => {
-            let redis_key_vec: Vec<u8> = vec![02, value.area_num, 13, 01];
-            (value.area_num, String::from_utf8(redis_key_vec).unwrap())
-        }
-        HealthReportType::ThSeason(value) => {
-            let redis_key_vec: Vec<u8> = vec![04, value.area_num, 13, 01];
-            (value.area_num, String::from_utf8(redis_key_vec).unwrap())
-        }
-        HealthReportType::Others(_) => return,
-    };
-    let bilisender_cl = Arc::clone(bilisender);
-    if config.report_open {
-        match redis_get(&redis_pool, &redis_key).await {
-            Some(value) => {
-                let err_num = value.parse::<u16>().unwrap();
-                if err_num >= 4 {
-                    redis_set(&redis_pool, &redis_key, "0", 0)
-                        .await
-                        .unwrap_or_default();
-                    let data_to_send = BackgroundTaskType::HealthTask(HealthTask::HealthReport(incident_attr));
-                    tokio::spawn(async move {
-                        //debug!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
-                        match bilisender_cl.try_send(data_to_send) {
-                            Ok(_) => (),
-                            Err(TrySendError::Full(_)) => {
-                                println!("[PUSH] channel is full");
-                            }
-                            Err(TrySendError::Closed(_)) => {
-                                println!("[PUSH] channel is closed");
-                            }
-                        };
-                    });
-                } else if err_num != 0 {
-                    redis_set(&redis_pool, &redis_key, "0", 0)
-                        .await
-                        .unwrap_or_default();
-                }
+    let background_task_data =
+        BackgroundTaskType::HealthTask(HealthTask::HealthReport(health_report_type));
+    tokio::spawn(async move {
+        //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+        match bilisender.try_send(background_task_data) {
+            Ok(_) => (),
+            Err(TrySendError::Full(_)) => {
+                println!("[Error] channel is full");
             }
-            None => {
-                redis_set(&redis_pool, &redis_key, "0", 0)
-                    .await
-                    .unwrap_or_default();
-                let data_to_send = BackgroundTaskType::HealthTask(HealthTask::HealthReport(incident_attr));
-                tokio::spawn(async move {
-                    //debug!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
-                    match bilisender_cl.try_send(data_to_send) {
-                        Ok(_) => (),
-                        Err(TrySendError::Full(_)) => {
-                            println!("[PUSH] channel is full");
-                        }
-                        Err(TrySendError::Closed(_)) => {
-                            println!("[PUSH] channel is closed");
-                        }
-                    };
-                });
+            Err(TrySendError::Closed(_)) => {
+                println!("[Error] channel is closed");
             }
-        }
-    }
+        };
+    });
 }
 
 /*
@@ -218,5 +167,3 @@ pub async fn get_server_ip_area(
 //     // TODO: 生成状态页, 后续联动web panel
 //     todo!()
 // }
-
-

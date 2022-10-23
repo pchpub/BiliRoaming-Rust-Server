@@ -25,7 +25,8 @@
       + health_check_used_access_key: a1301
     + ep_area 14
     + ep_info 15
-      + ep_need_vip 01 eg. e23333150101 ep_id = 23333 need_vip ver.1
-      + ep_season_id 02 eg. e23333150201 ep_id = 23333 season_id ver.1
+      + need_vip 01
+      + title 02
+      + season_id 03
 + 版本 ：用于处理版本更新后导致的格式变更
     + now 01

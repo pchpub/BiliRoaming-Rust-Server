@@ -7,13 +7,15 @@ use std::string::String;
 use std::time::Duration;
 use tokio::task::spawn_blocking;
 
+use super::types::{SERVER_GENERAL_ERROR_MESSAGE, SERVER_NETWORK_ERROR_MESSAGE};
+
 pub fn getwebpage(
     url: String,
     proxy_open: bool,
     proxy_url: String,
     user_agent: String,
     cookie: String,
-) -> Result<String, ()> {
+) -> Result<String, &'static str> {
     let mut data = Vec::new();
     let mut handle = Easy::new();
     handle.url(&url).unwrap();
@@ -46,8 +48,11 @@ pub fn getwebpage(
         match transfer.perform() {
             Ok(()) => (),
             Err(value) => {
-                println!("getwebpage error -> {}", value);
-                return Err(());
+                println!(
+                    "[GET WEBPAGE] PROXY {proxy_open}:{proxy_url} | ERROR -> {}",
+                    value
+                );
+                return Err(SERVER_NETWORK_ERROR_MESSAGE);
             }
         }
     }
@@ -55,19 +60,23 @@ pub fn getwebpage(
     let getwebpage_string: String = match String::from_utf8(data) {
         Ok(value) => value,
         Err(_) => {
-            return Err(());
+            return Err(SERVER_GENERAL_ERROR_MESSAGE);
         }
     };
     Ok(getwebpage_string)
 }
 
+/// `async_getwebpage` 异步GET请求 
+/// - 返回 Result<String, &'static str>, 可使用Err(value)接受错误信息返回用户
+/// - 返回的错误信息仅区分了网络错误`服务器网络错误`和一般错误`服务器内部错误`
+/// - 详细错误信息打印在日志
 pub async fn async_getwebpage(
     url: &str,
     proxy_open: &bool,
     proxy_url: &str,
     user_agent: &str,
     cookie: &str,
-) -> Result<String, ()> {
+) -> Result<String, &'static str> {
     let url = url.to_owned();
     let proxy_open = proxy_open.to_owned();
     let proxy_url = proxy_url.to_owned();
@@ -75,7 +84,7 @@ pub async fn async_getwebpage(
     let cookie = cookie.to_owned();
     match spawn_blocking(move || getwebpage(url, proxy_open, proxy_url, user_agent, cookie)).await {
         Ok(value) => value,
-        _ => return Err(()),
+        _ => return Err(SERVER_GENERAL_ERROR_MESSAGE),
     }
 }
 
@@ -85,7 +94,7 @@ pub fn postwebpage(
     proxy_open: bool,
     proxy_url: String,
     user_agent: String,
-) -> Result<String, ()> {
+) -> Result<String, &'static str> {
     let mut data = Vec::new();
     let mut handle = Easy::new();
     let mut request_data = content.as_bytes();
@@ -128,8 +137,11 @@ pub fn postwebpage(
         match transfer.perform() {
             Ok(()) => (),
             Err(value) => {
-                println!("postwebpage error -> {}", value);
-                return Err(());
+                println!(
+                    "[POST WEBPAGE] PROXY {proxy_open}:{proxy_url} | ERROR -> {}",
+                    value
+                );
+                return Err(SERVER_NETWORK_ERROR_MESSAGE);
             }
         }
     }
@@ -137,19 +149,23 @@ pub fn postwebpage(
     let getwebpage_string: String = match String::from_utf8(data) {
         Ok(value) => value,
         Err(_) => {
-            return Err(());
+            return Err(SERVER_GENERAL_ERROR_MESSAGE);
         }
     };
     Ok(getwebpage_string)
 }
 
+/// `async_postwebpage` 异步POST请求 
+/// - 返回 Result<String, &'static str>, 可使用Err(value)接受错误信息返回用户
+/// - 返回的错误信息仅区分了网络错误`服务器网络错误`和一般错误`服务器内部错误`
+/// - 详细错误信息打印在日志
 pub async fn async_postwebpage(
     url: &str,
     content: &str,
     proxy_open: &bool,
     proxy_url: &str,
     user_agent: &str,
-) -> Result<String, ()> {
+) -> Result<String, &'static str> {
     let url = url.to_owned();
     let content = content.to_owned();
     let proxy_open = proxy_open.to_owned();
@@ -158,7 +174,7 @@ pub async fn async_postwebpage(
     match spawn_blocking(move || postwebpage(url, content, proxy_open, proxy_url, user_agent)).await
     {
         Ok(value) => value,
-        _ => return Err(()),
+        _ => return Err(SERVER_GENERAL_ERROR_MESSAGE),
     }
 }
 
