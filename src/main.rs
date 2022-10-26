@@ -184,11 +184,11 @@ fn main() -> std::io::Result<()> {
             let receive_data = match r.recv().await {
                 Ok(it) => it,
                 _ => {
-                    //println!("[Debug] failed to receive data");
+                    println!("[Debug] failed to receive data");
                     break;
                 }
             };
-            //println!("[Debug] r:{}",r.len());
+            println!("[Debug] r:{}",r.len());
             match receive_data {
                 SendData::Playurl(value) => {
                     match get_playurl_background(&pool_background, &value, &anti_speedtest_cfg)

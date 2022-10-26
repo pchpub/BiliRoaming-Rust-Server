@@ -17,6 +17,35 @@ use qstring::QString;
 use serde_json::{self, json};
 use std::sync::Arc;
 
+// 储存规范：
+//查询数据+地区（1位）+类型（2位）+版本（2位）
+//查询数据 a asscesskey
+//        e epid
+//        c cid
+//        v is_vip
+//        t is_tv
+//地区 cn 1
+//     hk 2
+//     tw 3
+//     th 4
+//     default 2
+//类型 app playurl 01
+//     app search 02
+//     app subtitle 03
+//     app season 04
+//     user_info 05
+//     user_cerinfo 06
+//     web playurl 07
+//     web search 08
+//     web subtitle 09
+//     web season 10
+//     resign_info 11
+//     api 12
+//     health 13 eg. 0141301 = playurl th health ver.1
+//     ep_area 14
+//版本 ：用于处理版本更新后导致的格式变更
+//     now 01
+
 pub async fn get_playurl(
     req: &HttpRequest,
     is_app: bool,
