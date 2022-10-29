@@ -1,41 +1,25 @@
 use super::{
     request::{async_getwebpage, redis_get},
-    types::{Area, BackgroundTaskType, BiliConfig, HealthReportType, HealthTask},
+    types::{Area, BackgroundTaskType, BiliConfig, BiliRuntime, HealthReportType, HealthTask, ReqType},
 };
 use async_channel::{Sender, TrySendError};
 use deadpool_redis::Pool;
 use serde_json::json;
 use std::{collections::HashMap, sync::Arc};
 
-pub async fn report_health(
-    health_report_type: HealthReportType,
-    bilisender: Arc<Sender<BackgroundTaskType>>,
-) {
+pub async fn report_health(health_report_type: HealthReportType, bili_runtime: &BiliRuntime<'_>) {
     let background_task_data =
         BackgroundTaskType::HealthTask(HealthTask::HealthReport(health_report_type));
-    tokio::spawn(async move {
-        //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
-        match bilisender.try_send(background_task_data) {
-            Ok(_) => (),
-            Err(TrySendError::Full(_)) => {
-                println!("[Error] channel is full");
-            }
-            Err(TrySendError::Closed(_)) => {
-                println!("[Error] channel is closed");
-            }
-        };
-    });
+    bili_runtime.send_task(background_task_data).await;
 }
 
 /*
 * 主动检测上游代理状态
 * now only check playurl proxy(I think it's enough)
 */
-pub async fn check_proxy_health(
-    area_num: u8,
-    redis_pool: &Pool,
-    config: &BiliConfig,
-) -> Result<(), String> {
+pub async fn check_proxy_health(area_num: u8, bili_runtime: &BiliRuntime<'_>) -> Result<(), String> {
+    let redis_pool = bili_runtime.redis_pool;
+    let config = bili_runtime.config;
     let bili_user_status_api: &str = "https://api.bilibili.com/pgc/view/web/season/user/status";
     let season_id_cn_only = "42320	"; // 小林家的龙女仆 第二季 中配版
     let season_id_hk_only = "41550"; // "輝夜姬想讓人告白ー超級浪漫ー（僅限港澳地區）
@@ -50,24 +34,12 @@ pub async fn check_proxy_health(
     // actually should always use struct Area to pass param area
     let area: Area = Area::new(area_num);
     // let area_num = area.num();
-    let (url, proxy_open, proxy_url) = match area {
-        Area::Cn => (
-            format!("{bili_user_status_api}?access_key={access_key}&season_id={season_id_cn_only}"),
-            &config.cn_proxy_playurl_open,
-            &config.cn_proxy_playurl_url,
-        ),
-
-        Area::Hk => (
-            format!("{bili_user_status_api}?access_key={access_key}&season_id={season_id_hk_only}"),
-            &config.hk_proxy_playurl_open,
-            &config.hk_proxy_playurl_url,
-        ),
-
-        Area::Tw => (
-            format!("{bili_user_status_api}?access_key={access_key}&season_id={season_id_tw_only}"),
-            &config.tw_proxy_playurl_open,
-            &config.tw_proxy_playurl_url,
-        ),
+    let req_type = ReqType::Playurl(area, true);
+    let (proxy_open, proxy_url) = &req_type.get_proxy(config);
+    let url = format!("{bili_user_status_api}?access_key={access_key}&season_id=") + match Area::new(area_num) {
+        Area::Cn => season_id_cn_only,
+        Area::Hk => season_id_hk_only,
+        Area::Tw => season_id_tw_only,
         Area::Th => {
             match get_server_ip_area(
                 &config.tw_proxy_playurl_open,
@@ -86,12 +58,16 @@ pub async fn check_proxy_health(
                     }
                 }
                 Err(code) => {
-                    return Err(format!("Zone {area_num} -> Unknown Upstream Error {code}"))
+                    match code {
+                        2333 => return Err(format!("Zone {area_num} -> ISP Banned!")),
+                        _ => return Err(format!("Zone {area_num} -> Unknown Upstream Error {code}"))
+                    }
+                    
                 }
             }
         }
     };
-    match async_getwebpage(&url, proxy_open, proxy_url, user_agent, "").await {
+    match async_getwebpage(&url, *proxy_open, proxy_url, user_agent, "").await {
         Ok(value) => {
             let json_result =
                 serde_json::from_str(&value).unwrap_or(json!({"code": -2333, "message": ""}));
@@ -142,7 +118,7 @@ pub async fn get_server_ip_area(
         (856, 4), // 856 => 老挝
     ];
     let country_code_map: HashMap<u16, u8> = country_code_vec.into_iter().collect();
-    match async_getwebpage(area_api, proxy_open, proxy_url, user_agent, "").await {
+    match async_getwebpage(area_api, *proxy_open, proxy_url, user_agent, "").await {
         Ok(value) => {
             let json_result =
                 serde_json::from_str(&value).unwrap_or(json!({"code": -2333, "message": ""}));
@@ -155,7 +131,12 @@ pub async fn get_server_ip_area(
                 0 => {
                     let result = json_result.get("data").unwrap();
                     let country_code = result["country_code"].as_u64().unwrap_or(0) as u16;
-                    Ok(*country_code_map.get(&country_code).unwrap_or(&(0 as u8)))
+                    let isp = result["isp"].as_str().unwrap_or("NULL");
+                    // some isp is forbidden! 
+                    match isp {
+                        "ovh.com" => Err(2333),
+                        _ => Ok(*country_code_map.get(&country_code).unwrap_or(&(0 as u8)))
+                    }
                 }
                 _ => Err(code),
             }

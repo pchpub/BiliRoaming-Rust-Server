@@ -1,7 +1,12 @@
+use async_channel::{Sender, TrySendError};
+use chrono::{FixedOffset, TimeZone, Utc};
+use deadpool_redis::{redis::Connection, Manager, Pool};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, hash::Hash};
+use std::{collections::HashMap, hash::Hash, sync::Arc};
 use urlencoding::encode;
+
+use super::request::{redis_get, redis_set};
 pub const SERVER_GENERAL_ERROR_MESSAGE: &str = "服务器内部错误";
 pub const SERVER_NETWORK_ERROR_MESSAGE: &str = "服务器网络错误";
 
@@ -161,6 +166,160 @@ impl std::default::Default for BlackListType {
     }
 }
 
+pub struct BiliRuntime<'bili_runtime> {
+    pub config: &'bili_runtime BiliConfig,
+    pub redis_pool: &'bili_runtime Pool,
+    pub channel: &'bili_runtime Arc<Sender<BackgroundTaskType>>,
+}
+impl<'bili_runtime> BiliRuntime<'bili_runtime> {
+    pub fn new(
+        config: &'bili_runtime BiliConfig,
+        redis_pool: &'bili_runtime Pool,
+        channel: &'bili_runtime Arc<Sender<BackgroundTaskType>>,
+    ) -> BiliRuntime<'bili_runtime> {
+        BiliRuntime {
+            config,
+            redis_pool,
+            channel,
+        }
+    }
+    // TODO: Easier Config
+    pub async fn redis_get(&self, key: &str) -> Option<String> {
+        return redis_get(self.redis_pool, key).await;
+    }
+    pub async fn redis_set(&self, key: &str, value: &str, expire_time: u64) {
+        redis_set(self.redis_pool, key, value, expire_time)
+            .await
+            .unwrap()
+    }
+    pub async fn send_task(&self, background_task_data: BackgroundTaskType) {
+        let bilisender = Arc::clone(&self.channel);
+        tokio::spawn(async move {
+            //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+            match bilisender.try_send(background_task_data) {
+                Ok(_) => (),
+                Err(TrySendError::Full(_)) => {
+                    println!("[Error] channel is full");
+                }
+                Err(TrySendError::Closed(_)) => {
+                    println!("[Error] channel is closed");
+                }
+            };
+        });
+    }
+}
+
+// pub struct ApiInfo {
+//     pub api: String,
+//     pub proxy_open: bool,
+//     pub proxy_url: String,
+// }
+// impl ApiInfo {
+//     pub fn new(req_type: ReqType, area: Area, config: &BiliConfig) -> ApiInfo {
+//         let api = req_type.get_api(config);
+//         let (proxy_open, proxy_url) = req_type.get_proxy(config);
+//         ApiInfo {
+//             api,
+//             proxy_open,
+//             proxy_url,
+//         }
+//     }
+// }
+pub enum ReqType {
+    Playurl(Area, bool),
+    Search(Area, bool),
+    ThSubtitle,
+    Accesskey,
+}
+impl ReqType {
+    // to be honest, BiliConfig should be abled to be accessed anywhere
+    pub fn get_api<'config>(&self, config: &'config BiliConfig) -> &'config str {
+        match self {
+            ReqType::Playurl(area, is_app) => {
+                if *is_app {
+                    match area {
+                        Area::Cn => &config.cn_app_playurl_api,
+                        Area::Hk => &config.hk_app_playurl_api,
+                        Area::Tw => &config.tw_app_playurl_api,
+                        Area::Th => &config.th_app_playurl_api, //should not
+                    }
+                } else {
+                    match area {
+                        Area::Cn => &config.cn_web_playurl_api,
+                        Area::Hk => &config.hk_web_playurl_api,
+                        Area::Tw => &config.tw_web_playurl_api,
+                        Area::Th => &config.th_web_playurl_api, //should not
+                    }
+                }
+            }
+            ReqType::Search(area, is_app) => {
+                if *is_app {
+                    match area {
+                        Area::Cn => &config.cn_app_search_api,
+                        Area::Hk => &config.cn_app_search_api,
+                        Area::Tw => &config.cn_app_search_api,
+                        Area::Th => &config.cn_app_search_api, //should not
+                    }
+                } else {
+                    match area {
+                        Area::Cn => &config.cn_web_search_api,
+                        Area::Hk => &config.cn_web_search_api,
+                        Area::Tw => &config.cn_web_search_api,
+                        Area::Th => &config.cn_web_search_api, //should not
+                    }
+                }
+            }
+            ReqType::ThSubtitle => &config.th_app_season_sub_api,
+            ReqType::Accesskey => unimplemented!(),
+        }
+    }
+    pub fn get_proxy<'config>(&self, config: &'config BiliConfig) -> (bool, &'config str) {
+        match self {
+            ReqType::Playurl(area, _) => match area {
+                Area::Cn => (
+                    config.cn_proxy_playurl_open,
+                    &config.cn_proxy_playurl_url,
+                ),
+                Area::Hk => (
+                    config.hk_proxy_playurl_open,
+                    &config.hk_proxy_playurl_url,
+                ),
+                Area::Tw => (
+                    config.tw_proxy_playurl_open,
+                    &config.tw_proxy_playurl_url,
+                ),
+                Area::Th => (
+                    config.th_proxy_playurl_open,
+                    &config.th_proxy_playurl_url,
+                ), //should not
+            },
+            ReqType::Search(area, _) => match area {
+                Area::Cn => (
+                    config.cn_proxy_search_open,
+                    &config.cn_proxy_search_url,
+                ),
+                Area::Hk => (
+                    config.hk_proxy_search_open,
+                    &config.hk_proxy_search_url,
+                ),
+                Area::Tw => (
+                    config.tw_proxy_search_open,
+                    &config.tw_proxy_search_url,
+                ),
+                Area::Th => (
+                    config.th_proxy_search_open,
+                    &config.th_proxy_search_url,
+                ),
+            },
+            ReqType::ThSubtitle => (
+                config.th_proxy_subtitle_open,
+                &config.th_proxy_subtitle_url,
+            ),
+            ReqType::Accesskey => unimplemented!(),
+        }
+    }
+}
+
 /*
 * the following is background task related struct & impl
 */
@@ -187,7 +346,7 @@ impl HealthCheck {
 pub enum CacheTask {
     UserInfoCacheRefresh(String),
     PlayurlCacheRefresh(PlayurlParamsStatic),
-    EpInfoCacheRefresh((bool, Vec<EpInfo>)),
+    EpInfoCacheRefresh(bool, Vec<EpInfo>),
     EpAreaCacheRefresh(String),
 }
 
@@ -1004,7 +1163,7 @@ impl UserInfo {
         //     self.access_key, self.uid, self.vip_expire_time, self.expire_time
         // )
     }
-    pub fn user_is_vip(&self) -> bool {
+    pub fn is_vip(&self) -> bool {
         let dt = chrono::Local::now();
         let ts = dt.timestamp_millis() as u64;
         if self.vip_expire_time > ts {
@@ -1086,6 +1245,7 @@ pub struct PlayurlParams<'playurl_params> {
     pub app_sec: &'playurl_params str,
     pub ep_id: &'playurl_params str,
     pub cid: &'playurl_params str,
+    pub season_id: &'playurl_params str,
     pub build: &'playurl_params str,
     pub device: &'playurl_params str,
     // extra info
@@ -1108,6 +1268,7 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl> Default
             app_sec: "560c52ccd288fed045859ed18bffd973",
             ep_id: "",
             cid: "",
+            season_id: "",
             build: "6800300",
             device: "android",
             is_app: true,
@@ -1213,7 +1374,7 @@ pub struct SearchParams<'search_params> {
     pub is_th: bool,
     pub is_vip: bool,
     pub area: &'search_params str,
-    pub area_num: i32,
+    pub area_num: u8,
     pub user_agent: &'search_params str,
     pub cookie: &'search_params str,
 }
@@ -1409,14 +1570,74 @@ pub struct Log {
     pub ep_health_log: HashMap<u8, bool>,
 }
 
-pub enum ErrorType {
-    ServerGeneralError,
-    ServerNetworkError(String),
+pub enum EType {
+    ServerGeneral,                    //兜底错误
+    ServerNetworkError(&'static str), //服务器网络错误
+    ServerReqError(&'static str),     //因服务器内部处理问题导致请求上游失败的错误
+    ServerOnlyVIPError,               //服务器仅允许大会员使用
+    ServerFatalError,                 //服务器被-412了
     // ReqFreqError(u8),
-    ReqSignError,
-    ReqUAError,
-    UserBlacklistedError(i64),
-    UserNonVIPError,
-    UserNotLoginedError,
-    OtherError((i64, String)),
+    ReqSignError,              //请求Sign异常
+    ReqUAError,                //请求UA异常
+    UserBlacklistedError(i64), //用户黑名单错误
+    UserWhitelistedError,      //服务器仅允许白名单内用户使用
+    UserNonVIPError,           //大会员错误
+    UserNotLoginedError,       //用户未登录错误
+    InvalidReq,
+    OtherError(i64, &'static str), //其他自定义错误
+    OtherUpstreamError(i64, String),
+}
+impl EType {
+    pub fn err_json(self) -> String {
+        match self {
+            EType::ServerGeneral => {
+                String::from("{{\"code\":-500,\"message\":\"服务器内部错误\"}}")
+            }
+            EType::ServerNetworkError(value) => {
+                format!("{{\"code\":-500,\"message\":\"服务器网络错误: {value}\"}}")
+            }
+            EType::ServerReqError(value) => {
+                format!("{{\"code\":-500,\"message\":\"服务器内部错误: {value}\"}}")
+            }
+            EType::ServerOnlyVIPError => {
+                String::from("{{\"code\":-10403,\"message\":\"服务器不欢迎您: 大会员专享限制\"}}")
+            }
+            EType::ServerFatalError => String::from(
+                "{{\"code\":-412,\"message\":\"服务器被草到风控了... 暂时换个服务器吧...\"}}",
+            ),
+            // ErrorType::ReqFreqError(_) => todo!(),
+            EType::ReqSignError => String::from("{{\"code\":-3,\"message\":\"API校验密匙错误\"}}"),
+            EType::ReqUAError => String::from("{{\"code\":-412,\"message\":\"请求被拦截\"}}"),
+            EType::UserBlacklistedError(timestamp) => {
+                let dt = Utc
+                    .timestamp(
+                        if timestamp != 0 {
+                            timestamp
+                        } else {
+                            3376656000
+                        },
+                        0,
+                    )
+                    .with_timezone(&FixedOffset::east(8 * 3600));
+                let tips = dt.format(r#"\n%Y年%m月%d日 %H:%M解封, 请耐心等待"#);
+                format!("{{\"code\":-10403,\"message\":\"服务器不欢迎您: 黑名单限制{tips}\"}}")
+            }
+            EType::UserWhitelistedError => {
+                String::from("{{\"code\":-10403,\"message\":\"服务器不欢迎您: 白名单限制\"}}")
+            }
+            EType::UserNonVIPError => {
+                String::from("{{\"code\":-10403,\"message\":\"大会员专享限制\"}}")
+            }
+            EType::UserNotLoginedError => {
+                String::from("{{\"code\":-101,\"message\":\"账号未登录\",\"ttl\":1}}")
+            }
+            EType::InvalidReq => String::from("{{\"code\":-412,\"message\":\"请求被拦截\"}}"),
+            EType::OtherError(err_code, err_msg) => {
+                format!("{{\"code\":{err_code},\"message\":\"其他错误: {err_msg}\"}}")
+            }
+            EType::OtherUpstreamError(err_code, err_msg) => {
+                format!("{{\"code\":{err_code},\"message\":\"其他错误: {err_msg}\"}}")
+            }
+        }
+    }
 }

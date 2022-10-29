@@ -1,9 +1,8 @@
 use super::cache::{get_cached_blacklist_info, get_cached_user_info, update_cached_user_info};
-use super::request::{async_getwebpage, async_postwebpage, redis_get, redis_set};
-use super::types::{BiliConfig, UserResignInfo, UserInfo, UserCerStatus, SERVER_NETWORK_ERROR_MESSAGE};
+use super::request::{async_getwebpage, async_postwebpage};
+use super::types::{BiliRuntime, EType, PlayurlParams, UserInfo, UserResignInfo};
 use super::upstream_res::{get_upstream_bili_account_info, get_upstream_blacklist_info};
 use chrono::prelude::*;
-use deadpool_redis::Pool;
 
 // general
 #[inline]
@@ -13,31 +12,32 @@ pub async fn get_user_info(
     app_sec: &str,
     user_agent: &str,
     force_update: bool,
-    config: &BiliConfig,
-    redis_pool: &Pool,
-) -> Result<UserInfo, (i64, String)> {
+    bili_runtime: &BiliRuntime<'_>,
+) -> Result<UserInfo, EType> {
     // mixed with blacklist function
     if force_update {
-        match get_upstream_bili_account_info(
-            access_key, app_key, app_sec, user_agent, config
-        )
-        .await
+        match get_upstream_bili_account_info(access_key, app_key, app_sec, user_agent, bili_runtime)
+            .await
         {
             Ok(value) => Ok(value),
             Err(value) => Err(value),
         }
     } else {
-        match get_cached_user_info(access_key, redis_pool).await {
+        match get_cached_user_info(access_key, bili_runtime).await {
             Some(value) => Ok(value),
             None => match get_upstream_bili_account_info(
-                access_key, app_key, app_sec, user_agent, config
+                access_key,
+                app_key,
+                app_sec,
+                user_agent,
+                bili_runtime,
             )
             .await
             {
                 Ok(value) => {
-                    update_cached_user_info(&value, access_key, redis_pool).await;
+                    update_cached_user_info(&value, bili_runtime).await;
                     Ok(value)
-                },
+                }
                 Err(value) => Err(value),
             },
         }
@@ -45,11 +45,7 @@ pub async fn get_user_info(
 }
 
 #[inline]
-pub async fn get_blacklist_info(
-    uid: &u64,
-    config: &BiliConfig,
-    redis_pool: &Pool,
-) -> Result<UserCerStatus, (i64, String)> {
+pub async fn get_blacklist_info(uid: &u64, bili_runtime: &BiliRuntime<'_>) -> Result<bool, EType> {
     fn timestamp_to_time(timestamp: &u64) -> String {
         let dt = Utc
             .timestamp(*timestamp as i64, 0)
@@ -57,106 +53,147 @@ pub async fn get_blacklist_info(
         dt.format(r#"%Y年%m月%d日 %H:%M解封\n请耐心等待"#)
             .to_string()
     }
-    match &config.blacklist_config {
+    match &bili_runtime.config.blacklist_config {
         super::types::BlackListType::OnlyLocalBlackList => {
-            match config.local_wblist.get(&uid.to_string()) {
+            match bili_runtime.config.local_wblist.get(&uid.to_string()) {
                 Some(value) => {
                     if value.1 {
-                        return Ok(UserCerStatus::White);
+                        return Ok(true);
                     } else if value.0 {
-                        return Ok(UserCerStatus::Black(
-                            "本地黑名单,服务器不欢迎您".to_string(),
-                        ));
+                        return Err(EType::UserBlacklistedError(0));
                     }
                     {
-                        return Ok(UserCerStatus::Normal);
+                        Ok(false)
                     }
                 }
-                None => {
-                    return Ok(UserCerStatus::Black(
-                        "服务器已启用白名单,服务器不欢迎您".to_string(),
-                    ));
-                }
+                None => Err(EType::UserWhitelistedError),
             }
         }
         super::types::BlackListType::OnlyOnlineBlackList(online_blacklist_config) => {
             let dt = Local::now();
             let ts = dt.timestamp() as u64;
-            let data = match get_cached_blacklist_info(uid, redis_pool).await {
+            let data = match get_cached_blacklist_info(uid, bili_runtime).await {
                 Some(value) => {
                     if value.status_expire_time < ts {
-                        match get_upstream_blacklist_info(online_blacklist_config, uid).await {
-                            Some(value) => value,
-                            None => return Err((-500, format!("{SERVER_NETWORK_ERROR_MESSAGE}: 鉴权失败了喵"))),
+                        match get_upstream_blacklist_info(uid, &bili_runtime).await {
+                            Ok(value) => value,
+                            Err(value) => return Err(value),
                         }
                     } else {
                         value
                     }
                 }
-                None => match get_upstream_blacklist_info(online_blacklist_config, uid).await {
-                    Some(value) => value,
-                    None => return Err((-500, format!("{SERVER_NETWORK_ERROR_MESSAGE}: 鉴权失败了喵"))),
+                None => match get_upstream_blacklist_info(uid, &bili_runtime).await {
+                    Ok(value) => value,
+                    Err(value) => return Err(value),
                 },
             };
             if data.white {
-                return Ok(UserCerStatus::White);
+                Ok(true)
             } else if data.black {
-                return Ok(UserCerStatus::Black(timestamp_to_time(&data.ban_until)));
+                Err(EType::UserBlacklistedError(data.ban_until as i64))
             } else {
-                return Ok(UserCerStatus::Normal);
+                Ok(false)
             }
         }
         super::types::BlackListType::MixedBlackList(online_blacklist_config) => {
-            match config.local_wblist.get(&uid.to_string()) {
+            match bili_runtime.config.local_wblist.get(&uid.to_string()) {
                 Some(value) => {
                     if value.1 {
-                        return Ok(UserCerStatus::White);
+                        return Ok(true);
                     } else if value.0 {
-                        return Ok(UserCerStatus::Black(
-                            "本地黑名单,服务器不欢迎您".to_string(),
-                        ));
-                    }
-                    {
-                        return Ok(UserCerStatus::Normal);
+                        return Err(EType::UserBlacklistedError(0));
+                    } else {
+                        ()
                     }
                 }
-                None => ()
+                None => (),
             }
             let dt = Local::now();
             let ts = dt.timestamp() as u64;
-            let data = match get_cached_blacklist_info(uid, redis_pool).await {
+            let data = match get_cached_blacklist_info(uid, bili_runtime).await {
                 Some(value) => {
                     if value.status_expire_time < ts {
-                        match get_upstream_blacklist_info(online_blacklist_config, uid).await {
-                            Some(value) => value,
-                            None => return Err((-500, format!("{SERVER_NETWORK_ERROR_MESSAGE}: 鉴权失败了喵"))),
+                        match get_upstream_blacklist_info(uid, &bili_runtime).await {
+                            Ok(value) => value,
+                            Err(value) => return Err(value),
                         }
                     } else {
                         value
                     }
                 }
-                None => match get_upstream_blacklist_info(online_blacklist_config, uid).await {
-                    Some(value) => value,
-                    None => return Err((-500, format!("{SERVER_NETWORK_ERROR_MESSAGE}: 鉴权失败了喵"))),
+                None => match get_upstream_blacklist_info(uid, &bili_runtime).await {
+                    Ok(value) => value,
+                    Err(value) => return Err(value),
                 },
             };
             if data.white {
-                return Ok(UserCerStatus::White);
+                Ok(true)
             } else if data.black {
-                return Ok(UserCerStatus::Black(timestamp_to_time(&data.ban_until)));
+                Err(EType::UserBlacklistedError(data.ban_until as i64))
             } else {
-                return Ok(UserCerStatus::Normal);
+                Ok(false)
             }
         }
     }
 }
 
+pub async fn resign_user_info(
+    white: bool,
+    params: &PlayurlParams<'_>,
+    bili_runtime: &BiliRuntime<'_>,
+) -> Result<Option<(bool, String)>, EType> {
+    let config = bili_runtime.config;
+    let new_access_key;
+    if params.is_th {
+        if *config.resign_open.get("4").unwrap_or(&false)
+            && (white || *config.resign_pub.get("4").unwrap_or(&false))
+        {
+            (new_access_key, _) = get_resigned_access_key(&4, &params.user_agent, bili_runtime)
+                .await
+                .unwrap_or((params.access_key.to_string(), 1));
+            Ok(Some((true, new_access_key)))
+        } else {
+            Ok(None)
+        }
+    } else {
+        if *config.resign_open.get("4").unwrap_or(&false)
+            && (white
+                || *config
+                    .resign_pub
+                    .get(&params.area_num.to_string())
+                    .unwrap_or(&false))
+        {
+            (new_access_key, _) = get_resigned_access_key(&4, &params.user_agent, bili_runtime)
+                .await
+                .unwrap_or((params.access_key.to_string(), 1));
+            let user_info = match get_user_info(
+                params.access_key,
+                params.app_key,
+                params.app_sec,
+                params.user_agent,
+                false,
+                bili_runtime,
+            )
+            .await
+            {
+                Ok(value) => value,
+                Err(value) => {
+                    return Err(value);
+                }
+            };
+            Ok(Some((user_info.is_vip(), new_access_key)))
+        } else {
+            Ok(None)
+        }
+    }
+}
 pub async fn get_resigned_access_key(
     area_num: &u8,
     user_agent: &str,
-    config: &BiliConfig,
-    redis_pool: &Pool,
+    bili_runtime: &BiliRuntime<'_>,
 ) -> Option<(String, u64)> {
+    let config = bili_runtime.config;
     if *config
         .resign_api_policy
         .get(&area_num.to_string())
@@ -165,7 +202,7 @@ pub async fn get_resigned_access_key(
         let key = format!("a{area_num}1201");
         let dt = Local::now();
         let ts = dt.timestamp() as u64;
-        match redis_get(redis_pool, &key).await {
+        match bili_runtime.redis_get(&key).await {
             Some(value) => {
                 let resign_info_json: UserResignInfo = serde_json::from_str(&value).unwrap();
                 if resign_info_json.expire_time > ts {
@@ -181,7 +218,7 @@ pub async fn get_resigned_access_key(
             &area_num,
             &config.resign_api_sign.get(&area_num_str).unwrap()
         );
-        let data = if let Ok(data) = async_getwebpage(&url, &false, "", "", "").await {
+        let data = if let Ok(data) = async_getwebpage(&url, false, "", "", "").await {
             data
         } else {
             println!("[Error] 从非官方接口处获取accesskey失败");
@@ -211,14 +248,16 @@ pub async fn get_resigned_access_key(
                 .unwrap_or(ts + 3600),
         };
 
-        redis_set(redis_pool, &key, &resign_info.to_json(), 3600).await;
+        bili_runtime
+            .redis_set(&key, &resign_info.to_json(), 3600)
+            .await;
         return Some((access_key, resign_info.expire_time));
     } else {
         let area_num = match area_num {
             4 => 4,
             _ => 1,
         };
-        let resign_info_str = match redis_get(redis_pool, &format!("a{area_num}1101")).await {
+        let resign_info_str = match bili_runtime.redis_get(&format!("a{area_num}1101")).await {
             Some(value) => value,
             None => return None,
         };
@@ -232,21 +271,22 @@ pub async fn get_resigned_access_key(
                 4 => 4,
                 _ => 1,
             };
-            get_accesskey_from_token(redis_pool, sub_area_num, user_agent, config).await
+            get_accesskey_from_token(sub_area_num, user_agent, bili_runtime).await
         }
     }
 }
 
 async fn get_accesskey_from_token(
-    pool: &Pool,
     sub_area_num: u8,
     user_agent: &str,
-    config: &BiliConfig,
+    bili_runtime: &BiliRuntime<'_>,
 ) -> Option<(String, u64)> {
+    let config = bili_runtime.config;
     let dt = Local::now();
     let ts = dt.timestamp() as u64;
     let resign_info = to_resign_info(
-        &redis_get(pool, &format!("a{sub_area_num}1101"))
+        &bili_runtime
+            .redis_get(&format!("a{sub_area_num}1101"))
             .await
             .unwrap(),
     )
@@ -279,7 +319,7 @@ async fn get_accesskey_from_token(
         _ => return None,
     };
     let getpost_string =
-        match async_postwebpage(&url, &content, proxy_open, proxy_url, user_agent).await {
+        match async_postwebpage(&url, &content, *proxy_open, proxy_url, user_agent).await {
             Ok(value) => value,
             Err(_) => return None,
         };
@@ -300,13 +340,9 @@ async fn get_accesskey_from_token(
             + ts
             - 3600,
     };
-    redis_set(
-        pool,
-        &format!("a{sub_area_num}1101"),
-        &resign_info.to_json(),
-        0,
-    )
-    .await;
+    bili_runtime
+        .redis_set(&format!("a{sub_area_num}1101"), &resign_info.to_json(), 0)
+        .await;
     Some((resign_info.access_key, resign_info.expire_time))
 }
 
@@ -320,19 +356,18 @@ pub async fn get_user_info_background(
     app_key: &str,
     app_sec: &str,
     user_agent: &str,
-    config: &BiliConfig,
-    redis_pool: &Pool,
-) -> Result<UserInfo, (i64, String)> {
+    bili_runtime: &BiliRuntime<'_>,
+) -> Result<UserInfo, EType> {
     // mixed with blacklist function
-    match get_cached_user_info(access_key, redis_pool).await {
+    match get_cached_user_info(access_key, bili_runtime).await {
         Some(value) => Ok(value),
-        None => match get_upstream_bili_account_info(
-            access_key, app_key, app_sec, user_agent, config
-        )
-        .await
-        {
-            Ok(value) => Ok(value),
-            Err(value) => Err(value),
-        },
+        None => {
+            match get_upstream_bili_account_info(access_key, app_key, app_sec, user_agent, bili_runtime)
+                .await
+            {
+                Ok(value) => Ok(value),
+                Err(value) => Err(value),
+            }
+        }
     }
 }

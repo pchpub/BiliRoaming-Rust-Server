@@ -1,4 +1,5 @@
-use super::ep_info::get_ep_need_vip;
+use super::background_tasks::update_cached_playurl_background;
+use super::ep_info::{get_ep_need_vip, get_ep_need_vip_background};
 use super::request::{redis_get, redis_set};
 use super::types::PlayurlParams;
 use super::types::*;
@@ -81,7 +82,7 @@ pub async fn update_area_cache(
     params: &PlayurlParams<'_>,
     key: &str,
     value: &str,
-    redis_pool: &Pool,
+    bili_runtime: &BiliRuntime<'_>,
 ) {
     let is_available = check_ep_available(http_body);
     let area_num = params.area_num as usize;
@@ -92,25 +93,7 @@ pub async fn update_area_cache(
             value[..area_num - 1].to_owned() + "1" + &value[area_num..]
         }
     };
-    let _ = redis_set(redis_pool, key, &new_value, 0).await;
-}
-
-#[inline]
-pub async fn update_area_cache_force(bilisender: Arc<Sender<BackgroundTaskType>>, ep_id: &str) {
-    let background_task_data =
-        BackgroundTaskType::CacheTask(CacheTask::EpAreaCacheRefresh(ep_id.to_owned()));
-    tokio::spawn(async move {
-        //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
-        match bilisender.try_send(background_task_data) {
-            Ok(_) => (),
-            Err(TrySendError::Full(_)) => {
-                println!("[Error] channel is full");
-            }
-            Err(TrySendError::Closed(_)) => {
-                println!("[Error] channel is closed");
-            }
-        };
-    });
+    bili_runtime.redis_set(key, &new_value, 0).await;
 }
 
 #[inline]
@@ -163,57 +146,44 @@ fn check_ep_available(http_body: &str) -> bool {
 */
 // blacklist info cache
 // redis_set(redis, &key, &return_data.to_json(), 1 * 24 * 60 * 60).await;
-pub async fn get_cached_user_info(access_key: &str, redis_pool: &Pool) -> Option<UserInfo> {
-    match redis_get(redis_pool, &format!("{access_key}20501")).await {
+pub async fn get_cached_user_info(access_key: &str, bili_runtime: &BiliRuntime<'_>) -> Option<UserInfo> {
+    match bili_runtime.redis_get(&format!("{access_key}20501")).await {
         Some(value) => Some(serde_json::from_str(&value).unwrap()),
         None => None,
     }
 }
 
-pub async fn update_cached_user_info(
-    new_user_info: &UserInfo,
-    access_key: &str,
-    redis_pool: &Pool,
-) {
+pub async fn update_cached_user_info(new_user_info: &UserInfo, bili_runtime: &BiliRuntime<'_>) {
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
+    let access_key = &new_user_info.access_key;
     let key = format!("{access_key}20501");
     let value = new_user_info.to_json();
     let expire_time = (new_user_info.expire_time - ts) / 1000;
-    let _: () = redis_set(redis_pool, &key, &value, expire_time)
+    // let _: () = redis_set(redis_pool, &key, &value, expire_time)
+    //     .await
+    //     .unwrap_or_default();
+    // let _: () = redis_set(
+    //     redis_pool,
+    //     &format!("u{}20501", new_user_info.uid),
+    //     &access_key.to_owned(),
+    //     expire_time,
+    // )
+    // .await
+    // TODO: add general cache type struct for redis set/get
+    bili_runtime.redis_set(&key, &value, expire_time).await;
+    bili_runtime
+        .redis_set(
+            &format!("u{}20501", new_user_info.uid),
+            &access_key,
+            expire_time,
+        )
         .await
-        .unwrap_or_default();
-    let _: () = redis_set(
-        redis_pool,
-        &format!("u{}20501", new_user_info.uid),
-        &access_key.to_owned(),
-        expire_time,
-    )
-    .await
-    .unwrap_or_default();
 }
 
-#[inline]
-pub async fn update_cached_user_info_force(bilisender: Arc<Sender<BackgroundTaskType>>, access_key: String) {
-    let background_task_data =
-        BackgroundTaskType::CacheTask(CacheTask::UserInfoCacheRefresh(access_key));
-    tokio::spawn(async move {
-        //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
-        match bilisender.try_send(background_task_data) {
-            Ok(_) => (),
-            Err(TrySendError::Full(_)) => {
-                println!("[Error] channel is full");
-            }
-            Err(TrySendError::Closed(_)) => {
-                println!("[Error] channel is closed");
-            }
-        };
-    });
-}
-
-pub async fn get_cached_blacklist_info(uid: &u64, redis_pool: &Pool) -> Option<UserCerinfo> {
+pub async fn get_cached_blacklist_info(uid: &u64, bili_runtime: &BiliRuntime<'_>) -> Option<UserCerinfo> {
     //turn to ver 02
-    match redis_get(redis_pool, &format!("{uid}20602")).await {
+    match bili_runtime.redis_get(&format!("{uid}20602")).await {
         Some(value) => Some(serde_json::from_str(&value).unwrap()),
         None => None,
     }
@@ -234,27 +204,15 @@ pub async fn get_cached_blacklist_info(uid: &u64, redis_pool: &Pool) -> Option<U
 */
 pub async fn get_cached_playurl(
     params: &PlayurlParams<'_>,
-    bilisender: &Arc<Sender<BackgroundTaskType>>,
-    redis_pool: &Pool,
+    bili_runtime: &BiliRuntime<'_>,
 ) -> Result<String, ()> {
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
-    let key = get_plaurl_cache_key(
-        params.ep_id,
-        params.cid,
-        params.area_num as u8,
-        params.is_app,
-        params.is_tv,
-        params.is_vip,
-        false,
-        redis_pool,
-        bilisender
-    )
-    .await;
+    let key = get_plaurl_cache_key(params, false, bili_runtime).await;
 
     let need_fresh: bool;
     let return_data;
-    let cached_data = match redis_get(&redis_pool, &key).await {
+    let cached_data = match bili_runtime.redis_get(&key).await {
         Some(value) => Some(value),
         None => None,
     };
@@ -275,67 +233,19 @@ pub async fn get_cached_playurl(
         None => return Err(()),
     }
     if need_fresh {
-        update_cached_playurl_background(&params, &bilisender).await;
+        update_cached_playurl_background(params, bili_runtime).await;
     }
     Ok(return_data)
 }
 
-pub async fn update_cached_playurl_background(
-    params: &PlayurlParams<'_>,
-    bilisender: &Arc<Sender<BackgroundTaskType>>,
-) {
-    let playurl_to_fresh_data =
-        BackgroundTaskType::CacheTask(CacheTask::PlayurlCacheRefresh(PlayurlParamsStatic {
-            access_key: params.access_key.to_string(),
-            app_key: params.app_key.to_string(),
-            app_sec: params.app_sec.to_string(),
-            ep_id: params.ep_id.to_string(),
-            cid: params.cid.to_string(),
-            build: params.build.to_string(),
-            device: params.device.to_string(),
-            is_app: params.is_app,
-            is_tv: params.is_tv,
-            is_th: params.is_th,
-            is_vip: params.is_vip,
-            area: params.area.to_string(),
-            area_num: params.area_num,
-            user_agent: params.user_agent.to_string(),
-        }));
-    let bilisender_cl = Arc::clone(bilisender);
-    tokio::spawn(async move {
-        //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
-        match bilisender_cl.try_send(playurl_to_fresh_data) {
-            Ok(_) => (),
-            Err(TrySendError::Full(_)) => {
-                println!("[Error] channel is full");
-            }
-            Err(TrySendError::Closed(_)) => {
-                println!("[Error] channel is closed");
-            }
-        };
-    });
-}
 pub async fn update_cached_playurl(
     params: &PlayurlParams<'_>,
     body_data: &str,
-    redis_pool: &Pool,
-    config: &BiliConfig,
-    bilisender: &Arc<Sender<BackgroundTaskType>>,
+    bili_runtime: &BiliRuntime<'_>,
 ) {
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
-    let key = get_plaurl_cache_key(
-        params.ep_id,
-        params.cid,
-        params.area_num,
-        params.is_app,
-        params.is_tv,
-        params.is_vip,
-        true,
-        redis_pool,
-        bilisender
-    )
-    .await;
+    let key = get_plaurl_cache_key(params, true, bili_runtime).await;
 
     let mut body_data_json: serde_json::Value = serde_json::from_str(body_data).unwrap();
     let code = body_data_json["code"].as_i64().unwrap();
@@ -353,19 +263,53 @@ pub async fn update_cached_playurl(
 
     let expire_time = match get_playurl_deadline(playurl_type, &mut body_data_json) {
         Ok(value) => value - ts / 1000,
-        Err(_) => match config.cache.get(&code.to_string()) {
+        Err(_) => match bili_runtime.config.cache.get(&code.to_string()) {
             Some(value) => value,
-            None => config.cache.get("other").unwrap(),
+            None => bili_runtime.config.cache.get("other").unwrap(),
         }
         .clone(),
     };
     let value = format!("{}{body_data}", ts + expire_time * 1000);
-    let _: () = redis_set(&redis_pool, &key, &value, expire_time)
-        .await
-        .unwrap_or_default();
+    bili_runtime.redis_set(&key, &value, expire_time).await
 }
 
 async fn get_plaurl_cache_key(
+    params: &PlayurlParams<'_>,
+    need_redis_key: bool,
+    bili_runtime: &BiliRuntime<'_>,
+) -> String {
+    let need_vip = if need_redis_key {
+        if let Some(value) = get_ep_need_vip(params.ep_id, bili_runtime).await {
+            value as u8
+        } else {
+            // should not
+            params.is_vip as u8
+        }
+    } else {
+        params.is_vip as u8
+    };
+    match params.is_app {
+        true => {
+            if params.is_tv {
+                format!(
+                    "e{}c{}v{need_vip}t1{}0101",
+                    params.ep_id, params.cid, params.area_num
+                )
+            } else {
+                format!(
+                    "e{}c{}v{need_vip}t0{}0101",
+                    params.ep_id, params.cid, params.area_num
+                )
+            }
+        }
+        false => format!(
+            "e{}c{}v{need_vip}t0{}0701",
+            params.ep_id, params.cid, params.area_num
+        ),
+    }
+}
+
+async fn get_plaurl_cache_key_background(
     ep_id: &str,
     cid: &str,
     area_num: u8,
@@ -374,10 +318,9 @@ async fn get_plaurl_cache_key(
     is_vip: bool,
     need_redis_key: bool,
     redis_pool: &Pool,
-    bilisender: &Arc<Sender<BackgroundTaskType>>,
 ) -> String {
     let need_vip = if need_redis_key {
-        if let Some(value) = get_ep_need_vip(ep_id, redis_pool, bilisender).await {
+        if let Some(value) = get_ep_need_vip_background(ep_id, redis_pool).await {
             value as u8
         } else {
             // should not
@@ -508,15 +451,19 @@ fn get_playurl_deadline(
 东南亚区season缓存
 */
 
-pub async fn get_cached_season(redis_pool: &Pool, season_id: &str) -> Result<String, ()> {
+pub async fn get_cached_th_season(
+    season_id: &str,
+    bili_runtime: &BiliRuntime<'_>,
+) -> Result<String, ()> {
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let key = format!("s{}41001", season_id);
     let redis_get_data: String;
-    match redis_get(redis_pool, &key).await {
+    match bili_runtime.redis_get(&key).await {
         Some(value) => {
             let redis_get_data_expire_time = &value[..13].parse::<u64>().unwrap();
             if redis_get_data_expire_time > &ts {
+                // TODO: add manual refresh
                 redis_get_data = value[13..].to_string();
                 Ok(redis_get_data)
             } else {
@@ -527,25 +474,56 @@ pub async fn get_cached_season(redis_pool: &Pool, season_id: &str) -> Result<Str
     }
 }
 
-pub async fn update_cached_season(
-    season_id: &str,
-    data: &str,
-    redis_pool: &Pool,
-    config: &BiliConfig,
-) {
+pub async fn update_th_season_cache(season_id: &str, data: &str, bili_runtime: &BiliRuntime<'_>) {
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let key = format!("s{}41001", season_id);
-    let expire_time = match config.cache.get(&"season".to_string()) {
+    let expire_time = match bili_runtime.config.cache.get(&"season".to_string()) {
         Some(value) => value,
         None => &1800,
     };
     let value = format!("{}{data}", ts + expire_time * 1000);
-    redis_set(redis_pool, &key, &value, *expire_time).await;
+    bili_runtime.redis_set(&key, &value, *expire_time).await;
 }
 
 /*
-ep info信息缓存
+* th subtitle 缓存
+*/
+pub async fn get_cached_th_subtitle(
+    params: &PlayurlParams<'_>,
+    raw_query: &str,
+    bili_runtime: &BiliRuntime<'_>,
+) -> Result<String, bool> {
+    let dt = Local::now();
+    let ts = dt.timestamp() as u64;
+    let key = format!("e{}41201", params.ep_id);
+    match bili_runtime.redis_get(&key).await {
+        Some(value) => {
+            if &value[..13].parse::<u64>().unwrap() < &(ts * 1000) {
+                Err(true)
+            } else {
+                Ok(value[13..].to_string())
+            }
+        }
+        None => Err(true),
+    }
+}
+
+pub async fn update_th_subtitle_cache(
+    data: &str,
+    params: &PlayurlParams<'_>,
+    bili_runtime: &BiliRuntime<'_>,
+) {
+    let dt = Local::now();
+    let ts = dt.timestamp() as u64;
+    let key = format!("e{}41201", params.ep_id);
+    let expire_time = bili_runtime.config.cache.get("thsub").unwrap_or(&14400);
+    let value = format!("{}{data}", (ts + expire_time) * 1000);
+    bili_runtime.redis_set(&key, &value, *expire_time).await;
+}
+
+/*
+* ep info信息缓存
 */
 pub async fn get_cached_ep_info(ep_id: &str, redis_pool: &Pool) -> Result<EpInfo, ()> {
     let key = format!("e{ep_id}1501");
@@ -572,29 +550,17 @@ pub async fn get_cached_ep_info(ep_id: &str, redis_pool: &Pool) -> Result<EpInfo
     }
 }
 
-/** `update_cached_ep_info` 
+/** `update_cached_ep_info`
  * 在获取上游ep_info后, get_upstream_bili_ep_info同时返回, 通过后台任务刷新ep_info缓存
 */
-pub async fn update_cached_ep_info(
+pub async fn update_cached_ep_info_background(
     force_update: bool,
     ep_info_vec: Vec<EpInfo>,
-    bilisender: &Arc<Sender<BackgroundTaskType>>,
+    bili_runtime: &BiliRuntime<'_>,
 ) {
-    let bilisender_cl = Arc::clone(bilisender);
     let background_task_data =
-        BackgroundTaskType::CacheTask(CacheTask::EpInfoCacheRefresh((force_update, ep_info_vec)));
-    tokio::spawn(async move {
-        //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
-        match bilisender_cl.try_send(background_task_data) {
-            Ok(_) => (),
-            Err(TrySendError::Full(_)) => {
-                println!("[Error] channel is full");
-            }
-            Err(TrySendError::Closed(_)) => {
-                println!("[Error] channel is closed");
-            }
-        };
-    });
+        BackgroundTaskType::CacheTask(CacheTask::EpInfoCacheRefresh(force_update, ep_info_vec));
+    bili_runtime.send_task(background_task_data).await
 }
 
 pub async fn update_cached_ep_info_redis(ep_info: EpInfo, redis_pool: &Pool) {
@@ -619,4 +585,60 @@ pub async fn update_cached_ep_info_redis(ep_info: EpInfo, redis_pool: &Pool) {
         0,
     )
     .await;
+}
+
+// pub async fn update_cache<T> (key: &str, value: T) -> T {
+
+// }
+
+pub enum CacheType<'CacheType, T>
+where
+    T: std::fmt::Display,
+    // U: serde_json::ser::Formatter
+{
+    Playurl((Area, PlayurlParams<'CacheType>, T)),
+    EpArea(T),
+    EpVipInfo(T),
+    EpInfo(T), // not implemented
+    UserInfo(T),
+    UserCerInfo(T),
+}
+impl<'CacheType, T> CacheType<'CacheType, T>
+where
+    T: std::fmt::Display,
+{
+    async fn update_redis(key: &str, value: &str, expire_time: u64, redis_pool: &Pool) {
+        redis_set(redis_pool, key, value, expire_time)
+            .await
+            .unwrap()
+    }
+    pub async fn update(self, redis_pool: &Pool) {
+        match self {
+            CacheType::Playurl(params) => {
+                let (area, params, data) = params;
+                let ep_id = params.ep_id;
+                let cid = params.cid;
+
+                let need_vip = if let Some(value) =
+                    get_ep_need_vip_background(params.ep_id, redis_pool).await
+                {
+                    value as u8
+                } else {
+                    // should not
+                    params.is_vip as u8
+                };
+                let is_tv = (params.is_tv && params.is_app) as u8;
+                let is_app: &str = if params.is_app { "01" } else { "07" };
+                let area_num = area.num();
+                let key = format!("e{ep_id}c{cid}v{need_vip}t{is_tv}{area_num}{is_app}01");
+
+                Self::update_redis(&key, &data.to_string(), 0, redis_pool).await
+            }
+            CacheType::EpArea(_) => todo!(),
+            CacheType::EpVipInfo(_) => todo!(),
+            CacheType::EpInfo(_) => todo!(),
+            CacheType::UserInfo(_) => todo!(),
+            CacheType::UserCerInfo(_) => todo!(),
+        }
+    }
 }

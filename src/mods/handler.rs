@@ -1,12 +1,12 @@
-use super::request::{async_getwebpage, async_postwebpage, redis_get, redis_set};
+use super::background_tasks::{update_area_cache_background, update_cached_playurl_background};
+use super::request::async_getwebpage;
 use super::types::{
-    random_string, Area, BackgroundTaskType, BiliConfig, EpAreaCacheType, PlayurlParams,
-    SearchParams, UserResignInfo,
+    random_string, Area, BackgroundTaskType, BiliConfig, BiliRuntime, EType, EpAreaCacheType,
+    PlayurlParams, SearchParams,
 };
 use actix_web::http::header::ContentType;
 use actix_web::{HttpRequest, HttpResponse};
 use async_channel::Sender;
-use chrono::prelude::Local;
 use deadpool_redis::Pool;
 use md5;
 use pcre2::bytes::Regex;
@@ -15,11 +15,12 @@ use serde_json::{self, json};
 use std::sync::Arc;
 
 use super::cache::{
-    get_cached_ep_area, get_cached_playurl, get_cached_season, update_area_cache,
-    update_area_cache_force, update_cached_playurl_background, update_cached_season,
+    get_cached_ep_area, get_cached_playurl, get_cached_th_season, get_cached_th_subtitle,
+    update_area_cache, update_th_season_cache, update_th_subtitle_cache,
 };
 use super::upstream_res::{
     get_upstream_bili_playurl, get_upstream_bili_search, get_upstream_bili_season,
+    get_upstream_bili_subtitle, get_upstream_resigned_access_key,
 };
 use super::user_info::*;
 
@@ -33,7 +34,7 @@ pub async fn handle_playurl_request(
     let (redis_pool, config, bilisender) = req
         .app_data::<(Pool, BiliConfig, Arc<Sender<BackgroundTaskType>>)>()
         .unwrap();
-    let bilisender_cl = Arc::clone(bilisender);
+    let bili_runtime = BiliRuntime::new(config, redis_pool, bilisender);
     let query_string = req.query_string();
     let query = QString::from(query_string);
     let mut params = PlayurlParams {
@@ -41,7 +42,7 @@ pub async fn handle_playurl_request(
         is_th,
         ..Default::default()
     };
-    // deal with req
+    // detect req area
     (params.area, params.area_num) = match query.get("area") {
         Some(area) => match area {
             "cn" => ("cn", 1),
@@ -54,20 +55,17 @@ pub async fn handle_playurl_request(
             if is_th {
                 ("th", 4)
             } else {
-                // query param must have area
-                return build_response("{\"code\":-412,\"message\":\"请求被拦截\"}".to_string());
+                // query param must have "area", or must be invalid req
+                return bili_error(EType::InvalidReq);
             }
         }
     };
+    // detect req UA
     params.user_agent = match req.headers().get("user-agent") {
         Option::Some(_ua) => req.headers().get("user-agent").unwrap().to_str().unwrap(),
-        _ => {
-            return build_response(
-                "{\"code\":-10403,\"message\":\"草,没ua你看个der\"}".to_string(),
-            );
-        }
+        _ => return bili_error(EType::ReqUAError),
     };
-
+    // detect req client ver
     if is_app && config.limit_biliroaming_version_open {
         match req.headers().get("build") {
             Some(value) => {
@@ -75,27 +73,25 @@ pub async fn handle_playurl_request(
                 if version < config.limit_biliroaming_version_min
                     || version > config.limit_biliroaming_version_max
                 {
-                    return build_response(
-                        "{\"code\":-412,\"message\":\"什么旧版本魔人,升下级\"}".to_string(),
-                    );
+                    return bili_error(EType::OtherError(-412, "什么旧版本魔人,升下级"));
                 }
             }
             None => (),
         }
     }
-
+    // detect user's app_key
     params.app_key = match query.get("appkey") {
         Option::Some(key) => key,
         _ => "1d8b6e7d45233436",
     };
-
     match params.appkey_to_sec() {
         Ok(_) => (),
         Err(_) => {
             return build_response("{\"code\":-10403,\"message\":\"未知设备\"}".to_string());
         }
     };
-
+    // verify req sign
+    // TODO: add ignore sign err
     if is_app || is_th {
         if query_string.len() <= 39
             || (format!(
@@ -110,37 +106,30 @@ pub async fn handle_playurl_request(
             return build_response("{\"code\":-3,\"message\":\"API校验密匙错误\"}".to_string());
         }
     }
-
+    // detect user's access_key
     params.access_key = match query.get("access_key") {
         Option::Some(key) => {
             let key = key;
             if key.len() == 0 {
-                return build_response(
-                    "{\"code\":-101,\"message\":\"没有accesskey,你b站和漫游需要换个版本\"}"
-                        .to_string(),
-                );
+                return bili_error(EType::UserNotLoginedError);
             } else {
                 key
             }
         }
         _ => {
-            return build_response(
-                "{\"code\":-101,\"message\":\"草,没登陆你看个der,让我凭空拿到你账号是吧\"}"
-                    .to_string(),
-            );
+            return bili_error(EType::UserNotLoginedError);
         }
     };
-
+    // detect req ep
     params.ep_id = match query.get("ep_id") {
         Option::Some(key) => key,
         _ => "",
     };
-
     params.cid = match query.get("cid") {
         Option::Some(key) => key,
         _ => "",
     };
-
+    // detect other info
     params.build = query.get("build").unwrap_or("6800300");
 
     params.device = query.get("device").unwrap_or("android");
@@ -155,153 +144,95 @@ pub async fn handle_playurl_request(
         None => false,
     };
 
+    // get user_info
     let user_info = match get_user_info(
         params.access_key,
         params.app_key,
         params.app_sec,
         params.user_agent,
         false,
-        &config,
-        redis_pool,
+        &bili_runtime,
     )
     .await
     {
         Ok(value) => value,
-        Err((err_code, err_msg)) => {
-            return build_response(format!("{{\"code\":{err_code},\"message\":\"{err_msg}\"}}"));
+        Err(value) => {
+            return bili_error(value);
         }
     };
-
-    params.is_vip = user_info.user_is_vip();
-
-    // TODO: add check ep vip status here, forbid non-vip user get vip
-
-    let user_cer_info = match get_blacklist_info(&user_info.uid, &config, redis_pool).await {
+    // get user's vip status
+    params.is_vip = user_info.is_vip();
+    // get user's blacklist info
+    let white = match get_blacklist_info(&user_info.uid, &bili_runtime).await {
         Ok(value) => value,
-        Err((err_code, err_msg)) => {
-            return build_response(format!("{{\"code\":{err_code},\"message\":\"{err_msg}\"}}"));
-        }
+        Err(value) => return bili_error(value),
     };
-    let white: bool;
-    match user_cer_info {
-        super::types::UserCerStatus::Black(value) => {
-            return build_response(format!(r#"{{"code":-10403,"message":"{}"}}"#, value));
+    // resign if needed
+    let resigned_access_key;
+    match resign_user_info(white, &params, &bili_runtime).await {
+        Ok(value) => {
+            if let Some(value) = value {
+                (params.is_vip, resigned_access_key) = (value.0, value.1);
+                params.access_key = &resigned_access_key;
+            }
         }
-        super::types::UserCerStatus::White => {
-            white = true;
-        }
-        super::types::UserCerStatus::Normal => {
-            white = false;
-        }
-    }
-
-    let dt = Local::now();
-    let ts = dt.timestamp_millis() as u64;
-    let new_access_key;
-    if is_th {
-        params.is_vip = false;
-        if *config.resign_open.get("4").unwrap_or(&false)
-            && (white || *config.resign_pub.get("4").unwrap_or(&false))
-        {
-            (new_access_key, _) = get_resign_accesskey(redis_pool, &4, &params.user_agent, &config)
-                .await
-                .unwrap_or((params.access_key.to_string(), 1));
-            params.is_vip = true;
-            params.access_key = new_access_key.as_str();
-        }
-    } else {
-        if user_info.vip_expire_time >= ts {
-            params.is_vip = true;
-        } else if *config.resign_open.get("4").unwrap_or(&false)
-            && (white
-                || *config
-                    .resign_pub
-                    .get(&params.area_num.to_string())
-                    .unwrap_or(&false))
-        {
-            (new_access_key, _) =
-                get_resign_accesskey(redis_pool, &params.area_num, &params.user_agent, &config)
-                    .await
-                    .unwrap_or((params.access_key.to_string(), 1));
-            params.access_key = new_access_key.as_str();
-            let user_info = match get_user_info(
-                params.access_key,
-                params.app_key,
-                params.app_sec,
-                params.user_agent,
-                false,
-                &config,
-                redis_pool,
-            )
-            .await
-            {
-                Ok(value) => value,
-                Err((err_code, err_msg)) => {
-                    return build_response(format!("{{\"code\":{err_code},\"message\":\"{err_msg}\"}}"));
-                }
-            };
-            params.is_vip = user_info.user_is_vip();
-        }
+        Err(value) => return bili_error(value),
     }
 
     if config.area_cache_open {
         if params.ep_id == "" {
-            let return_data = match get_upstream_bili_playurl(
-                &mut params,
-                &config,
-                bilisender,
-                user_info,
-            )
-            .await
-            {
-                Ok(value) => value,
-                Err(value) => value,
-            };
+            let return_data =
+                match get_upstream_bili_playurl(&mut params, &user_info, &bili_runtime).await {
+                    Ok(value) => value,
+                    Err(error_type) => return bili_error(error_type),
+                };
             return build_response(return_data);
         };
         if let Ok(value) = get_cached_ep_area(&params, redis_pool).await {
             let http_body_return = match value {
                 // if without current area cache data then such ep is never accessed, of course doesnt have cache
                 EpAreaCacheType::NoCurrentAreaData(key, redis_value) => {
-                    match get_upstream_bili_playurl(&mut params, &config, bilisender, user_info)
-                        .await
-                    {
+                    match get_upstream_bili_playurl(&mut params, &user_info, &bili_runtime).await {
                         Ok(http_body) => {
-                            update_area_cache(&http_body, &params, &key, &redis_value, redis_pool)
-                                .await;
+                            update_area_cache(
+                                &http_body,
+                                &params,
+                                &key,
+                                &redis_value,
+                                &bili_runtime,
+                            )
+                            .await;
                             http_body
                         }
-                        Err(http_body) => http_body,
+                        Err(error_type) => return bili_error(error_type),
                     }
                 }
                 EpAreaCacheType::OnlyHasCurrentAreaData(is_exist) => {
                     if is_exist {
-                        let return_data =
-                            match get_cached_playurl(&params, &bilisender_cl, redis_pool).await {
-                                Ok(data) => data,
-                                Err(_) => {
-                                    match get_upstream_bili_playurl(
-                                        &mut params,
-                                        &config,
-                                        bilisender,
-                                        user_info,
-                                    )
-                                    .await
-                                    {
-                                        Ok(value) => value,
-                                        Err(value) => value,
-                                    }
+                        let return_data = match get_cached_playurl(&params, &bili_runtime).await {
+                            Ok(data) => data,
+                            Err(_) => {
+                                match get_upstream_bili_playurl(
+                                    &mut params,
+                                    &user_info,
+                                    &bili_runtime,
+                                )
+                                .await
+                                {
+                                    Ok(value) => value,
+                                    Err(error_type) => return bili_error(error_type),
                                 }
-                            };
+                            }
+                        };
                         return_data
                     } else {
                         // should not have such condition,
                         // if so, maybe proxy settings do not correspond one-to-one with the expected region,
                         // causing update_area_cache_force got error area limit info
                         // if really encounter with such condition, try to traditionally update area cache
-                        update_cached_playurl_background(&params, &bilisender_cl).await;
+                        update_cached_playurl_background(&params, &bili_runtime).await;
                         // update_area_cache_force(bilisender_cl, params.ep_id).await;
-                        "{\"code\":-10403,\"message\":\"该剧集被判定为没有地区能播放\"}".to_string()
+                        return bili_error(EType::OtherError(-404, "该剧集被判定为没有地区能播放"));
                     }
                 }
                 EpAreaCacheType::Available(area) => {
@@ -314,54 +245,42 @@ pub async fn handle_playurl_request(
                         }
                     }
                     params.init_params();
-                    let return_data =
-                        match get_cached_playurl(&params, &bilisender_cl, redis_pool).await {
-                            Ok(data) => data,
-                            Err(_) => match get_upstream_bili_playurl(
-                                &mut params,
-                                &config,
-                                bilisender,
-                                user_info,
-                            )
-                            .await
+                    let return_data = match get_cached_playurl(&params, &bili_runtime).await {
+                        Ok(data) => data,
+                        Err(_) => {
+                            match get_upstream_bili_playurl(&mut params, &user_info, &bili_runtime)
+                                .await
                             {
                                 Ok(value) => value,
-                                Err(value) => value,
-                            },
-                        };
+                                Err(error_type) => return bili_error(error_type),
+                            }
+                        }
+                    };
                     return_data
                 }
                 EpAreaCacheType::NoEpData => {
                     // if havent any cache info, try to manally update area cache for later use
-                    update_area_cache_force(bilisender_cl, params.ep_id).await;
-                    match get_upstream_bili_playurl(&mut params, &config, bilisender, user_info)
-                        .await
-                    {
+                    update_area_cache_background(&params, &bili_runtime).await;
+                    match get_upstream_bili_playurl(&mut params, &user_info, &bili_runtime).await {
                         Ok(http_body) => http_body,
-                        Err(http_body) => http_body,
+                        Err(error_type) => return bili_error(error_type),
                     }
                 }
             };
             return build_response(http_body_return);
         } else {
-            let return_data = match get_upstream_bili_playurl(
-                &mut params,
-                &config,
-                bilisender,
-                user_info,
-            )
-            .await
-            {
-                Ok(value) => value,
-                Err(value) => value,
-            };
+            let return_data =
+                match get_upstream_bili_playurl(&mut params, &user_info, &bili_runtime).await {
+                    Ok(http_body) => http_body,
+                    Err(error_type) => return bili_error(error_type),
+                };
             return build_response(return_data);
         }
     } else {
         let return_data =
-            match get_upstream_bili_playurl(&mut params, &config, bilisender, user_info).await {
-                Ok(value) => value,
-                Err(value) => value,
+            match get_upstream_bili_playurl(&mut params, &user_info, &bili_runtime).await {
+                Ok(http_body) => http_body,
+                Err(error_type) => return bili_error(error_type),
             };
         return build_response(return_data);
     }
@@ -371,7 +290,7 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
     let (redis_pool, config, bilisender) = req
         .app_data::<(Pool, BiliConfig, Arc<Sender<BackgroundTaskType>>)>()
         .unwrap();
-    let _bilisender_cl = Arc::clone(bilisender);
+    let bili_runtime = BiliRuntime::new(config, redis_pool, bilisender);
     let query_string = req.query_string();
     let query = QString::from(query_string);
     let mut params = SearchParams {
@@ -379,59 +298,100 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         is_th,
         ..Default::default()
     };
-    // deal with req
-    params.user_agent = match req.headers().get("user-agent") {
-        Option::Some(_ua) => req.headers().get("user-agent").unwrap().to_str().unwrap(),
-        _ => {
-            return build_response(
-                "{\"code\":-10403,\"message\":\"草,没ua你搜个der\"}".to_string(),
-            );
-        }
-    };
-
-    params.access_key = match query.get("access_key") {
-        Option::Some(key) => key,
-        _ => {
-            if params.is_app && (!params.is_th) {
-                return HttpResponse::Ok().content_type(ContentType::json()).body(
-                    "{\"code\":-101,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}",
-                );
-            } else {
-                ""
-            }
-        }
-    };
-
-    params.app_key = match query.get("appkey") {
-        Option::Some(key) => key,
-        _ => "1d8b6e7d45233436", //为了应对新的appkey,应该设定默认值
-    };
-
-    params.keyword = match query.get("keyword") {
-        Option::Some(key) => key,
-        _ => "",
-    };
-
+    // detect req area
     (params.area, params.area_num) = match query.get("area") {
         Some(area) => match area {
             "cn" => ("cn", 1),
             "hk" => ("hk", 2),
             "tw" => ("tw", 3),
-            "th" => {
-                params.app_key = "7d089525d3611b1c";
-                ("th", 4)
-            }
+            "th" => ("th", 4),
             _ => ("hk", 2),
         },
         _ => {
             if is_th {
                 ("th", 4)
             } else {
-                // query param must have area
-                return build_response("{\"code\":-412,\"message\":\"请求被拦截\"}".to_string());
+                // query param must have "area", or must be invalid req
+                return bili_error(EType::InvalidReq);
             }
         }
     };
+    // detect req UA
+    params.user_agent = match req.headers().get("user-agent") {
+        Option::Some(_ua) => req.headers().get("user-agent").unwrap().to_str().unwrap(),
+        _ => return bili_error(EType::ReqUAError),
+    };
+    // detect req client ver
+    if is_app && config.limit_biliroaming_version_open {
+        match req.headers().get("build") {
+            Some(value) => {
+                let version: u16 = value.to_str().unwrap_or("0").parse().unwrap_or(0);
+                if version < config.limit_biliroaming_version_min
+                    || version > config.limit_biliroaming_version_max
+                {
+                    return bili_error(EType::OtherError(-412, "什么旧版本魔人,升下级"));
+                }
+            }
+            None => (),
+        }
+    }
+    // detect user's app_key
+    params.app_key = match query.get("appkey") {
+        Option::Some(key) => key,
+        _ => "1d8b6e7d45233436",
+    };
+    match params.appkey_to_sec() {
+        Ok(_) => (),
+        Err(_) => {
+            return build_response("{\"code\":-10403,\"message\":\"未知设备\"}".to_string());
+        }
+    };
+    // verify req sign
+    // TODO: add ignore sign err
+    if is_app || is_th {
+        if query_string.len() <= 39
+            || (format!(
+                "{:x}",
+                md5::compute(format!(
+                    "{}{}",
+                    &query_string[..query_string.len() - 38],
+                    params.app_sec
+                ))
+            ) != &query_string[query_string.len() - 32..])
+        {
+            return build_response("{\"code\":-3,\"message\":\"API校验密匙错误\"}".to_string());
+        }
+    }
+    // detect user's access_key
+    params.access_key = match query.get("access_key") {
+        Option::Some(key) => {
+            let key = key;
+            if key.len() == 0 {
+                return bili_error(EType::UserNotLoginedError);
+            } else {
+                key
+            }
+        }
+        _ => {
+            return build_response(
+                "{\"code\":-101,\"message\":\"草,没登陆你看个der,让我凭空拿到你账号是吧\"}"
+                    .to_string(),
+            );
+        }
+    };
+    // detect other info
+    params.build = query.get("build").unwrap_or("6800300");
+
+    params.device = query.get("device").unwrap_or("android");
+
+    params.statistics = match query.get("statistics") {
+        Some(value) => value,
+        _ => "",
+    };
+
+    params.pn = query.get("pn").unwrap_or("1");
+
+    params.fnval = query.get("fnval").unwrap_or("976");
 
     let cookie_buvid3_default = format!("buvid3={}", random_string());
     let cookie_buvid3_default = cookie_buvid3_default.as_str();
@@ -450,65 +410,21 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         ""
     };
 
-    //println!("[Debug] cookie:{}", cookie);
-
-    match params.appkey_to_sec() {
-        Ok(_) => (),
-        Err(_) => {
-            return build_response("{\"code\":-10403,\"message\":\"未知设备\"}".to_string());
+    // get user_info
+    let user_info = match get_user_info(
+        params.access_key,
+        params.app_key,
+        params.app_sec,
+        params.user_agent,
+        false,
+        &bili_runtime,
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(value) => {
+            return bili_error(value);
         }
-    };
-
-    if is_app && (!is_th) {
-        let user_info = match get_user_info(
-            params.access_key,
-            params.app_key,
-            params.app_sec,
-            params.user_agent,
-            false,
-            &config,
-            redis_pool,
-        )
-        .await
-        {
-            Ok(value) => value,
-            Err((err_code, err_msg)) => {
-                return build_response(format!("{{\"code\":{err_code},\"message\":\"{err_msg}\"}}"));
-            }
-        };
-
-        match get_blacklist_info(&user_info.uid, &config, redis_pool).await {
-            //为了记录accesskey to uid
-            _ => (),
-        };
-    }
-
-    params.build = query
-        .get("build")
-        .unwrap_or(if is_th { "1080003" } else { "6400000" });
-
-    params.device = query.get("device").unwrap_or("android");
-
-    params.statistics = match query.get("statistics") {
-        Some(value) => value,
-        _ => "",
-    };
-
-    params.pn = query.get("pn").unwrap_or("1");
-
-    params.fnval = query.get("fnval").unwrap_or("976");
-
-    let body_data = match get_upstream_bili_search(&params, &query, config, bilisender).await {
-        Ok(value) => {
-            if params.pn != "1" {
-                return build_response(value);
-            };
-            // if !is_app {
-            //     return build_response(value);
-            // }
-            value
-        }
-        Err(value) => return build_response(value),
     };
 
     let host = match req.headers().get("Host") {
@@ -519,70 +435,36 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         },
     };
 
-    let mut body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
-    let upstream_code = body_data_json["code"]
-        .as_str()
-        .unwrap_or("233")
-        .parse::<i64>()
-        .unwrap_or(233);
-    if upstream_code != 0 {
-        // if config.report_open {
-        //     let num = redis_get(&redis_pool, &format!("02{}1301", area_num))
-        //         .await
-        //         .unwrap_or("0".to_string())
-        //         .as_str()
-        //         .parse::<u32>()
-        //         .unwrap();
-        //     if num == 4 {
-        //         redis_set(&redis_pool, &format!("02{}1301", area_num), "1", 0)
-        //             .await
-        //             .unwrap_or_default();
-        //         let senddata = SendData::Health(SendHealthData {
-        //             area_num,
-        //             data_type: SesourceType::PlayUrl,
-        //             health_type: HealthType::Offline,
-        //         });
-        //         tokio::spawn(async move {
-        //             //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
-        //             match bilisender_cl.try_send(senddata) {
-        //                 Ok(_) => (),
-        //                 Err(TrySendError::Full(_)) => {
-        //                     println!("[Error] channel is full");
-        //                 }
-        //                 Err(TrySendError::Closed(_)) => {
-        //                     println!("[Error] channel is closed");
-        //                 }
-        //             };
-        //         });
-        //     } else {
-        //         redis_set(
-        //             &redis_pool,
-        //             &format!("02{}1301", area_num),
-        //             &(num + 1).to_string(),
-        //             0,
-        //         )
-        //         .await
-        //         .unwrap_or_default();
-        //     }
-        // }
-        return build_response("{\"code\":-10403,\"message\":\"获取失败喵\"}".to_string());
-    }
+    let mut body_data_json: serde_json::Value =
+        match get_upstream_bili_search(&params, &query, &bili_runtime).await {
+            Ok(value) => {
+                if params.pn != "1" {
+                    return build_response(value.to_string());
+                };
+                // if !is_app {
+                //     return build_response(value);
+                // }
+                value
+            }
+            Err(value) => return bili_error(value),
+        };
 
     let search_remake_date = {
         if is_app {
             if let Some(value) = config.appsearch_remake.get(host) {
                 value
             } else {
-                return build_response(body_data);
+                return build_response(body_data_json.to_string());
             }
         } else {
             if let Some(value) = config.websearch_remake.get(host) {
                 value
             } else {
-                return build_response(body_data);
+                return build_response(body_data_json.to_string());
             }
         }
     };
+
     if is_app {
         match body_data_json["data"]["items"].as_array_mut() {
             Some(value2) => {
@@ -611,94 +493,48 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
             }
         }
     }
-    // TODO: MOVE TO HEALTH
-    // if config.report_open {
-    //     match redis_get(&redis_pool, &format!("02{}1301", area_num)).await {
-    //         Some(value) => {
-    //             let err_num = value.parse::<u16>().unwrap();
-    //             if err_num >= 4 {
-    //                 redis_set(&redis_pool, &format!("02{}1301", area_num), "0", 0)
-    //                     .await
-    //                     .unwrap_or_default();
-    //                 let senddata = SendData::Health(SendHealthData {
-    //                     area_num,
-    //                     data_type: SesourceType::Search,
-    //                     health_type: HealthType::Online,
-    //                 });
-    //                 tokio::spawn(async move {
-    //                     //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
-    //                     match bilisender_cl.try_send(senddata) {
-    //                         Ok(_) => (),
-    //                         Err(TrySendError::Full(_)) => {
-    //                             println!("[Error] channel is full");
-    //                         }
-    //                         Err(TrySendError::Closed(_)) => {
-    //                             println!("[Error] channel is closed");
-    //                         }
-    //                     };
-    //                 });
-    //             } else if err_num != 0 {
-    //                 redis_set(&redis_pool, &format!("02{}1301", area_num), "0", 0)
-    //                     .await
-    //                     .unwrap_or_default();
-    //             }
-    //         }
-    //         None => {
-    //             redis_set(&redis_pool, &format!("02{}1301", area_num), "0", 0)
-    //                 .await
-    //                 .unwrap_or_default();
-    //             let senddata = SendData::Health(SendHealthData {
-    //                 area_num,
-    //                 data_type: SesourceType::Search,
-    //                 health_type: HealthType::Online,
-    //             });
-    //             tokio::spawn(async move {
-    //                 //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
-    //                 match bilisender_cl.try_send(senddata) {
-    //                     Ok(_) => (),
-    //                     Err(TrySendError::Full(_)) => {
-    //                         println!("[Error] channel is full");
-    //                     }
-    //                     Err(TrySendError::Closed(_)) => {
-    //                         println!("[Error] channel is closed");
-    //                     }
-    //                 };
-    //             });
-    //         }
-    //     }
-    // }
+
     let body_data = body_data_json.to_string();
     return build_response(body_data);
 }
 
-pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpResponse {
-    let (pool, config, bilisender) = req
+pub async fn handle_th_season_request(
+    req: &HttpRequest,
+    _is_app: bool,
+    _is_th: bool,
+) -> HttpResponse {
+    let (redis_pool, config, bilisender) = req
         .app_data::<(Pool, BiliConfig, Arc<Sender<BackgroundTaskType>>)>()
         .unwrap();
-    let _bilisender_cl = Arc::clone(bilisender);
-    match req.headers().get("user-agent") {
-        Option::Some(_ua) => (),
-        _ => {
-            return build_response(
-                "{\"code\":-10403,\"message\":\"草,没ua你看个der\"}".to_string(),
-            );
+    let bili_runtime = BiliRuntime::new(config, redis_pool, bilisender);
+    let query_string = req.query_string();
+    let query = QString::from(query_string);
+    let mut params = PlayurlParams {
+        area: "th",
+        area_num: 4,
+        ..Default::default()
+    };
+    // detect req UA
+    params.user_agent = match req.headers().get("user-agent") {
+        Option::Some(_ua) => req.headers().get("user-agent").unwrap().to_str().unwrap(),
+        _ => return bili_error(EType::ReqUAError),
+    };
+    // detect user's access_key
+    params.access_key = match query.get("access_key") {
+        Option::Some(key) => {
+            let key = key;
+            if key.len() == 0 {
+                return bili_error(EType::UserNotLoginedError);
+            } else {
+                key
+            }
         }
-    }
-
-    let user_agent = format!(
-        "{}",
-        req.headers().get("user-agent").unwrap().to_str().unwrap()
-    );
-    let query = QString::from(req.query_string());
-
-    let access_key = match query.get("access_key") {
-        Option::Some(key) => key,
         _ => {
-            return HttpResponse::Ok()
-                .content_type(ContentType::json())
-                .body("{\"code\":2403,\"message\":\"草,没登陆你搜个der,让我凭空拿到你账号是吧\"}");
+            return bili_error(EType::UserNotLoginedError);
         }
     };
+    // init th app_key & app_sec
+    params.appkey_to_sec().unwrap();
 
     // let user_info = match getuser_list(
     //     pool,
@@ -722,476 +558,231 @@ pub async fn get_season(req: &HttpRequest, _is_app: bool, _is_th: bool) -> HttpR
     //     Err(_) => (false, false),
     // }; //为了让不带access key 的web搜索脚本能用(不带用户信息，这是极坏的)
 
-    let season_id = query.get("season_id").unwrap_or("114514");
-
-    let build = query.get("build").unwrap_or("1080003");
-
-    match get_cached_season(pool, season_id).await {
-        Ok(value) => return build_response(value),
-        Err(_) => {
-            match get_upstream_bili_season(access_key, build, season_id, &user_agent, config).await
-            {
-                Ok(value) => {
-                    let body_data = value;
-                    let season_remake = move || async move {
-                        if config.th_app_season_sub_open {
-                            let mut body_data_json: serde_json::Value =
-                                serde_json::from_str(&body_data).unwrap();
-                            let season_id: Option<u64>;
-                            let is_result: bool;
-                            match &body_data_json["result"] {
-                                serde_json::Value::Object(value) => {
-                                    is_result = true;
-                                    season_id = Some(value["season_id"].as_u64().unwrap());
-                                }
-                                serde_json::Value::Null => {
-                                    is_result = false;
-                                    match &body_data_json["data"] {
-                                        serde_json::Value::Null => {
-                                            season_id = None;
-                                        }
-                                        serde_json::Value::Object(value) => {
-                                            season_id = Some(value["season_id"].as_u64().unwrap());
-                                        }
-                                        _ => {
-                                            season_id = None;
-                                        }
-                                    }
-                                }
-                                _ => {
-                                    is_result = false;
-                                    season_id = None;
-                                }
-                            }
-
-                            match season_id {
-                                None => {
-                                    return body_data;
-                                }
-                                Some(_) => (),
-                            }
-
-                            let sub_replace_str = match async_getwebpage(
-                                &format!("{}{}", &config.th_app_season_sub_api, season_id.unwrap()),
-                                &false,
-                                "",
-                                &user_agent,
-                                "",
-                            )
-                            .await
-                            {
-                                Ok(value) => value,
-                                Err(_) => {
-                                    return body_data;
-                                }
-                            };
-                            let sub_replace_json: serde_json::Value =
-                                if let Ok(value) = serde_json::from_str(&sub_replace_str) {
-                                    value
-                                } else {
-                                    return body_data;
-                                };
-                            match sub_replace_json["code"].as_i64().unwrap_or(233) {
-                                0 => {
-                                    if body_data_json["result"]["modules"]
-                                        .as_array_mut()
-                                        .unwrap()
-                                        .len()
-                                        == 0
-                                    {
-                                        return body_data;
-                                    }
-                                }
-                                _ => {
-                                    return body_data;
-                                }
-                            }
-                            let mut index_of_replace_json = 0;
-                            let len_of_replace_json =
-                                sub_replace_json["data"].as_array().unwrap().len();
-                            while index_of_replace_json < len_of_replace_json {
-                                let ep: usize =
-                                    sub_replace_json["data"][index_of_replace_json]["ep"]
-                                        .as_u64()
-                                        .unwrap() as usize;
-                                let key = sub_replace_json["data"][index_of_replace_json]["key"]
-                                    .as_str()
-                                    .unwrap();
-                                let lang = sub_replace_json["data"][index_of_replace_json]["lang"]
-                                    .as_str()
-                                    .unwrap();
-                                let url = sub_replace_json["data"][index_of_replace_json]["url"]
-                                    .as_str()
-                                    .unwrap();
-                                if is_result {
-                                    let element = format!("{{\"id\":{index_of_replace_json},\"key\":\"{key}\",\"title\":\"[非官方] {lang} {}\",\"url\":\"https://{url}\"}}",config.th_app_season_sub_name);
-                                    body_data_json["result"]["modules"][0]["data"]["episodes"][ep]
-                                        ["subtitles"]
-                                        .as_array_mut()
-                                        .unwrap()
-                                        .insert(0, serde_json::from_str(&element).unwrap());
-                                }
-                                index_of_replace_json += 1;
-                            }
-
-                            if config.aid_replace_open {
-                                let len_of_episodes = body_data_json["result"]["modules"][0]
-                                    ["data"]["episodes"]
-                                    .as_array()
-                                    .unwrap()
-                                    .len();
-                                let mut index = 0;
-                                while index < len_of_episodes {
-                                    body_data_json["result"]["modules"][0]["data"]["episodes"]
-                                        [index]
-                                        .as_object_mut()
-                                        .unwrap()
-                                        .insert("aid".to_string(), serde_json::json!(&config.aid));
-                                    index += 1;
-                                }
-                            }
-
-                            let body_data = body_data_json.to_string();
-                            return body_data;
-                        } else {
-                            return body_data;
-                        }
-                    };
-                    let body_data = season_remake().await;
-                    // TODO: MOVE TO HEALTH
-                    // if config.report_open {
-                    //     match redis_get(&pool, "0441301").await {
-                    //         Some(value) => {
-                    //             let err_num = value.parse::<u16>().unwrap();
-                    //             if err_num >= 4 {
-                    //                 redis_set(&pool, "0441301", "0", 0)
-                    //                     .await
-                    //                     .unwrap_or_default();
-                    //                 let senddata = SendData::Health(SendHealthData {
-                    //                     area_num: 4,
-                    //                     data_type: SesourceType::PlayUrl,
-                    //                     health_type: HealthType::Online,
-                    //                 });
-                    //                 tokio::spawn(async move {
-                    //                     //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
-                    //                     match bilisender_cl.try_send(senddata) {
-                    //                         Ok(_) => (),
-                    //                         Err(TrySendError::Full(_)) => {
-                    //                             println!("[Error] channel is full");
-                    //                         }
-                    //                         Err(TrySendError::Closed(_)) => {
-                    //                             println!("[Error] channel is closed");
-                    //                         }
-                    //                     };
-                    //                 });
-                    //             } else if err_num != 0 {
-                    //                 redis_set(&pool, "0441301", "0", 0)
-                    //                     .await
-                    //                     .unwrap_or_default();
-                    //             }
-                    //         }
-                    //         None => {
-                    //             redis_set(&pool, "0441301", "0", 0)
-                    //                 .await
-                    //                 .unwrap_or_default();
-                    //             let senddata = SendData::Health(SendHealthData {
-                    //                 area_num: 4,
-                    //                 data_type: SesourceType::PlayUrl,
-                    //                 health_type: HealthType::Online,
-                    //             });
-                    //             tokio::spawn(async move {
-                    //                 //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
-                    //                 match bilisender_cl.try_send(senddata) {
-                    //                     Ok(_) => (),
-                    //                     Err(TrySendError::Full(_)) => {
-                    //                         println!("[Error] channel is full");
-                    //                     }
-                    //                     Err(TrySendError::Closed(_)) => {
-                    //                         println!("[Error] channel is closed");
-                    //                     }
-                    //                 };
-                    //             });
-                    //         }
-                    //     }
-                    // }
-                    update_cached_season(season_id, &body_data, pool, config).await;
-                    return build_response(body_data);
-                }
-                Err(_) => {
-                    return build_response(
-                        "{\"code\":-404,\"message\":\"获取失败喵\"}".to_string(),
-                    );
-                }
-            }
-        }
-    }
-}
-
-pub async fn get_resign_accesskey(
-    redis: &Pool,
-    area_num: &u8,
-    user_agent: &str,
-    config: &BiliConfig,
-) -> Option<(String, u64)> {
-    if *config
-        .resign_api_policy
-        .get(&area_num.to_string())
-        .unwrap_or(&false)
-    {
-        let key = format!("a{area_num}1201");
-        let dt = Local::now();
-        let ts = dt.timestamp() as u64;
-        match redis_get(redis, &key).await {
-            Some(value) => {
-                let resign_info_json: UserResignInfo = serde_json::from_str(&value).unwrap();
-                if resign_info_json.expire_time > ts {
-                    return Some((resign_info_json.access_key, resign_info_json.expire_time));
-                }
-            }
-            None => (),
-        };
-        let area_num_str = area_num.to_string();
-        let url = format!(
-            "{}?area_num={}&sign={}",
-            &config.resign_api.get(&area_num_str).unwrap(),
-            &area_num,
-            &config.resign_api_sign.get(&area_num_str).unwrap()
-        );
-        let webgetpage_data = if let Ok(data) = async_getwebpage(&url, &false, "", "", "").await {
-            data
-        } else {
-            println!("[Error] 从非官方接口处获取accesskey失败");
-            return None;
-        };
-        let webgetpage_data_json: serde_json::Value =
-            if let Ok(value) = serde_json::from_str(&webgetpage_data) {
-                value
-            } else {
-                println!("[Error] json解析失败: {}", webgetpage_data);
-                return None;
-            };
-        if webgetpage_data_json["code"].as_i64().unwrap() != 0 {
-            println!("err3");
-            return None;
-        }
-        let access_key = webgetpage_data_json["access_key"]
-            .as_str()
-            .unwrap()
-            .to_string();
-        let resign_info = UserResignInfo {
-            area_num: *area_num as i32,
-            access_key: access_key.clone(),
-            refresh_token: "".to_string(),
-            expire_time: webgetpage_data_json["expire_time"]
-                .as_u64()
-                .unwrap_or(ts + 3600),
-        };
-
-        redis_set(redis, &key, &resign_info.to_json(), 3600).await;
-        return Some((access_key, resign_info.expire_time));
+    params.season_id = if let Some(value) = query.get("season_id") {
+        value
     } else {
-        let area_num = match area_num {
-            4 => 4,
-            _ => 1,
-        };
-        let resign_info_str = match redis_get(redis, &format!("a{area_num}1101")).await {
-            Some(value) => value,
-            None => return None,
-        };
-        let resign_info_json: UserResignInfo = serde_json::from_str(&resign_info_str).unwrap();
-        let dt = Local::now();
-        let ts = dt.timestamp() as u64;
-        if resign_info_json.expire_time > ts {
-            return Some((resign_info_json.access_key, resign_info_json.expire_time));
-        } else {
-            match area_num {
-                4 => get_accesskey_from_token_th(redis, user_agent, config).await,
-                _ => get_accesskey_from_token_cn(redis, user_agent, config).await,
+        return bili_error(EType::OtherError(-10403, "参数错误"));
+    };
+
+    params.build = query.get("build").unwrap_or("1080003");
+
+    match get_cached_th_season(params.season_id, &bili_runtime).await {
+        Ok(value) => return build_response(value),
+        Err(_) => match get_upstream_bili_season(&params, &bili_runtime).await {
+            Ok(value) => {
+                let body_data = value;
+                let season_remake = move || async move {
+                    if config.th_app_season_sub_open {
+                        let mut body_data_json: serde_json::Value =
+                            serde_json::from_str(&body_data).unwrap();
+                        let season_id: Option<u64>;
+                        let is_result: bool;
+                        match &body_data_json["result"] {
+                            serde_json::Value::Object(value) => {
+                                is_result = true;
+                                season_id = Some(value["season_id"].as_u64().unwrap());
+                            }
+                            serde_json::Value::Null => {
+                                is_result = false;
+                                match &body_data_json["data"] {
+                                    serde_json::Value::Null => {
+                                        season_id = None;
+                                    }
+                                    serde_json::Value::Object(value) => {
+                                        season_id = Some(value["season_id"].as_u64().unwrap());
+                                    }
+                                    _ => {
+                                        season_id = None;
+                                    }
+                                }
+                            }
+                            _ => {
+                                is_result = false;
+                                season_id = None;
+                            }
+                        }
+
+                        match season_id {
+                            None => {
+                                return body_data;
+                            }
+                            Some(_) => (),
+                        }
+
+                        let sub_replace_str = match async_getwebpage(
+                            &format!("{}{}", &config.th_app_season_sub_api, season_id.unwrap()),
+                            false,
+                            "",
+                            params.user_agent,
+                            "",
+                        )
+                        .await
+                        {
+                            Ok(value) => value,
+                            Err(_) => {
+                                return body_data;
+                            }
+                        };
+                        let sub_replace_json: serde_json::Value =
+                            if let Ok(value) = serde_json::from_str(&sub_replace_str) {
+                                value
+                            } else {
+                                return body_data;
+                            };
+                        match sub_replace_json["code"].as_i64().unwrap_or(233) {
+                            0 => {
+                                if body_data_json["result"]["modules"]
+                                    .as_array_mut()
+                                    .unwrap()
+                                    .len()
+                                    == 0
+                                {
+                                    return body_data;
+                                }
+                            }
+                            _ => {
+                                return body_data;
+                            }
+                        }
+                        let mut index_of_replace_json = 0;
+                        let len_of_replace_json =
+                            sub_replace_json["data"].as_array().unwrap().len();
+                        while index_of_replace_json < len_of_replace_json {
+                            let ep: usize = sub_replace_json["data"][index_of_replace_json]["ep"]
+                                .as_u64()
+                                .unwrap() as usize;
+                            let key = sub_replace_json["data"][index_of_replace_json]["key"]
+                                .as_str()
+                                .unwrap();
+                            let lang = sub_replace_json["data"][index_of_replace_json]["lang"]
+                                .as_str()
+                                .unwrap();
+                            let url = sub_replace_json["data"][index_of_replace_json]["url"]
+                                .as_str()
+                                .unwrap();
+                            if is_result {
+                                let element = format!("{{\"id\":{index_of_replace_json},\"key\":\"{key}\",\"title\":\"[非官方] {lang} {}\",\"url\":\"https://{url}\"}}",config.th_app_season_sub_name);
+                                body_data_json["result"]["modules"][0]["data"]["episodes"][ep]
+                                    ["subtitles"]
+                                    .as_array_mut()
+                                    .unwrap()
+                                    .insert(0, serde_json::from_str(&element).unwrap());
+                            }
+                            index_of_replace_json += 1;
+                        }
+
+                        if config.aid_replace_open {
+                            let len_of_episodes = body_data_json["result"]["modules"][0]["data"]
+                                ["episodes"]
+                                .as_array()
+                                .unwrap()
+                                .len();
+                            let mut index = 0;
+                            while index < len_of_episodes {
+                                body_data_json["result"]["modules"][0]["data"]["episodes"][index]
+                                    .as_object_mut()
+                                    .unwrap()
+                                    .insert("aid".to_string(), serde_json::json!(&config.aid));
+                                index += 1;
+                            }
+                        }
+
+                        let body_data = body_data_json.to_string();
+                        return body_data;
+                    } else {
+                        return body_data;
+                    }
+                };
+                let body_data = season_remake().await;
+                update_th_season_cache(params.season_id, &body_data, &bili_runtime).await;
+                return build_response(body_data);
             }
-        }
+            Err(error_type) => return bili_error(error_type),
+        },
     }
 }
 
-async fn get_accesskey_from_token_th(
-    redis: &Pool,
-    user_agent: &str,
-    config: &BiliConfig,
-) -> Option<(String, u64)> {
-    let dt = Local::now();
-    let ts = dt.timestamp() as u64;
-    let resign_info = to_resign_info(&redis_get(redis, &format!("a41101")).await.unwrap()).await;
-    let access_key = resign_info.access_key;
-    let refresh_token = resign_info.refresh_token;
-    let url = "https://passport.biliintl.com/x/intl/passport-login/oauth2/refresh_token";
-    let content = format!("access_token={access_key}&refresh_token={refresh_token}");
-    let proxy_open = &config.th_proxy_token_open;
-    let proxy_url = &config.th_proxy_token_url;
-    let getpost_string =
-        match async_postwebpage(&url, &content, proxy_open, proxy_url, user_agent).await {
-            Ok(value) => value,
-            Err(_) => return None,
-        };
-    let getpost_json: serde_json::Value = serde_json::from_str(&getpost_string).unwrap();
-    let resign_info = UserResignInfo {
-        area_num: 4,
-        access_key: getpost_json["data"]["token_info"]["access_token"]
-            .as_str()
-            .unwrap()
-            .to_string(),
-        refresh_token: getpost_json["data"]["token_info"]["refresh_token"]
-            .as_str()
-            .unwrap()
-            .to_string(),
-        expire_time: getpost_json["data"]["token_info"]["expires_in"]
-            .as_u64()
-            .unwrap()
-            + ts
-            - 3600,
-    };
-    redis_set(redis, "a41101", &resign_info.to_json(), 0).await;
-    Some((resign_info.access_key, resign_info.expire_time))
-}
-
-async fn get_accesskey_from_token_cn(
-    redis: &Pool,
-    user_agent: &str,
-    config: &BiliConfig,
-) -> Option<(String, u64)> {
-    let dt = Local::now();
-    let ts = dt.timestamp() as u64;
-    let resign_info = to_resign_info(&redis_get(redis, &format!("a11101")).await.unwrap()).await;
-    let access_key = resign_info.access_key;
-    let refresh_token = resign_info.refresh_token;
-    let unsign_request_body = format!(
-        "access_token={access_key}&appkey=1d8b6e7d45233436&refresh_token={refresh_token}&ts={ts}"
-    );
-    let url = "https://passport.bilibili.com/x/passport-login/oauth2/refresh_token";
-    let content = format!(
-        "{unsign_request_body}&sign={:x}",
-        md5::compute(format!(
-            "{unsign_request_body}560c52ccd288fed045859ed18bffd973"
-        ))
-    );
-    let proxy_open = &config.cn_proxy_token_open;
-    let proxy_url = &config.cn_proxy_token_url;
-    let getpost_string =
-        match async_postwebpage(&url, &content, proxy_open, proxy_url, user_agent).await {
-            Ok(value) => value,
-            Err(_) => return None,
-        };
-    let getpost_json: serde_json::Value = serde_json::from_str(&getpost_string).unwrap();
-    let resign_info = UserResignInfo {
-        area_num: 1,
-        access_key: getpost_json["data"]["token_info"]["access_token"]
-            .as_str()
-            .unwrap()
-            .to_string(),
-        refresh_token: getpost_json["data"]["token_info"]["refresh_token"]
-            .as_str()
-            .unwrap()
-            .to_string(),
-        expire_time: getpost_json["data"]["token_info"]["expires_in"]
-            .as_u64()
-            .unwrap()
-            + ts
-            - 3600,
-    };
-    redis_set(redis, "a11101", &resign_info.to_json(), 0).await;
-    Some((resign_info.access_key, resign_info.expire_time))
-}
-
-async fn to_resign_info(resin_info_str: &str) -> UserResignInfo {
-    serde_json::from_str(resin_info_str).unwrap()
-}
-
-pub async fn get_subtitle_th(req: &HttpRequest, _: bool, _: bool) -> HttpResponse {
-    let (pool, config, _bilisender) = req
+pub async fn handle_th_subtitle_request(req: &HttpRequest, _: bool, _: bool) -> HttpResponse {
+    let (redis_pool, config, bilisender) = req
         .app_data::<(Pool, BiliConfig, Arc<Sender<BackgroundTaskType>>)>()
         .unwrap();
-    match req.headers().get("user-agent") {
-        Option::Some(_ua) => (),
-        _ => {
-            return HttpResponse::Ok()
-                .content_type(ContentType::json())
-                .body("{\"code\":1403,\"message\":\"草,没ua你看个der\"}");
-        }
-    }
-    let user_agent = format!(
-        "{}",
-        req.headers().get("user-agent").unwrap().to_str().unwrap()
-    );
-    let mut query = QString::from(req.query_string());
-    let ep_id = query.get("ep_id").unwrap();
-    let dt = Local::now();
-    let ts = dt.timestamp() as u64;
-    let key = format!("e{ep_id}41201");
-    let is_expire: bool;
-    let mut redis_get_data = String::new();
-    match redis_get(&pool, &key).await {
-        Some(value) => {
-            if &value[..13].parse::<u64>().unwrap() < &(ts * 1000) {
-                is_expire = true;
+    let bili_runtime = BiliRuntime::new(config, redis_pool, bilisender);
+    let query_string = req.query_string();
+    let query = QString::from(query_string);
+    let mut params = PlayurlParams {
+        area: "th",
+        area_num: 4,
+        ..Default::default()
+    };
+    params.appkey_to_sec();
+    // detect req UA
+    params.user_agent = match req.headers().get("user-agent") {
+        Option::Some(_ua) => req.headers().get("user-agent").unwrap().to_str().unwrap(),
+        _ => return bili_error(EType::ReqUAError),
+    };
+    // detect req ep
+    params.ep_id = match query.get("ep_id") {
+        Option::Some(key) => key,
+        _ => "",
+    };
+
+    match get_cached_th_subtitle(&params, query_string, &bili_runtime).await {
+        Ok(value) => build_response(value),
+        Err(is_expired) => {
+            if is_expired {
+                match get_upstream_bili_subtitle(&params, query_string, &bili_runtime).await {
+                    Ok(value) => {
+                        update_th_subtitle_cache(&value, &params, &bili_runtime);
+                        build_response(value)
+                    }
+                    Err(error_type) => bili_error(error_type),
+                }
             } else {
-                redis_get_data = value[13..].to_string();
-                is_expire = false;
+                bili_error(EType::ServerGeneral)
             }
         }
-        None => {
-            is_expire = true;
+    }
+}
+
+pub async fn handle_api_access_key_request(req: &HttpRequest) -> HttpResponse {
+    let (redis_pool, config, bilisender) = req
+        .app_data::<(Pool, BiliConfig, Arc<Sender<BackgroundTaskType>>)>()
+        .unwrap();
+    let bili_runtime = BiliRuntime::new(config, redis_pool, bilisender);
+    let query_string = req.query_string();
+    let query = QString::from(query_string);
+    let area_num: u8 = match query.get("area_num") {
+        Some(key) => key.parse().unwrap(),
+        _ => {
+            // query param must have "area", or must be invalid req
+            return bili_error(EType::OtherError(-10403, "参数错误: area_num为空"));
         }
     };
-    if is_expire {
-        query.add_str(&format!(
-            "&appkey=7d089525d3611b1c&mobi_app=bstar_a&s_locale=zh_SG&ts={ts}"
-        ));
-        let mut query_vec = query.to_pairs();
-        query_vec.sort_by_key(|v| v.0);
-        // 硬编码app_sec
-        let app_sec = "acd495b248ec528c2eed1e862d393126";
-        let proxy_open = &config.th_proxy_subtitle_open;
-        let proxy_url = &config.th_proxy_subtitle_url;
-        let unsigned_url = qstring::QString::new(query_vec);
-        let unsigned_url = format!("{unsigned_url}");
-        let signed_url = format!(
-            "{unsigned_url}&sign={:x}",
-            md5::compute(format!("{unsigned_url}{app_sec}"))
-        );
-        let api = "https://app.biliintl.com/intl/gateway/v2/app/subtitle";
-        let body_data = match async_getwebpage(
-            &format!("{api}?{signed_url}"),
-            proxy_open,
-            proxy_url,
-            &user_agent,
-            "",
-        )
-        .await
-        {
-            Ok(data) => data,
-            Err(_) => {
-                return HttpResponse::Ok()
-                    .content_type(ContentType::json())
-                    .body("{\"code\":2404,\"message\":\"获取字幕失败喵\"}");
+
+    match query.get("sign") {
+        Option::Some(key) => {
+            if key != &config.api_sign {
+                return bili_error(EType::OtherError(-412, "签名错误"));
             }
-        };
-        let expire_time = config.cache.get("thsub").unwrap_or(&14400);
-        let value = format!("{}{body_data}", (ts + expire_time) * 1000);
-        redis_set(pool, &key, &value, *expire_time).await;
-        return HttpResponse::Ok()
-            .content_type(ContentType::json())
-            .insert_header(("From", "biliroaming-rust-server"))
-            .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-            .insert_header(("Access-Control-Allow-Credentials", "true"))
-            .insert_header(("Access-Control-Allow-Methods", "GET"))
-            .body(body_data);
+        }
+        _ => {
+            return bili_error(EType::OtherError(-412, "无签名参数"));
+        }
+    };
+
+    let user_agent = "User-Agent:Mozilla/5.0 (Linux; Android 4.1.2; Nexus 7 Build/JZ054K) AppleWebKit/535.19 (KHTML, like Gecko) Chrome/18.0.1025.166 Safari/535.19";
+
+    let (access_key, expire_time) = if let Some(value) =
+        get_upstream_resigned_access_key(&area_num, user_agent, &bili_runtime).await
+    {
+        value
     } else {
-        return HttpResponse::Ok()
-            .content_type(ContentType::json())
-            .insert_header(("From", "biliroaming-rust-server"))
-            .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-            .insert_header(("Access-Control-Allow-Credentials", "true"))
-            .insert_header(("Access-Control-Allow-Methods", "GET"))
-            .body(redis_get_data);
-    }
+        return bili_error(EType::OtherError(-404, "获取AK失败"));
+    };
+
+    build_response(format!(
+        r#"{{"code":0,"message":"","access_key":"{access_key}","expire_time":{expire_time}}}"#
+    ))
 }
 
 pub async fn errorurl_reg(url: &str) -> Option<u8> {
@@ -1245,4 +836,13 @@ fn build_response(message: String) -> HttpResponse {
         .insert_header(("Access-Control-Allow-Credentials", "true"))
         .insert_header(("Access-Control-Allow-Methods", "GET"))
         .body(message);
+}
+fn bili_error(error_type: EType) -> HttpResponse {
+    return HttpResponse::Ok()
+        .content_type(ContentType::json())
+        .insert_header(("From", "biliroaming-rust-server"))
+        .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+        .insert_header(("Access-Control-Allow-Credentials", "true"))
+        .insert_header(("Access-Control-Allow-Methods", "GET"))
+        .body(error_type.err_json());
 }

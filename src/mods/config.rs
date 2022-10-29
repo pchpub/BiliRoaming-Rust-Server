@@ -1,8 +1,38 @@
-use std::fs::{self, File};
+use std::{
+    fs::{self, File},
+    path::Path,
+};
 
 use super::types::BiliConfig;
+pub fn init_config() -> BiliConfig {
+    let mut config_type: Option<&str> = None;
+    let config_suffix = ["json", "yml"];
+    for suffix in config_suffix {
+        if Path::new(&format!("config.{suffix}")).exists() {
+            config_type = Some(suffix);
+        }
+    }
+    let mut config = match load_biliconfig(config_type) {
+        Ok(value) => value,
+        Err(value) => {
+            println!("{value}");
+            std::process::exit(78);
+        }
+    };
+    let mut report_config = &mut config.report_config;
+    if config.report_open {
+        match report_config.init() {
+            Ok(_) => (),
+            Err(value) => {
+                println!("{}", value);
+                config.report_open = false;
+            }
+        }
+    }
+    config
+}
 
-pub fn load_biliconfig(config_type: Option<&str>) -> Result<BiliConfig, String> {
+fn load_biliconfig(config_type: Option<&str>) -> Result<BiliConfig, String> {
     let config: BiliConfig;
     let config_file: File;
     match config_type {

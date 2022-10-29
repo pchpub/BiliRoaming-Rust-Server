@@ -4,7 +4,6 @@ pub mod config;
 pub mod ep_info;
 pub mod handler;
 pub mod health;
-pub mod pub_api;
 pub mod push;
 pub mod rate_limit;
 pub mod request;

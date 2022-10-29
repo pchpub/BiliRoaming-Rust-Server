@@ -1,31 +1,86 @@
-use std::sync::Arc;
-
-use super::cache::update_cached_ep_info_redis;
 use super::health::*;
 use super::push::send_report;
 use super::request::redis_set;
 use super::request::{async_getwebpage, redis_get};
 use super::types::{
-    BackgroundTaskType, BiliConfig, CacheTask, HealthReportType, HealthTask, ReportConfig,
+    BackgroundTaskType, BiliRuntime, CacheTask, HealthReportType, HealthTask, PlayurlParams,
+    PlayurlParamsStatic,
 };
 use super::upstream_res::*;
 use super::user_info::{get_blacklist_info, get_user_info};
-use deadpool_redis::Pool;
+use async_channel::{Sender, TrySendError};
 use serde_json::json;
+use std::sync::Arc;
 
-pub async fn background_task_init() {}
+/*
+* The following is for generate background task
+*/
+
+pub async fn update_cached_playurl_background(
+    params: &PlayurlParams<'_>,
+    bili_runtime: &BiliRuntime<'_>,
+) {
+    let background_task_data =
+        BackgroundTaskType::CacheTask(CacheTask::PlayurlCacheRefresh(PlayurlParamsStatic {
+            access_key: params.access_key.to_string(),
+            app_key: params.app_key.to_string(),
+            app_sec: params.app_sec.to_string(),
+            ep_id: params.ep_id.to_string(),
+            cid: params.cid.to_string(),
+            build: params.build.to_string(),
+            device: params.device.to_string(),
+            is_app: params.is_app,
+            is_tv: params.is_tv,
+            is_th: params.is_th,
+            is_vip: params.is_vip,
+            area: params.area.to_string(),
+            area_num: params.area_num,
+            user_agent: params.user_agent.to_string(),
+        }));
+    bili_runtime.send_task(background_task_data).await
+}
+
+pub async fn update_area_cache_background(
+    params: &PlayurlParams<'_>,
+    bili_runtime: &BiliRuntime<'_>,
+) {
+    let background_task_data =
+        BackgroundTaskType::CacheTask(CacheTask::EpAreaCacheRefresh(params.ep_id.to_owned()));
+    bili_runtime.send_task(background_task_data).await
+}
+
+pub async fn update_cached_user_info_background(
+    access_key: String,
+    bilisender: Arc<Sender<BackgroundTaskType>>,
+) {
+    let background_task_data =
+        BackgroundTaskType::CacheTask(CacheTask::UserInfoCacheRefresh(access_key));
+    tokio::spawn(async move {
+        //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
+        match bilisender.try_send(background_task_data) {
+            Ok(_) => (),
+            Err(TrySendError::Full(_)) => {
+                println!("[Error] channel is full");
+            }
+            Err(TrySendError::Closed(_)) => {
+                println!("[Error] channel is closed");
+            }
+        };
+    });
+}
 
 pub async fn background_task_run(
     task: BackgroundTaskType,
-    config: Arc<BiliConfig>,
-    report_config: Arc<ReportConfig>,
-    redis_pool: Arc<Pool>,
+    bili_runtime: &BiliRuntime<'_>,
 ) -> Result<(), String> {
+    let config = bili_runtime.config;
+    let redis_pool = bili_runtime.redis_pool;
+    let report_config = &bili_runtime.config.report_config;
     match task {
         BackgroundTaskType::HealthTask(value) => match value {
             HealthTask::HealthCheck(value) => {
                 for area_num in &value.need_check_area {
-                    if let Err(value) = check_proxy_health(*area_num, &redis_pool, &config).await {
+                    if let Err(value) = check_proxy_health(*area_num, bili_runtime).await {
                         println!("[Background Task] Proxy health check failed: {value}");
                     }
                 }
@@ -98,23 +153,27 @@ pub async fn background_task_run(
                 let app_sec = "560c52ccd288fed045859ed18bffd973";
                 let user_agent =
                     "Dalvik/2.1.0 (Linux; U; Android 11; 21091116AC Build/RP1A.200720.011)";
-                match get_user_info(&access_key, app_key, app_sec, user_agent, true, &config, &redis_pool).await {
-                    Ok(new_user_info) => match get_blacklist_info(&new_user_info.uid, &config, &redis_pool).await {
+                match get_user_info(&access_key, app_key, app_sec, user_agent, true, &bili_runtime).await {
+                    Ok(new_user_info) => match get_blacklist_info(&new_user_info.uid, bili_runtime).await {
                         Ok(_) => Ok(()),
-                        Err((_, value)) => Err(format!("[Background Task] UID {} | Refreshing blacklist info failed, ErrMsg: {value}", new_user_info.uid)),
+                        Err(value) => Err(format!("[Background Task] UID {} | Refreshing blacklist info failed, ErrMsg: {}", new_user_info.uid, value.err_json())),
                     },
-                    Err((_, value)) => Err(format!("[Background Task] ACCESS_KEY {} | Refreshing blacklist info failed, ErrMsg: {value}", access_key)),
+                    Err(value) => Err(format!("[Background Task] ACCESS_KEY {} | Refreshing blacklist info failed, ErrMsg: {}", access_key, value.err_json())),
                 }
             }
-            CacheTask::PlayurlCacheRefresh(value) => {
-                match get_upstream_bili_playurl_background(&value, &config).await {
-                    Ok(_) => Ok(()),
+            CacheTask::PlayurlCacheRefresh(params) => {
+                match get_upstream_bili_playurl_background(&params, bili_runtime).await {
+                    Ok(_value) => {
+                        // update_cached_playurl_background(params, &value, &redis_pool, &config)
+                        // .await;
+                        todo!()
+                    }
                     Err(value) => Err(format!(
                         "[Background Task] | Playurl cache refresh failed, ErrMsg: {value}"
                     )),
                 }
             }
-            CacheTask::EpInfoCacheRefresh((force_update, ep_info_vec)) => {
+            CacheTask::EpInfoCacheRefresh(force_update, ep_info_vec) => {
                 let new_ep_info_vec = if force_update {
                     let ep_id = ep_info_vec[0].ep_id;
                     if let Ok((_, value)) =
@@ -127,12 +186,13 @@ pub async fn background_task_run(
                 } else {
                     ep_info_vec
                 };
-                for ep_info in new_ep_info_vec {
-                    let redis_pool_cl = Arc::clone(&redis_pool);
-                    tokio::spawn(async move {
-                        update_cached_ep_info_redis(ep_info, &redis_pool_cl).await
-                    });
-                }
+                // TODO TOFIX
+                // for ep_info in new_ep_info_vec {
+                //     let redis_pool_cl = Arc::clone(&redis_pool);
+                //     tokio::spawn(async move {
+                //         update_cached_ep_info_redis(ep_info, &redis_pool_cl).await
+                //     });
+                // }
                 Ok(())
             }
             CacheTask::EpAreaCacheRefresh(ep_id) => {
@@ -151,17 +211,17 @@ pub async fn background_task_run(
                 let area_to_check = [
                     (
                         format!("{bili_user_status_api}?access_key={access_key}&ep_id={ep_id}"),
-                        &config.hk_proxy_playurl_open,
+                        config.hk_proxy_playurl_open,
                         &config.hk_proxy_playurl_url,
                     ),
                     (
                         format!("{bili_user_status_api}?access_key={access_key}&ep_id={ep_id}"),
-                        &config.tw_proxy_playurl_open,
+                        config.tw_proxy_playurl_open,
                         &config.tw_proxy_playurl_url,
                     ),
                     (
                         format!("{bili_user_status_api}?access_key={access_key}&ep_id={ep_id}"),
-                        &config.cn_proxy_playurl_open,
+                        config.cn_proxy_playurl_open,
                         &config.cn_proxy_playurl_url,
                     ),
                 ];

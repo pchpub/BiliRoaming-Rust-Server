@@ -7,15 +7,19 @@ use std::string::String;
 use std::time::Duration;
 use tokio::task::spawn_blocking;
 
-use super::types::{SERVER_GENERAL_ERROR_MESSAGE, SERVER_NETWORK_ERROR_MESSAGE};
+use super::types::EType;
 
+/// `getwebpage` GET请求
+/// - 返回 Result<String, bool>
+/// - E value指是否为网络问题
 pub fn getwebpage(
     url: String,
     proxy_open: bool,
     proxy_url: String,
     user_agent: String,
     cookie: String,
-) -> Result<String, &'static str> {
+) -> Result<String, bool>
+{
     let mut data = Vec::new();
     let mut handle = Easy::new();
     handle.url(&url).unwrap();
@@ -52,7 +56,7 @@ pub fn getwebpage(
                     "[GET WEBPAGE] PROXY {proxy_open}:{proxy_url} | ERROR -> {}",
                     value
                 );
-                return Err(SERVER_NETWORK_ERROR_MESSAGE);
+                return Err(true);
             }
         }
     }
@@ -60,41 +64,50 @@ pub fn getwebpage(
     let getwebpage_string: String = match String::from_utf8(data) {
         Ok(value) => value,
         Err(_) => {
-            return Err(SERVER_GENERAL_ERROR_MESSAGE);
+            return Err(false);
         }
     };
     Ok(getwebpage_string)
 }
 
-/// `async_getwebpage` 异步GET请求 
-/// - 返回 Result<String, &'static str>, 可使用Err(value)接受错误信息返回用户
-/// - 返回的错误信息仅区分了网络错误`服务器网络错误`和一般错误`服务器内部错误`
-/// - 详细错误信息打印在日志
+/// `async_getwebpage` 异步GET请求
+/// - 返回 Result<String, EType<T>>, 可 `return bili_error(E)` 将错误信息返回用户
 pub async fn async_getwebpage(
     url: &str,
-    proxy_open: &bool,
+    proxy_open: bool,
     proxy_url: &str,
     user_agent: &str,
     cookie: &str,
-) -> Result<String, &'static str> {
+) -> Result<String, EType>
+{
     let url = url.to_owned();
     let proxy_open = proxy_open.to_owned();
     let proxy_url = proxy_url.to_owned();
     let user_agent = user_agent.to_owned();
     let cookie = cookie.to_owned();
     match spawn_blocking(move || getwebpage(url, proxy_open, proxy_url, user_agent, cookie)).await {
-        Ok(value) => value,
-        _ => return Err(SERVER_GENERAL_ERROR_MESSAGE),
+        Ok(value) => match value {
+            Ok(value) => return Ok(value),
+            Err(is_network_problem) => if is_network_problem {
+                return Err(EType::ServerNetworkError("上游错误"))
+            } else {
+                return Err(EType::ServerGeneral)
+            },
+        },
+        _ => return Err(EType::ServerGeneral),
     }
 }
 
+/// `postwebpage` POST请求
+/// - 返回 Result<String, bool>
+/// - E value指是否为网络问题
 pub fn postwebpage(
     url: String,
     content: String,
     proxy_open: bool,
     proxy_url: String,
     user_agent: String,
-) -> Result<String, &'static str> {
+) -> Result<String, bool> {
     let mut data = Vec::new();
     let mut handle = Easy::new();
     let mut request_data = content.as_bytes();
@@ -141,7 +154,7 @@ pub fn postwebpage(
                     "[POST WEBPAGE] PROXY {proxy_open}:{proxy_url} | ERROR -> {}",
                     value
                 );
-                return Err(SERVER_NETWORK_ERROR_MESSAGE);
+                return Err(true);
             }
         }
     }
@@ -149,32 +162,38 @@ pub fn postwebpage(
     let getwebpage_string: String = match String::from_utf8(data) {
         Ok(value) => value,
         Err(_) => {
-            return Err(SERVER_GENERAL_ERROR_MESSAGE);
+            return Err(false);
         }
     };
     Ok(getwebpage_string)
 }
 
-/// `async_postwebpage` 异步POST请求 
-/// - 返回 Result<String, &'static str>, 可使用Err(value)接受错误信息返回用户
-/// - 返回的错误信息仅区分了网络错误`服务器网络错误`和一般错误`服务器内部错误`
-/// - 详细错误信息打印在日志
+/// `async_postwebpage` 异步POST请求
+/// - 返回 Result<String, EType<T>>, 可 `return bili_error(E)` 将错误信息返回用户
 pub async fn async_postwebpage(
     url: &str,
     content: &str,
-    proxy_open: &bool,
+    proxy_open: bool,
     proxy_url: &str,
     user_agent: &str,
-) -> Result<String, &'static str> {
+) -> Result<String, EType> {
     let url = url.to_owned();
     let content = content.to_owned();
     let proxy_open = proxy_open.to_owned();
     let proxy_url = proxy_url.to_owned();
     let user_agent = user_agent.to_owned();
-    match spawn_blocking(move || postwebpage(url, content, proxy_open, proxy_url, user_agent)).await
+    match spawn_blocking(move || postwebpage(url, content, proxy_open, proxy_url, user_agent))
+        .await
     {
-        Ok(value) => value,
-        _ => return Err(SERVER_GENERAL_ERROR_MESSAGE),
+        Ok(value) => match value {
+            Ok(value) => return Ok(value),
+            Err(is_network_problem) => if is_network_problem {
+                return Err(EType::ServerNetworkError("上游错误"))
+            } else {
+                return Err(EType::ServerGeneral)
+            },
+        },
+        _ => return Err(EType::ServerGeneral),
     }
 }
 
