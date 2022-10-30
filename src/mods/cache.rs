@@ -513,7 +513,7 @@ pub async fn update_th_season_cache(season_id: &str, data: &str, bili_runtime: &
 */
 pub async fn get_cached_th_subtitle(
     params: &PlayurlParams<'_>,
-    raw_query: &str,
+    // _raw_query: &str,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<String, bool> {
     let dt = Local::now();
@@ -613,19 +613,19 @@ pub async fn update_cached_ep_info_redis(ep_info: EpInfo, redis_pool: &Pool) {
 
 // }
 
-pub enum CacheType<'CacheType, T>
+pub enum CacheType<'cache_type, T>
 where
     T: std::fmt::Display,
     // U: serde_json::ser::Formatter
 {
-    Playurl((Area, PlayurlParams<'CacheType>, T)),
+    Playurl((Area, PlayurlParams<'cache_type>, T)),
     EpArea(T),
     EpVipInfo(T),
     EpInfo(T), // not implemented
     UserInfo(T),
     UserCerInfo(T),
 }
-impl<'CacheType, T> CacheType<'CacheType, T>
+impl<'cache_type, T> CacheType<'cache_type, T>
 where
     T: std::fmt::Display,
 {

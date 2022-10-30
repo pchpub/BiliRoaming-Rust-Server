@@ -1,8 +1,6 @@
-use actix_web::{http::header::ContentType, HttpResponse};
-
 use super::{
     request::{download, getwebpage},
-    types::{EType, PlayurlType},
+    types::PlayurlType,
 };
 use std::env;
 use std::path::PathBuf;
@@ -188,4 +186,3 @@ pub fn update_server<T: std::fmt::Display>(is_auto_close: bool) {
         }
     });
 }
-

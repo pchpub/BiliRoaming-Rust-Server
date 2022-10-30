@@ -1,11 +1,8 @@
-use async_channel::Sender;
-use deadpool_redis::Pool;
-use std::sync::Arc;
-
 use super::cache::update_cached_ep_info_background;
 use super::request::redis_get;
-use super::types::{BackgroundTaskType, BiliRuntime};
+use super::types::BiliRuntime;
 use super::upstream_res::get_upstream_bili_ep_info;
+use deadpool_redis::Pool;
 
 // pub async fn get_ep_info(ep_id: &str, redis_pool: &Pool) -> Option<EpInfo> {
 //     match get_cached_ep_info(ep_id, redis_pool).await {
@@ -17,10 +14,7 @@ use super::upstream_res::get_upstream_bili_ep_info;
 //     }
 // }
 
-pub async fn get_ep_need_vip(
-    ep_id: &str,
-    bili_runtime: &BiliRuntime<'_>
-) -> Option<bool> {
+pub async fn get_ep_need_vip(ep_id: &str, bili_runtime: &BiliRuntime<'_>) -> Option<bool> {
     let key = format!("e{ep_id}150101");
     // data stucture: {ep_id},{0},{title},{season_id}
     match bili_runtime.redis_get(&key).await {
@@ -45,10 +39,7 @@ pub async fn get_ep_need_vip(
     }
 }
 
-pub async fn get_ep_need_vip_background(
-    ep_id: &str,
-    redis_pool: &Pool,
-) -> Option<bool> {
+pub async fn get_ep_need_vip_background(ep_id: &str, redis_pool: &Pool) -> Option<bool> {
     let key = format!("e{ep_id}150101");
     // data stucture: {ep_id},{0},{title},{season_id}
     match redis_get(redis_pool, &key).await {
@@ -59,9 +50,7 @@ pub async fn get_ep_need_vip_background(
         None => {
             // println!("[EP INFO] EP {ep_id} | No cached data");
             match get_upstream_bili_ep_info(ep_id, false, "").await {
-                Ok((value, ep_info_vec)) => {
-                    Some(value.need_vip)
-                }
+                Ok((value, _ep_info_vec)) => Some(value.need_vip),
                 Err(_) => {
                     // if error then try to force update cache
                     None

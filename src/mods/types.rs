@@ -1,6 +1,6 @@
 use async_channel::{Sender, TrySendError};
 use chrono::{FixedOffset, TimeZone, Utc};
-use deadpool_redis::{redis::Connection, Manager, Pool};
+use deadpool_redis::Pool;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, hash::Hash, sync::Arc};
@@ -214,6 +214,7 @@ impl<'bili_runtime> BiliRuntime<'bili_runtime> {
 pub enum ReqType {
     Playurl(Area, bool),
     Search(Area, bool),
+    ThSeason,
     ThSubtitle,
     Accesskey,
 }
@@ -241,19 +242,20 @@ impl ReqType {
                 if *is_app {
                     match area {
                         Area::Cn => &config.cn_app_search_api,
-                        Area::Hk => &config.cn_app_search_api,
-                        Area::Tw => &config.cn_app_search_api,
-                        Area::Th => &config.cn_app_search_api, //should not
+                        Area::Hk => &config.hk_app_search_api,
+                        Area::Tw => &config.tw_app_search_api,
+                        Area::Th => &config.th_app_search_api, //should not
                     }
                 } else {
                     match area {
                         Area::Cn => &config.cn_web_search_api,
-                        Area::Hk => &config.cn_web_search_api,
-                        Area::Tw => &config.cn_web_search_api,
-                        Area::Th => &config.cn_web_search_api, //should not
+                        Area::Hk => &config.hk_web_search_api,
+                        Area::Tw => &config.tw_web_search_api,
+                        Area::Th => &config.th_web_search_api, //should not
                     }
                 }
             }
+            ReqType::ThSeason => &config.th_app_season_api,
             ReqType::ThSubtitle => &config.th_app_season_sub_api,
             ReqType::Accesskey => unimplemented!(),
         }
@@ -261,45 +263,19 @@ impl ReqType {
     pub fn get_proxy<'config>(&self, config: &'config BiliConfig) -> (bool, &'config str) {
         match self {
             ReqType::Playurl(area, _) => match area {
-                Area::Cn => (
-                    config.cn_proxy_playurl_open,
-                    &config.cn_proxy_playurl_url,
-                ),
-                Area::Hk => (
-                    config.hk_proxy_playurl_open,
-                    &config.hk_proxy_playurl_url,
-                ),
-                Area::Tw => (
-                    config.tw_proxy_playurl_open,
-                    &config.tw_proxy_playurl_url,
-                ),
-                Area::Th => (
-                    config.th_proxy_playurl_open,
-                    &config.th_proxy_playurl_url,
-                ), //should not
+                Area::Cn => (config.cn_proxy_playurl_open, &config.cn_proxy_playurl_url),
+                Area::Hk => (config.hk_proxy_playurl_open, &config.hk_proxy_playurl_url),
+                Area::Tw => (config.tw_proxy_playurl_open, &config.tw_proxy_playurl_url),
+                Area::Th => (config.th_proxy_playurl_open, &config.th_proxy_playurl_url), //should not
             },
             ReqType::Search(area, _) => match area {
-                Area::Cn => (
-                    config.cn_proxy_search_open,
-                    &config.cn_proxy_search_url,
-                ),
-                Area::Hk => (
-                    config.hk_proxy_search_open,
-                    &config.hk_proxy_search_url,
-                ),
-                Area::Tw => (
-                    config.tw_proxy_search_open,
-                    &config.tw_proxy_search_url,
-                ),
-                Area::Th => (
-                    config.th_proxy_search_open,
-                    &config.th_proxy_search_url,
-                ),
+                Area::Cn => (config.cn_proxy_search_open, &config.cn_proxy_search_url),
+                Area::Hk => (config.hk_proxy_search_open, &config.hk_proxy_search_url),
+                Area::Tw => (config.tw_proxy_search_open, &config.tw_proxy_search_url),
+                Area::Th => (config.th_proxy_search_open, &config.th_proxy_search_url),
             },
-            ReqType::ThSubtitle => (
-                config.th_proxy_subtitle_open,
-                &config.th_proxy_subtitle_url,
-            ),
+            ReqType::ThSeason => (config.th_proxy_playurl_open, &config.th_proxy_playurl_url),
+            ReqType::ThSubtitle => (config.th_proxy_subtitle_open, &config.th_proxy_subtitle_url),
             ReqType::Accesskey => unimplemented!(),
         }
     }

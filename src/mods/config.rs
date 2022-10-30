@@ -19,7 +19,7 @@ pub fn init_config() -> BiliConfig {
             std::process::exit(78);
         }
     };
-    let mut report_config = &mut config.report_config;
+    let report_config = &mut config.report_config;
     if config.report_open {
         match report_config.init() {
             Ok(_) => (),

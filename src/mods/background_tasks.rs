@@ -174,7 +174,7 @@ pub async fn background_task_run(
                 }
             }
             CacheTask::EpInfoCacheRefresh(force_update, ep_info_vec) => {
-                let new_ep_info_vec = if force_update {
+                let _new_ep_info_vec = if force_update {
                     let ep_id = ep_info_vec[0].ep_id;
                     if let Ok((_, value)) =
                         get_upstream_bili_ep_info(&format!("{ep_id}"), false, "").await

@@ -1,11 +1,9 @@
 use super::{
     request::{async_getwebpage, redis_get},
-    types::{Area, BackgroundTaskType, BiliConfig, BiliRuntime, HealthReportType, HealthTask, ReqType},
+    types::{Area, BackgroundTaskType, BiliRuntime, HealthReportType, HealthTask, ReqType},
 };
-use async_channel::{Sender, TrySendError};
-use deadpool_redis::Pool;
 use serde_json::json;
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 pub async fn report_health(health_report_type: HealthReportType, bili_runtime: &BiliRuntime<'_>) {
     let background_task_data =
@@ -17,7 +15,10 @@ pub async fn report_health(health_report_type: HealthReportType, bili_runtime: &
 * 主动检测上游代理状态
 * now only check playurl proxy(I think it's enough)
 */
-pub async fn check_proxy_health(area_num: u8, bili_runtime: &BiliRuntime<'_>) -> Result<(), String> {
+pub async fn check_proxy_health(
+    area_num: u8,
+    bili_runtime: &BiliRuntime<'_>,
+) -> Result<(), String> {
     let redis_pool = bili_runtime.redis_pool;
     let config = bili_runtime.config;
     let bili_user_status_api: &str = "https://api.bilibili.com/pgc/view/web/season/user/status";
@@ -36,37 +37,37 @@ pub async fn check_proxy_health(area_num: u8, bili_runtime: &BiliRuntime<'_>) ->
     // let area_num = area.num();
     let req_type = ReqType::Playurl(area, true);
     let (proxy_open, proxy_url) = &req_type.get_proxy(config);
-    let url = format!("{bili_user_status_api}?access_key={access_key}&season_id=") + match Area::new(area_num) {
-        Area::Cn => season_id_cn_only,
-        Area::Hk => season_id_hk_only,
-        Area::Tw => season_id_tw_only,
-        Area::Th => {
-            match get_server_ip_area(
-                &config.tw_proxy_playurl_open,
-                &config.tw_proxy_playurl_url,
-                user_agent,
-            )
-            .await
-            {
-                Ok(value) => {
-                    if value == 4 {
-                        return Ok(());
-                    } else {
-                        return Err(format!(
+    let url = format!("{bili_user_status_api}?access_key={access_key}&season_id=")
+        + match Area::new(area_num) {
+            Area::Cn => season_id_cn_only,
+            Area::Hk => season_id_hk_only,
+            Area::Tw => season_id_tw_only,
+            Area::Th => {
+                match get_server_ip_area(
+                    &config.tw_proxy_playurl_open,
+                    &config.tw_proxy_playurl_url,
+                    user_agent,
+                )
+                .await
+                {
+                    Ok(value) => {
+                        if value == 4 {
+                            return Ok(());
+                        } else {
+                            return Err(format!(
                             "Zone {area_num} -> Detect Proxy Area Not Suitable, actual [{value}]"
                         ));
+                        }
                     }
-                }
-                Err(code) => {
-                    match code {
+                    Err(code) => match code {
                         2333 => return Err(format!("Zone {area_num} -> ISP Banned!")),
-                        _ => return Err(format!("Zone {area_num} -> Unknown Upstream Error {code}"))
-                    }
-                    
+                        _ => {
+                            return Err(format!("Zone {area_num} -> Unknown Upstream Error {code}"))
+                        }
+                    },
                 }
             }
-        }
-    };
+        };
     match async_getwebpage(&url, *proxy_open, proxy_url, user_agent, "").await {
         Ok(value) => {
             let json_result =
@@ -132,10 +133,10 @@ pub async fn get_server_ip_area(
                     let result = json_result.get("data").unwrap();
                     let country_code = result["country_code"].as_u64().unwrap_or(0) as u16;
                     let isp = result["isp"].as_str().unwrap_or("NULL");
-                    // some isp is forbidden! 
+                    // some isp is forbidden!
                     match isp {
                         "ovh.com" => Err(2333),
-                        _ => Ok(*country_code_map.get(&country_code).unwrap_or(&(0 as u8)))
+                        _ => Ok(*country_code_map.get(&country_code).unwrap_or(&(0 as u8))),
                     }
                 }
                 _ => Err(code),

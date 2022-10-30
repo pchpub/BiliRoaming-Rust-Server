@@ -397,6 +397,8 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
 
     params.fnval = query.get("fnval").unwrap_or("976");
 
+    params.keyword = query.get("keyword").unwrap_or("null");
+
     let cookie_buvid3_default = format!("buvid3={}", random_string());
     let cookie_buvid3_default = cookie_buvid3_default.as_str();
     params.cookie = if !is_app && !is_th {
@@ -722,7 +724,7 @@ pub async fn handle_th_subtitle_request(req: &HttpRequest, _: bool, _: bool) -> 
         area_num: 4,
         ..Default::default()
     };
-    params.appkey_to_sec();
+    params.appkey_to_sec().unwrap();
     // detect req UA
     params.user_agent = match req.headers().get("user-agent") {
         Option::Some(_ua) => req.headers().get("user-agent").unwrap().to_str().unwrap(),
@@ -734,13 +736,13 @@ pub async fn handle_th_subtitle_request(req: &HttpRequest, _: bool, _: bool) -> 
         _ => "",
     };
 
-    match get_cached_th_subtitle(&params, query_string, &bili_runtime).await {
+    match get_cached_th_subtitle(&params, &bili_runtime).await {
         Ok(value) => build_response(value),
         Err(is_expired) => {
             if is_expired {
                 match get_upstream_bili_subtitle(&params, query_string, &bili_runtime).await {
                     Ok(value) => {
-                        update_th_subtitle_cache(&value, &params, &bili_runtime);
+                        update_th_subtitle_cache(&value, &params, &bili_runtime).await;
                         build_response(value)
                     }
                     Err(error_type) => bili_error(error_type),

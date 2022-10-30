@@ -22,11 +22,11 @@ pub async fn get_upstream_bili_account_info(
     let ts = dt.timestamp_millis() as u64;
     let ts_min = dt.timestamp() as u64;
     let sign = md5::compute(format!(
-        "access_key={}&app_key={}&ts={}{}",
+        "access_key={}&appkey={}&ts={}{}",
         access_key, app_key, ts_min, app_sec
     ));
     let url: String = format!(
-        "https://app.bilibili.com/x/v2/account/myinfo?access_key={}&app_key={}&ts={}&sign={:x}",
+        "https://app.bilibili.com/x/v2/account/myinfo?access_key={}&appkey={}&ts={}&sign={:x}",
         access_key, app_key, ts_min, sign
     );
     //println!("{}",url);
@@ -41,7 +41,7 @@ pub async fn get_upstream_bili_account_info(
     {
         Ok(data) => data,
         Err(value) => {
-            // println!("getuser_list函数寄了 url:{}",url);
+            println!("getuser_list函数寄了 url:{}",url);
             // TODO: add error report
             return Err(value);
         }
@@ -52,7 +52,7 @@ pub async fn get_upstream_bili_account_info(
     let code = if let Some(value) = output_json["code"].as_i64() {
         value
     } else {
-        // error!("[USER INFO] Parsing Upstream reply failed, Upstream Reply -> {}", output);
+        println!("[USER INFO] Parsing Upstream reply failed, Upstream Reply -> {}", output);
         return Err(EType::ServerGeneral);
     };
     match code {
@@ -76,35 +76,35 @@ pub async fn get_upstream_bili_account_info(
             Ok(output_struct)
         }
         -400 => {
-            // trace!("[USER INFO] AK {} | Get UserInfo failed -400. REQ Params -> APP_KEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
-            //     access_key, app_key, ts_min, app_sec, sign, output_json
-            // );
+            println!("[USER INFO] AK {} | Get UserInfo failed -400. REQ Params -> APP_KEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
+                access_key, app_key, ts_min, app_sec, sign, output_json
+            );
             Err(EType::OtherError(-400, "可能你用的不是手机"))
         }
         -101 => {
-            // trace!(
-            //     "[USER INFO] AK {} | Get UserInfo failed -101. Upstream Reply -> {}",
-            //     access_key, output_json
-            // );
+            println!(
+                "[USER INFO] AK {} | Get UserInfo failed -101. Upstream Reply -> {}",
+                access_key, output_json
+            );
             Err(EType::UserNotLoginedError)
         }
         -3 => {
-            // warn!("[USER INFO] AK {} | Get UserInfo failed -3. REQ Params -> APP_KEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
-            //     access_key, app_key, ts_min, app_sec, sign, output_json
-            // );
+            println!("[USER INFO] AK {} | Get UserInfo failed -3. REQ Params -> APP_KEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
+                access_key, app_key, ts_min, app_sec, sign, output_json
+            );
             Err(EType::ReqSignError)
         }
         -412 => {
-            // error!(
-            //     "[USER INFO] AK {} | Get UserInfo failed -412. Upstream Reply -> {}",
-            //     access_key, output_json
-            // );
+            println!(
+                "[USER INFO] AK {} | Get UserInfo failed -412. Upstream Reply -> {}",
+                access_key, output_json
+            );
             Err(EType::ServerFatalError)
         }
         _ => {
-            // trace!("[USER INFO] AK {} | Get UserInfo failed. REQ Params -> APP_KEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
-            //     access_key, app_key, ts_min, app_sec, sign, output_json
-            // );
+            println!("[USER INFO] AK {} | Get UserInfo failed. REQ Params -> APP_KEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
+                access_key, app_key, ts_min, app_sec, sign, output_json
+            );
             Err(EType::OtherUpstreamError(
                 code,
                 // //我写的什么勾巴代码...
@@ -143,7 +143,7 @@ pub async fn get_upstream_blacklist_info(
             //     ban_until: 0,
             //     status_expire_time: 0,
             // };
-            // println!("[Error] 请接入在线黑名单");
+            println!("[Error] 请接入在线黑名单");
             return Err(EType::ServerReqError(
                 "Blacklist Server Internal Error Json",
             ));
@@ -203,7 +203,7 @@ pub async fn get_upstream_bili_playurl(
     if params.is_tv {
         query_vec = vec![
             ("access_key", &params.access_key[..]),
-            ("app_key", params.app_key),
+            ("appkey", params.app_key),
             ("build", params.build),
             ("device", params.device),
             ("fnval", "130"),
@@ -217,7 +217,7 @@ pub async fn get_upstream_bili_playurl(
     } else {
         query_vec = vec![
             ("access_key", &params.access_key[..]),
-            ("app_key", params.app_key),
+            ("appkey", params.app_key),
             ("build", params.build),
             ("device", params.device),
             ("fnval", "4048"),
@@ -227,6 +227,12 @@ pub async fn get_upstream_bili_playurl(
             ("qn", "125"),
             ("ts", &ts_string),
         ];
+    }
+    if !params.ep_id.is_empty() {
+        query_vec.push(("ep_id", params.ep_id));
+    }
+    if !params.cid.is_empty() {
+        query_vec.push(("cid", params.cid));
     }
     if params.is_th {
         query_vec.push(("s_locale", "zh_SG"));
@@ -307,7 +313,7 @@ pub async fn get_upstream_bili_playurl_background(
     if params.is_tv {
         query_vec = vec![
             ("access_key", &params.access_key[..]),
-            ("app_key", &params.app_key),
+            ("appkey", &params.app_key),
             ("build", &params.build),
             ("device", &params.device),
             ("fnval", "130"),
@@ -321,7 +327,7 @@ pub async fn get_upstream_bili_playurl_background(
     } else {
         query_vec = vec![
             ("access_key", &params.access_key[..]),
-            ("app_key", &params.app_key),
+            ("appkey", &params.app_key),
             ("build", &params.build),
             ("device", &params.device),
             ("fnval", "4048"),
@@ -504,14 +510,13 @@ pub async fn get_upstream_bili_search(
             // TODO: 有时候, 上游啥都没返回, 程序却还是正常插入search_remake返回了, 待排查原因
             let data_json: serde_json::Value = serde_json::from_str(&data).unwrap();
             let upstream_code = data_json["code"]
-                .as_str()
-                .unwrap_or("233")
-                .parse::<i64>()
+                .as_i64()
                 .unwrap_or(233);
             if upstream_code == 0 {
                 Ok(data_json)
             } else {
                 let upstream_message = data_json["message"].as_str().unwrap_or("NULL");
+                println!("[SEARCH] Upstream ERROR {upstream_code}: {data_json}");
                 report_health(
                     HealthReportType::Search(HealthData::init(
                         Area::new(params.area_num as u8),
@@ -589,7 +594,7 @@ pub async fn get_upstream_bili_season(
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<String, EType> {
     let config = bili_runtime.config;
-    let req_type = ReqType::Playurl(Area::new(params.area_num), params.is_app);
+    let req_type = ReqType::ThSeason;
     let api = req_type.get_api(config);
     let (proxy_open, proxy_url) = req_type.get_proxy(config);
 
@@ -804,7 +809,7 @@ pub async fn get_upstream_resigned_access_key(
     }
 
     async fn get_accesskey_from_token_cn(
-        area_num: &u8,
+        _area_num: &u8,
         user_agent: &str,
         bili_runtime: &BiliRuntime<'_>,
     ) -> Option<(String, u64)> {
