@@ -45,7 +45,7 @@ pub async fn update_area_cache_background(
     bili_runtime: &BiliRuntime<'_>,
 ) {
     let background_task_data =
-        BackgroundTaskType::CacheTask(CacheTask::EpAreaCacheRefresh(params.ep_id.to_owned()));
+        BackgroundTaskType::CacheTask(CacheTask::EpAreaCacheRefresh(params.ep_id.to_owned(), params.access_key.to_owned()));
     bili_runtime.send_task(background_task_data).await
 }
 
@@ -154,7 +154,7 @@ pub async fn background_task_run(
                 let user_agent =
                     "Dalvik/2.1.0 (Linux; U; Android 11; 21091116AC Build/RP1A.200720.011)";
                 match get_user_info(&access_key, app_key, app_sec, user_agent, true, &bili_runtime).await {
-                    Ok(new_user_info) => match get_blacklist_info(&new_user_info.uid, bili_runtime).await {
+                    Ok(new_user_info) => match get_blacklist_info(&new_user_info, bili_runtime).await {
                         Ok(_) => Ok(()),
                         Err(value) => Err(format!("[Background Task] UID {} | Refreshing blacklist info failed, ErrMsg: {}", new_user_info.uid, value.err_json())),
                     },
@@ -195,19 +195,17 @@ pub async fn background_task_run(
                 // }
                 Ok(())
             }
-            CacheTask::EpAreaCacheRefresh(ep_id) => {
+            CacheTask::ProactivePlayurlCacheRefresh => {
+
+                todo!()
+            },
+            CacheTask::EpAreaCacheRefresh(ep_id, access_key) => {
                 // only for area cn, hk, tw, area th not intend to support
                 // // 没弹幕/评论区还不如去看RC-RAWS
-                let ep_id = &ep_id;
                 let bili_user_status_api: &str =
                     "https://api.bilibili.com/pgc/view/web/season/user/status";
                 let user_agent =
                     "Dalvik/2.1.0 (Linux; U; Android 11; 21091116AC Build/RP1A.200720.011)";
-                let access_key = if let Some(value) = redis_get(&redis_pool, "a1301").await {
-                    value
-                } else {
-                    return Err("[ERROR] fail to get access_key".to_string());
-                };
                 let area_to_check = [
                     (
                         format!("{bili_user_status_api}?access_key={access_key}&ep_id={ep_id}"),
@@ -270,6 +268,7 @@ pub async fn background_task_run(
                 let _ = redis_set(&redis_pool, &key, &ep_area_data, 0).await;
                 Ok(())
             }
+            
         },
     }
 }

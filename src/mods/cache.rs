@@ -1,14 +1,10 @@
 use super::background_tasks::update_cached_playurl_background;
 use super::ep_info::{get_ep_need_vip, get_ep_need_vip_background};
 use super::request::{redis_get, redis_set};
-use super::types::PlayurlParams;
 use super::types::*;
-use async_channel::Sender;
-use async_channel::TrySendError;
 use chrono::prelude::*;
 use deadpool_redis::Pool;
 use qstring::QString;
-use std::sync::Arc;
 /*
 番剧区域缓存
 */
@@ -146,14 +142,18 @@ fn check_ep_available(http_body: &str) -> bool {
 */
 // blacklist info cache
 // redis_set(redis, &key, &return_data.to_json(), 1 * 24 * 60 * 60).await;
-pub async fn get_cached_user_info(access_key: &str, bili_runtime: &BiliRuntime<'_>) -> Option<UserInfo> {
+pub async fn get_cached_user_info(
+    access_key: &str,
+    bili_runtime: &BiliRuntime<'_>,
+) -> Option<UserInfo> {
     match bili_runtime.redis_get(&format!("{access_key}20501")).await {
         Some(value) => Some(serde_json::from_str(&value).unwrap()),
         None => None,
     }
 }
 
-pub async fn update_cached_user_info(new_user_info: &UserInfo, bili_runtime: &BiliRuntime<'_>) {
+/// `update_user_info_cache` 保存UserInfo信息到本地缓存
+pub async fn update_user_info_cache(new_user_info: &UserInfo, bili_runtime: &BiliRuntime<'_>) {
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let access_key = &new_user_info.access_key;
@@ -181,23 +181,77 @@ pub async fn update_cached_user_info(new_user_info: &UserInfo, bili_runtime: &Bi
         .await
 }
 
-pub async fn get_cached_blacklist_info(uid: &u64, bili_runtime: &BiliRuntime<'_>) -> Option<UserCerinfo> {
+pub async fn get_cached_blacklist_info(
+    user_info: &UserInfo,
+    bili_runtime: &BiliRuntime<'_>,
+) -> Option<UserCerinfo> {
     //turn to ver 02
-    match bili_runtime.redis_get(&format!("{uid}20602")).await {
-        Some(value) => Some(serde_json::from_str(&value).unwrap()),
-        None => None,
+    let uid = &user_info.uid;
+    let access_key = &user_info.access_key;
+    if *uid != 0 {
+        match bili_runtime.redis_get(&format!("{uid}20602")).await {
+            Some(value) => {
+                match serde_json::from_str(&value) {
+                    Ok(value) => Some(value),
+                    Err(_) => None,
+                }
+                // Some(serde_json::from_str(&value).unwrap())
+            }
+            None => {
+                if access_key.len() == 0 {
+                    return None;
+                };
+                match bili_runtime.redis_get(&format!("a{access_key}20602")).await {
+                    Some(value) => {
+                        match serde_json::from_str(&value) {
+                            Ok(value) => Some(value),
+                            Err(_) => None,
+                        }
+                        // Some(serde_json::from_str(&value).unwrap())
+                    }
+                    None => None,
+                }
+            }
+        }
+    } else {
+        if access_key.len() == 0 {
+            return None;
+        };
+        match bili_runtime.redis_get(&format!("a{access_key}20602")).await {
+            Some(value) => {
+                match serde_json::from_str(&value) {
+                    Ok(value) => Some(value),
+                    Err(_) => None,
+                }
+                // Some(serde_json::from_str(&value).unwrap())
+            }
+            None => None,
+        }
     }
+    
 }
-// pub async fn set_cached_user_info(access_key: &str, cache: &mut BiliCache) -> AuthUserInfo {
-//     let key  = format!("{access_key}20501");
-//     let value = new_data.to_json();
-//     let _ : () = redis_set(&redis,&key, &value,25*24*60*60).await.unwrap_or_default();
-//     let _ : () = redis_set(&redis,&format!("u{}20501",new_data.uid), &access_key.to_owned(),25*24*60*60).await.unwrap_or_default();
-// }
-
-// async fn update_cached_user_info_redis() {
-
-// }
+/// `update_blacklist_info_cache` 保存UserCerinfo信息到本地缓存
+pub async fn update_blacklist_info_cache(
+    user_info: &UserInfo,
+    new_user_cer_info: &UserCerinfo,
+    bili_runtime: &BiliRuntime<'_>,
+) {
+    let value = new_user_cer_info.to_json();
+    bili_runtime
+        .redis_set(
+            &format!("{}20602", &user_info.uid),
+            &value,
+            1 * 24 * 60 * 60,
+        )
+        .await;
+    bili_runtime
+        .redis_set(
+            &format!("a{}20602", &user_info.access_key),
+            &value,
+            1 * 24 * 60 * 60,
+        )
+        .await;
+}
 
 /*
 播放链接缓存
@@ -306,38 +360,6 @@ async fn get_plaurl_cache_key(
             "e{}c{}v{need_vip}t0{}0701",
             params.ep_id, params.cid, params.area_num
         ),
-    }
-}
-
-async fn get_plaurl_cache_key_background(
-    ep_id: &str,
-    cid: &str,
-    area_num: u8,
-    is_app: bool,
-    is_tv: bool,
-    is_vip: bool,
-    need_redis_key: bool,
-    redis_pool: &Pool,
-) -> String {
-    let need_vip = if need_redis_key {
-        if let Some(value) = get_ep_need_vip_background(ep_id, redis_pool).await {
-            value as u8
-        } else {
-            // should not
-            is_vip as u8
-        }
-    } else {
-        is_vip as u8
-    };
-    match is_app {
-        true => {
-            if is_tv {
-                format!("e{}c{}v{need_vip}t1{area_num}0101", ep_id, cid)
-            } else {
-                format!("e{}c{}v{need_vip}t0{area_num}0101", ep_id, cid)
-            }
-        }
-        false => format!("e{}c{}v{need_vip}t0{area_num}0701", ep_id, cid),
     }
 }
 

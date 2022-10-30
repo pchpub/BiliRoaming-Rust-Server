@@ -165,7 +165,9 @@ impl std::default::Default for BlackListType {
         })
     }
 }
-
+/// Generic BiliRuntime for passing frequently used `BiliConfig`, `Pool` & `async_channel Sender`
+/// - Initialize at the very beginning of each handler
+/// - also used in background task
 pub struct BiliRuntime<'bili_runtime> {
     pub config: &'bili_runtime BiliConfig,
     pub redis_pool: &'bili_runtime Pool,
@@ -185,7 +187,7 @@ impl<'bili_runtime> BiliRuntime<'bili_runtime> {
     }
     // TODO: Easier Config
     pub async fn redis_get(&self, key: &str) -> Option<String> {
-        return redis_get(self.redis_pool, key).await;
+        redis_get(self.redis_pool, key).await
     }
     pub async fn redis_set(&self, key: &str, value: &str, expire_time: u64) {
         redis_set(self.redis_pool, key, value, expire_time)
@@ -209,22 +211,6 @@ impl<'bili_runtime> BiliRuntime<'bili_runtime> {
     }
 }
 
-// pub struct ApiInfo {
-//     pub api: String,
-//     pub proxy_open: bool,
-//     pub proxy_url: String,
-// }
-// impl ApiInfo {
-//     pub fn new(req_type: ReqType, area: Area, config: &BiliConfig) -> ApiInfo {
-//         let api = req_type.get_api(config);
-//         let (proxy_open, proxy_url) = req_type.get_proxy(config);
-//         ApiInfo {
-//             api,
-//             proxy_open,
-//             proxy_url,
-//         }
-//     }
-// }
 pub enum ReqType {
     Playurl(Area, bool),
     Search(Area, bool),
@@ -232,7 +218,6 @@ pub enum ReqType {
     Accesskey,
 }
 impl ReqType {
-    // to be honest, BiliConfig should be abled to be accessed anywhere
     pub fn get_api<'config>(&self, config: &'config BiliConfig) -> &'config str {
         match self {
             ReqType::Playurl(area, is_app) => {
@@ -346,8 +331,9 @@ impl HealthCheck {
 pub enum CacheTask {
     UserInfoCacheRefresh(String),
     PlayurlCacheRefresh(PlayurlParamsStatic),
+    ProactivePlayurlCacheRefresh,
     EpInfoCacheRefresh(bool, Vec<EpInfo>),
-    EpAreaCacheRefresh(String),
+    EpAreaCacheRefresh(String, String),
 }
 
 /*

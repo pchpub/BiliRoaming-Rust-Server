@@ -49,7 +49,6 @@ pub async fn get_upstream_bili_account_info(
 
     //println!("{}",output);
     let output_json: serde_json::Value = serde_json::from_str(&output).unwrap();
-    let output_struct: UserInfo;
     let code = if let Some(value) = output_json["code"].as_i64() {
         value
     } else {
@@ -119,6 +118,7 @@ pub async fn get_upstream_blacklist_info(
     uid: &u64,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserCerinfo, EType> {
+    // // currently upstream only support query using uid...
     let dt = Local::now();
     let ts = dt.timestamp() as u64;
     //let user_cerinfo_str = String::new();
@@ -177,6 +177,7 @@ pub async fn get_upstream_blacklist_info(
         // TODO: add cache here
         return Ok(return_data);
     } else {
+        println!("鉴权失败: UID {uid}, 上游返回 {getwebpage_data}");
         return Err(EType::ServerReqError("鉴权失败了喵, Blacklist Server Error"));
     }
 }
@@ -184,7 +185,7 @@ pub async fn get_upstream_blacklist_info(
 pub async fn get_upstream_bili_playurl(
     // query: QString,
     params: &mut PlayurlParams<'_>,
-    user_info: &UserInfo,
+    _user_info: &UserInfo,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<String, EType> {
     // let bilisender_cl = Arc::clone(bilisender);
@@ -267,7 +268,7 @@ pub async fn get_upstream_bili_playurl(
         UpstreamReply {
             code,
             message,
-            proxy_open: proxy_open,
+            proxy_open,
             // .clone used here may do harm to perf for such func is used frequently
             // as biliconfig lives much longer, why not use String::from to create a new String?
             // proxy_url: String::from(proxy_url.as_str()),

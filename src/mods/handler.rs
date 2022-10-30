@@ -84,11 +84,8 @@ pub async fn handle_playurl_request(
         Option::Some(key) => key,
         _ => "1d8b6e7d45233436",
     };
-    match params.appkey_to_sec() {
-        Ok(_) => (),
-        Err(_) => {
-            return build_response("{\"code\":-10403,\"message\":\"未知设备\"}".to_string());
-        }
+    if let Err(_) = params.appkey_to_sec() {
+        return bili_error(EType::OtherError(-412, "未知设备"));
     };
     // verify req sign
     // TODO: add ignore sign err
@@ -103,7 +100,7 @@ pub async fn handle_playurl_request(
                 ))
             ) != &query_string[query_string.len() - 32..])
         {
-            return build_response("{\"code\":-3,\"message\":\"API校验密匙错误\"}".to_string());
+            return bili_error(EType::ReqSignError);
         }
     }
     // detect user's access_key
@@ -163,7 +160,7 @@ pub async fn handle_playurl_request(
     // get user's vip status
     params.is_vip = user_info.is_vip();
     // get user's blacklist info
-    let white = match get_blacklist_info(&user_info.uid, &bili_runtime).await {
+    let white = match get_blacklist_info(&user_info, &bili_runtime).await {
         Ok(value) => value,
         Err(value) => return bili_error(value),
     };
@@ -181,6 +178,7 @@ pub async fn handle_playurl_request(
 
     if config.area_cache_open {
         if params.ep_id == "" {
+            // should not except zone th
             let return_data =
                 match get_upstream_bili_playurl(&mut params, &user_info, &bili_runtime).await {
                     Ok(value) => value,
@@ -261,10 +259,18 @@ pub async fn handle_playurl_request(
                 EpAreaCacheType::NoEpData => {
                     // if havent any cache info, try to manally update area cache for later use
                     update_area_cache_background(&params, &bili_runtime).await;
-                    match get_upstream_bili_playurl(&mut params, &user_info, &bili_runtime).await {
-                        Ok(http_body) => http_body,
-                        Err(error_type) => return bili_error(error_type),
-                    }
+                    let return_data = match get_cached_playurl(&params, &bili_runtime).await {
+                        Ok(data) => data,
+                        Err(_) => {
+                            match get_upstream_bili_playurl(&mut params, &user_info, &bili_runtime)
+                                .await
+                            {
+                                Ok(value) => value,
+                                Err(error_type) => return bili_error(error_type),
+                            }
+                        }
+                    };
+                    return_data
                 }
             };
             return build_response(http_body_return);
@@ -277,11 +283,15 @@ pub async fn handle_playurl_request(
             return build_response(return_data);
         }
     } else {
-        let return_data =
-            match get_upstream_bili_playurl(&mut params, &user_info, &bili_runtime).await {
-                Ok(http_body) => http_body,
-                Err(error_type) => return bili_error(error_type),
-            };
+        let return_data = match get_cached_playurl(&params, &bili_runtime).await {
+            Ok(data) => data,
+            Err(_) => {
+                match get_upstream_bili_playurl(&mut params, &user_info, &bili_runtime).await {
+                    Ok(value) => value,
+                    Err(error_type) => return bili_error(error_type),
+                }
+            }
+        };
         return build_response(return_data);
     }
 }
@@ -340,11 +350,8 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         Option::Some(key) => key,
         _ => "1d8b6e7d45233436",
     };
-    match params.appkey_to_sec() {
-        Ok(_) => (),
-        Err(_) => {
-            return build_response("{\"code\":-10403,\"message\":\"未知设备\"}".to_string());
-        }
+    if let Err(_) = params.appkey_to_sec() {
+        return bili_error(EType::OtherError(-412, "未知设备"));
     };
     // verify req sign
     // TODO: add ignore sign err
@@ -359,7 +366,7 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
                 ))
             ) != &query_string[query_string.len() - 32..])
         {
-            return build_response("{\"code\":-3,\"message\":\"API校验密匙错误\"}".to_string());
+            return bili_error(EType::ReqSignError);
         }
     }
     // detect user's access_key
@@ -373,10 +380,7 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
             }
         }
         _ => {
-            return build_response(
-                "{\"code\":-101,\"message\":\"草,没登陆你看个der,让我凭空拿到你账号是吧\"}"
-                    .to_string(),
-            );
+            return bili_error(EType::UserNotLoginedError);
         }
     };
     // detect other info
@@ -410,22 +414,26 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         ""
     };
 
-    // get user_info
-    let user_info = match get_user_info(
-        params.access_key,
-        params.app_key,
-        params.app_sec,
-        params.user_agent,
-        false,
-        &bili_runtime,
-    )
-    .await
-    {
-        Ok(value) => value,
-        Err(value) => {
-            return bili_error(value);
-        }
-    };
+    //为了记录accesskey to uid
+    if is_app && (!is_th) {
+        let user_info = match get_user_info(
+            params.access_key,
+            params.app_key,
+            params.app_sec,
+            params.user_agent,
+            false,
+            &bili_runtime,
+        )
+        .await
+        {
+            Ok(value) => value,
+            Err(value) => {
+                return bili_error(value);
+            }
+        };
+        get_blacklist_info(&user_info, &bili_runtime).await.unwrap_or(false);
+    }
+    
 
     let host = match req.headers().get("Host") {
         Some(host) => host.to_str().unwrap(),

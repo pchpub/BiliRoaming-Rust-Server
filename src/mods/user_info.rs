@@ -1,4 +1,6 @@
-use super::cache::{get_cached_blacklist_info, get_cached_user_info, update_cached_user_info};
+use crate::mods::cache::update_blacklist_info_cache;
+
+use super::cache::{get_cached_blacklist_info, get_cached_user_info, update_user_info_cache};
 use super::request::{async_getwebpage, async_postwebpage};
 use super::types::{BiliRuntime, EType, PlayurlParams, UserInfo, UserResignInfo};
 use super::upstream_res::{get_upstream_bili_account_info, get_upstream_blacklist_info};
@@ -35,27 +37,47 @@ pub async fn get_user_info(
             .await
             {
                 Ok(value) => {
-                    update_cached_user_info(&value, bili_runtime).await;
+                    update_user_info_cache(&value, bili_runtime).await;
                     Ok(value)
                 }
-                Err(value) => Err(value),
+                Err(value) => {
+                    let user_info = UserInfo {
+                        access_key: access_key.to_owned(),
+                        uid: 0,
+                        vip_expire_time: 0,
+                        expire_time: 0,
+                    };
+                    match get_blacklist_info(&user_info, bili_runtime).await {
+                        Ok(_) => Ok(user_info),
+                        Err(_) => Err(value),
+                    }
+                }
             },
         }
     }
 }
 
 #[inline]
-pub async fn get_blacklist_info(uid: &u64, bili_runtime: &BiliRuntime<'_>) -> Result<bool, EType> {
-    fn timestamp_to_time(timestamp: &u64) -> String {
-        let dt = Utc
-            .timestamp(*timestamp as i64, 0)
-            .with_timezone(&FixedOffset::east(8 * 3600));
-        dt.format(r#"%Y年%m月%d日 %H:%M解封\n请耐心等待"#)
-            .to_string()
-    }
+pub async fn get_blacklist_info(
+    user_info: &UserInfo,
+    bili_runtime: &BiliRuntime<'_>,
+) -> Result<bool, EType> {
+    // fn timestamp_to_time(timestamp: &u64) -> String {
+    //     let dt = Utc
+    //         .timestamp(*timestamp as i64, 0)
+    //         .with_timezone(&FixedOffset::east(8 * 3600));
+    //     dt.format(r#"%Y年%m月%d日 %H:%M解封\n请耐心等待"#)
+    //         .to_string()
+    // }
+    // let uid = &user_info.uid;
+    // let access_key = &user_info.access_key;
     match &bili_runtime.config.blacklist_config {
         super::types::BlackListType::OnlyLocalBlackList => {
-            match bili_runtime.config.local_wblist.get(&uid.to_string()) {
+            match bili_runtime
+                .config
+                .local_wblist
+                .get(&user_info.uid.to_string())
+            {
                 Some(value) => {
                     if value.1 {
                         return Ok(true);
@@ -69,22 +91,28 @@ pub async fn get_blacklist_info(uid: &u64, bili_runtime: &BiliRuntime<'_>) -> Re
                 None => Err(EType::UserWhitelistedError),
             }
         }
-        super::types::BlackListType::OnlyOnlineBlackList(online_blacklist_config) => {
+        super::types::BlackListType::OnlyOnlineBlackList(_) => {
             let dt = Local::now();
             let ts = dt.timestamp() as u64;
-            let data = match get_cached_blacklist_info(uid, bili_runtime).await {
+            let data = match get_cached_blacklist_info(user_info, bili_runtime).await {
                 Some(value) => {
                     if value.status_expire_time < ts {
-                        match get_upstream_blacklist_info(uid, &bili_runtime).await {
-                            Ok(value) => value,
+                        match get_upstream_blacklist_info(&user_info.uid, &bili_runtime).await {
+                            Ok(value) => {
+                                update_blacklist_info_cache(user_info, &value, bili_runtime).await;
+                                value
+                            }
                             Err(value) => return Err(value),
                         }
                     } else {
                         value
                     }
                 }
-                None => match get_upstream_blacklist_info(uid, &bili_runtime).await {
-                    Ok(value) => value,
+                None => match get_upstream_blacklist_info(&user_info.uid, &bili_runtime).await {
+                    Ok(value) => {
+                        update_blacklist_info_cache(user_info, &value, bili_runtime).await;
+                        value
+                    }
                     Err(value) => return Err(value),
                 },
             };
@@ -96,8 +124,12 @@ pub async fn get_blacklist_info(uid: &u64, bili_runtime: &BiliRuntime<'_>) -> Re
                 Ok(false)
             }
         }
-        super::types::BlackListType::MixedBlackList(online_blacklist_config) => {
-            match bili_runtime.config.local_wblist.get(&uid.to_string()) {
+        super::types::BlackListType::MixedBlackList(_) => {
+            match bili_runtime
+                .config
+                .local_wblist
+                .get(&user_info.uid.to_string())
+            {
                 Some(value) => {
                     if value.1 {
                         return Ok(true);
@@ -111,19 +143,25 @@ pub async fn get_blacklist_info(uid: &u64, bili_runtime: &BiliRuntime<'_>) -> Re
             }
             let dt = Local::now();
             let ts = dt.timestamp() as u64;
-            let data = match get_cached_blacklist_info(uid, bili_runtime).await {
+            let data = match get_cached_blacklist_info(user_info, bili_runtime).await {
                 Some(value) => {
                     if value.status_expire_time < ts {
-                        match get_upstream_blacklist_info(uid, &bili_runtime).await {
-                            Ok(value) => value,
+                        match get_upstream_blacklist_info(&user_info.uid, &bili_runtime).await {
+                            Ok(value) => {
+                                update_blacklist_info_cache(user_info, &value, bili_runtime).await;
+                                value
+                            }
                             Err(value) => return Err(value),
                         }
                     } else {
                         value
                     }
                 }
-                None => match get_upstream_blacklist_info(uid, &bili_runtime).await {
-                    Ok(value) => value,
+                None => match get_upstream_blacklist_info(&user_info.uid, &bili_runtime).await {
+                    Ok(value) => {
+                        update_blacklist_info_cache(user_info, &value, bili_runtime).await;
+                        value
+                    }
                     Err(value) => return Err(value),
                 },
             };
@@ -362,8 +400,14 @@ pub async fn get_user_info_background(
     match get_cached_user_info(access_key, bili_runtime).await {
         Some(value) => Ok(value),
         None => {
-            match get_upstream_bili_account_info(access_key, app_key, app_sec, user_agent, bili_runtime)
-                .await
+            match get_upstream_bili_account_info(
+                access_key,
+                app_key,
+                app_sec,
+                user_agent,
+                bili_runtime,
+            )
+            .await
             {
                 Ok(value) => Ok(value),
                 Err(value) => Err(value),
