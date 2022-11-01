@@ -13,8 +13,8 @@ use std::string::String;
 
 pub async fn get_upstream_bili_account_info(
     access_key: &str,
-    app_key: &str,
-    app_sec: &str,
+    appkey: &str,
+    appsec: &str,
     user_agent: &str,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
@@ -23,11 +23,11 @@ pub async fn get_upstream_bili_account_info(
     let ts_min = dt.timestamp() as u64;
     let sign = md5::compute(format!(
         "access_key={}&appkey={}&ts={}{}",
-        access_key, app_key, ts_min, app_sec
+        access_key, appkey, ts_min, appsec
     ));
     let url: String = format!(
         "https://app.bilibili.com/x/v2/account/myinfo?access_key={}&appkey={}&ts={}&sign={:x}",
-        access_key, app_key, ts_min, sign
+        access_key, appkey, ts_min, sign
     );
     //println!("{}",url);
     let output = match async_getwebpage(
@@ -76,8 +76,8 @@ pub async fn get_upstream_bili_account_info(
             Ok(output_struct)
         }
         -400 => {
-            println!("[USER INFO] AK {} | Get UserInfo failed -400. REQ Params -> APP_KEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
-                access_key, app_key, ts_min, app_sec, sign, output_json
+            println!("[USER INFO] AK {} | Get UserInfo failed -400. REQ Params -> APPKEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
+                access_key, appkey, ts_min, appsec, sign, output_json
             );
             Err(EType::OtherError(-400, "可能你用的不是手机"))
         }
@@ -89,8 +89,8 @@ pub async fn get_upstream_bili_account_info(
             Err(EType::UserNotLoginedError)
         }
         -3 => {
-            println!("[USER INFO] AK {} | Get UserInfo failed -3. REQ Params -> APP_KEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
-                access_key, app_key, ts_min, app_sec, sign, output_json
+            println!("[USER INFO] AK {} | Get UserInfo failed -3. REQ Params -> APPKEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
+                access_key, appkey, ts_min, appsec, sign, output_json
             );
             Err(EType::ReqSignError)
         }
@@ -102,8 +102,8 @@ pub async fn get_upstream_bili_account_info(
             Err(EType::ServerFatalError)
         }
         _ => {
-            println!("[USER INFO] AK {} | Get UserInfo failed. REQ Params -> APP_KEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
-                access_key, app_key, ts_min, app_sec, sign, output_json
+            println!("[USER INFO] AK {} | Get UserInfo failed. REQ Params -> APPKEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
+                access_key, appkey, ts_min, appsec, sign, output_json
             );
             Err(EType::OtherUpstreamError(
                 code,
@@ -203,7 +203,7 @@ pub async fn get_upstream_bili_playurl(
     if params.is_tv {
         query_vec = vec![
             ("access_key", &params.access_key[..]),
-            ("appkey", params.app_key),
+            ("appkey", params.appkey),
             ("build", params.build),
             ("device", params.device),
             ("fnval", "130"),
@@ -217,7 +217,7 @@ pub async fn get_upstream_bili_playurl(
     } else {
         query_vec = vec![
             ("access_key", &params.access_key[..]),
-            ("appkey", params.app_key),
+            ("appkey", params.appkey),
             ("build", params.build),
             ("device", params.device),
             ("fnval", "4048"),
@@ -243,7 +243,7 @@ pub async fn get_upstream_bili_playurl(
     let unsigned_url = format!("{unsigned_url}");
     let signed_url = format!(
         "{unsigned_url}&sign={:x}",
-        md5::compute(format!("{unsigned_url}{}", params.app_sec))
+        md5::compute(format!("{unsigned_url}{}", params.appsec))
     );
     // finish generating req params
     let body_data = match async_getwebpage(
@@ -313,7 +313,7 @@ pub async fn get_upstream_bili_playurl_background(
     if params.is_tv {
         query_vec = vec![
             ("access_key", &params.access_key[..]),
-            ("appkey", &params.app_key),
+            ("appkey", &params.appkey),
             ("build", &params.build),
             ("device", &params.device),
             ("fnval", "130"),
@@ -327,7 +327,7 @@ pub async fn get_upstream_bili_playurl_background(
     } else {
         query_vec = vec![
             ("access_key", &params.access_key[..]),
-            ("appkey", &params.app_key),
+            ("appkey", &params.appkey),
             ("build", &params.build),
             ("device", &params.device),
             ("fnval", "4048"),
@@ -349,8 +349,8 @@ pub async fn get_upstream_bili_playurl_background(
     // }
     // match area_num {
     //     4 => {
-    //         // app_key = "7d089525d3611b1c";
-    //         // app_sec = app_key_to_sec(&app_key).unwrap();
+    //         // appkey = "7d089525d3611b1c";
+    //         // appsec = appkey_to_sec(&appkey).unwrap();
     //         // query_vec.push(("s_locale", "zh_SG"));
     //     }
     //     _ => (),
@@ -364,7 +364,7 @@ pub async fn get_upstream_bili_playurl_background(
     let unsigned_url = format!("{unsigned_url}");
     let signed_url = format!(
         "{unsigned_url}&sign={:x}",
-        md5::compute(format!("{unsigned_url}{}", params.app_sec))
+        md5::compute(format!("{unsigned_url}{}", params.appsec))
     );
     let body_data = match async_getwebpage(
         &format!("{api}?{signed_url}"),
@@ -430,7 +430,7 @@ pub async fn get_upstream_bili_search(
     if params.is_th {
         query_vec = vec![
             // ("access_key".to_string(), access_key.to_string()),
-            ("appkey".to_string(), params.app_key.to_string()),
+            ("appkey".to_string(), params.appkey.to_string()),
             ("build".to_string(), params.build.to_string()),
             ("c_locale".to_string(), "zh_SG".to_string()),
             ("channel".to_string(), "master".to_string()),
@@ -462,7 +462,7 @@ pub async fn get_upstream_bili_search(
         if params.is_app {
             query_vec = vec![
                 ("access_key".to_string(), params.access_key.to_string()),
-                ("appkey".to_string(), params.app_key.to_string()),
+                ("appkey".to_string(), params.appkey.to_string()),
                 ("build".to_string(), params.build.to_string()),
                 ("c_locale".to_string(), "zh_CN".to_string()),
                 ("channel".to_string(), "master".to_string()),
@@ -495,7 +495,7 @@ pub async fn get_upstream_bili_search(
     let unsigned_url = format!("{}", qstring::QString::new(query_vec));
     let signed_url = format!(
         "{unsigned_url}&sign={:x}",
-        md5::compute(format!("{unsigned_url}{}", params.app_sec))
+        md5::compute(format!("{unsigned_url}{}", params.appsec))
     );
     match async_getwebpage(
         &format!("{api}?{signed_url}"),
@@ -564,12 +564,12 @@ pub async fn get_upstream_bili_subtitle(
     let mut query = QString::from(raw_query);
     query.add_str(&format!(
         "&appkey={}&mobi_app=bstar_a&s_locale=zh_SG&ts={ts}",
-        params.app_key
+        params.appkey
     ));
     let mut query_vec = query.to_pairs();
     query_vec.sort_by_key(|v| v.0);
     // 硬编码app_sec
-    let app_sec = params.app_sec;
+    let app_sec = params.appsec;
     let proxy_open = bili_runtime.config.th_proxy_subtitle_open;
     let proxy_url = &bili_runtime.config.th_proxy_subtitle_url;
     let unsigned_url = qstring::QString::new(query_vec);
@@ -603,7 +603,7 @@ pub async fn get_upstream_bili_season(
     let ts_string = ts.to_string();
     let mut query_vec = vec![
         ("access_key", params.access_key),
-        ("appkey", "7d089525d3611b1c"),
+        ("appkey", params.appkey),
         ("build", params.build),
         ("mobi_app", "bstar_a"),
         ("season_id", params.season_id),
@@ -616,7 +616,7 @@ pub async fn get_upstream_bili_season(
     let unsigned_url = format!("{}", qstring::QString::new(query_vec));
     let signed_url = format!(
         "{unsigned_url}&sign={:x}",
-        md5::compute(format!("{unsigned_url}{}", params.app_sec))
+        md5::compute(format!("{unsigned_url}{}", params.appsec))
     );
 
     match async_getwebpage(

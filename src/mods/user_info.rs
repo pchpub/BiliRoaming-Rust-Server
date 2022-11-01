@@ -10,15 +10,15 @@ use chrono::prelude::*;
 #[inline]
 pub async fn get_user_info(
     access_key: &str,
-    app_key: &str,
-    app_sec: &str,
+    appkey: &str,
+    appsec: &str,
     user_agent: &str,
     force_update: bool,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
     // mixed with blacklist function
     if force_update {
-        match get_upstream_bili_account_info(access_key, app_key, app_sec, user_agent, bili_runtime)
+        match get_upstream_bili_account_info(access_key, appkey, appsec, user_agent, bili_runtime)
             .await
         {
             Ok(value) => Ok(value),
@@ -29,8 +29,8 @@ pub async fn get_user_info(
             Some(value) => Ok(value),
             None => match get_upstream_bili_account_info(
                 access_key,
-                app_key,
-                app_sec,
+                appkey,
+                appsec,
                 user_agent,
                 bili_runtime,
             )
@@ -207,8 +207,8 @@ pub async fn resign_user_info(
                 .unwrap_or((params.access_key.to_string(), 1));
             let user_info = match get_user_info(
                 params.access_key,
-                params.app_key,
-                params.app_sec,
+                params.appkey,
+                params.appsec,
                 params.user_agent,
                 false,
                 bili_runtime,
@@ -391,8 +391,8 @@ async fn to_resign_info(resin_info_str: &str) -> UserResignInfo {
 // background task
 pub async fn get_user_info_background(
     access_key: &str,
-    app_key: &str,
-    app_sec: &str,
+    appkey: &str,
+    appsec: &str,
     user_agent: &str,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
@@ -402,8 +402,8 @@ pub async fn get_user_info_background(
         None => {
             match get_upstream_bili_account_info(
                 access_key,
-                app_key,
-                app_sec,
+                appkey,
+                appsec,
                 user_agent,
                 bili_runtime,
             )

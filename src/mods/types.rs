@@ -1172,8 +1172,8 @@ impl UserResignInfo {
 */
 pub struct PlayurlParamsStatic {
     pub access_key: String,
-    pub app_key: String,
-    pub app_sec: String,
+    pub appkey: String,
+    pub appsec: String,
     pub ep_id: String,
     pub cid: String,
     pub build: String,
@@ -1203,8 +1203,8 @@ impl PlayurlParamsStatic {
 // lessen usage of to_string() for better perf
 pub struct PlayurlParams<'playurl_params> {
     pub access_key: &'playurl_params str,
-    pub app_key: &'playurl_params str,
-    pub app_sec: &'playurl_params str,
+    pub appkey: &'playurl_params str,
+    pub appsec: &'playurl_params str,
     pub ep_id: &'playurl_params str,
     pub cid: &'playurl_params str,
     pub season_id: &'playurl_params str,
@@ -1226,8 +1226,8 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl> Default
     fn default() -> PlayurlParams<'playurl_params_impl> {
         PlayurlParams {
             access_key: "",
-            app_key: "1d8b6e7d45233436",
-            app_sec: "560c52ccd288fed045859ed18bffd973",
+            appkey: "1d8b6e7d45233436",
+            appsec: "560c52ccd288fed045859ed18bffd973",
             ep_id: "",
             cid: "",
             season_id: "",
@@ -1260,9 +1260,9 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl>
     }
     pub fn appkey_to_sec(&mut self) -> Result<(), ()> {
         if self.is_th {
-            self.app_key = "7d089525d3611b1c";
+            self.appkey = "7d089525d3611b1c";
         }
-        self.app_sec = match self.app_key {
+        self.appsec = match self.appkey {
             "9d5889cf67e615cd" => "8fd9bb32efea8cef801fd895bef2713d", // Ai4cCreatorAndroid
             "1d8b6e7d45233436" => "560c52ccd288fed045859ed18bffd973", // Android
             "07da50c9a0bf829f" => "25bdede4e1581c836cab73a48790ca6e", // AndroidB
@@ -1321,8 +1321,8 @@ pub enum PlayurlType {
 */
 pub struct SearchParams<'search_params> {
     pub access_key: &'search_params str,
-    pub app_key: &'search_params str,
-    pub app_sec: &'search_params str,
+    pub appkey: &'search_params str,
+    pub appsec: &'search_params str,
     pub build: &'search_params str,
     pub device: &'search_params str,
     pub pn: &'search_params str,
@@ -1346,8 +1346,8 @@ impl<'search_params: 'search_params_impl, 'search_params_impl> Default
     fn default() -> SearchParams<'search_params_impl> {
         SearchParams {
             access_key: "",
-            app_key: "1d8b6e7d45233436",
-            app_sec: "560c52ccd288fed045859ed18bffd973",
+            appkey: "1d8b6e7d45233436",
+            appsec: "560c52ccd288fed045859ed18bffd973",
             build: "6400000",
             device: "android",
             pn: "1",
@@ -1381,9 +1381,9 @@ impl<'search_params: 'search_params_impl, 'search_params_impl> SearchParams<'sea
     }
     pub fn appkey_to_sec(&mut self) -> Result<(), ()> {
         if self.is_th {
-            self.app_key = "7d089525d3611b1c";
+            self.appkey = "7d089525d3611b1c";
         }
-        self.app_sec = match self.app_key {
+        self.appsec = match self.appkey {
             "9d5889cf67e615cd" => "8fd9bb32efea8cef801fd895bef2713d", // Ai4cCreatorAndroid
             "1d8b6e7d45233436" => "560c52ccd288fed045859ed18bffd973", // Android
             "07da50c9a0bf829f" => "25bdede4e1581c836cab73a48790ca6e", // AndroidB

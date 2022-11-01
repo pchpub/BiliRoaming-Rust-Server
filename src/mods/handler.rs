@@ -79,8 +79,8 @@ pub async fn handle_playurl_request(
             None => (),
         }
     }
-    // detect user's app_key
-    params.app_key = match query.get("appkey") {
+    // detect user's appkey
+    params.appkey = match query.get("appkey") {
         Option::Some(key) => key,
         _ => "1d8b6e7d45233436",
     };
@@ -96,7 +96,7 @@ pub async fn handle_playurl_request(
                 md5::compute(format!(
                     "{}{}",
                     &query_string[..query_string.len() - 38],
-                    params.app_sec
+                    params.appsec
                 ))
             ) != &query_string[query_string.len() - 32..])
         {
@@ -144,8 +144,8 @@ pub async fn handle_playurl_request(
     // get user_info
     let user_info = match get_user_info(
         params.access_key,
-        params.app_key,
-        params.app_sec,
+        params.appkey,
+        params.appsec,
         params.user_agent,
         false,
         &bili_runtime,
@@ -345,8 +345,8 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
             None => (),
         }
     }
-    // detect user's app_key
-    params.app_key = match query.get("appkey") {
+    // detect user's appkey
+    params.appkey = match query.get("appkey") {
         Option::Some(key) => key,
         _ => "1d8b6e7d45233436",
     };
@@ -362,7 +362,7 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
                 md5::compute(format!(
                     "{}{}",
                     &query_string[..query_string.len() - 38],
-                    params.app_sec
+                    params.appsec
                 ))
             ) != &query_string[query_string.len() - 32..])
         {
@@ -420,8 +420,8 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
     if is_app && (!is_th) {
         let user_info = match get_user_info(
             params.access_key,
-            params.app_key,
-            params.app_sec,
+            params.appkey,
+            params.appsec,
             params.user_agent,
             false,
             &bili_runtime,
@@ -543,7 +543,7 @@ pub async fn handle_th_season_request(
             return bili_error(EType::UserNotLoginedError);
         }
     };
-    // init th app_key & app_sec
+    // init th appkey & appsec
     params.appkey_to_sec().unwrap();
 
     // let user_info = match getuser_list(

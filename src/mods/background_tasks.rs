@@ -23,8 +23,8 @@ pub async fn update_cached_playurl_background(
     let background_task_data =
         BackgroundTaskType::CacheTask(CacheTask::PlayurlCacheRefresh(PlayurlParamsStatic {
             access_key: params.access_key.to_string(),
-            app_key: params.app_key.to_string(),
-            app_sec: params.app_sec.to_string(),
+            appkey: params.appkey.to_string(),
+            appsec: params.appsec.to_string(),
             ep_id: params.ep_id.to_string(),
             cid: params.cid.to_string(),
             build: params.build.to_string(),
@@ -149,11 +149,11 @@ pub async fn background_task_run(
         },
         BackgroundTaskType::CacheTask(value) => match value {
             CacheTask::UserInfoCacheRefresh(access_key) => {
-                let app_key = "1d8b6e7d45233436";
-                let app_sec = "560c52ccd288fed045859ed18bffd973";
+                let appkey = "1d8b6e7d45233436";
+                let appsec = "560c52ccd288fed045859ed18bffd973";
                 let user_agent =
                     "Dalvik/2.1.0 (Linux; U; Android 11; 21091116AC Build/RP1A.200720.011)";
-                match get_user_info(&access_key, app_key, app_sec, user_agent, true, &bili_runtime).await {
+                match get_user_info(&access_key, appkey, appsec, user_agent, true, &bili_runtime).await {
                     Ok(new_user_info) => match get_blacklist_info(&new_user_info, bili_runtime).await {
                         Ok(_) => Ok(()),
                         Err(value) => Err(format!("[Background Task] UID {} | Refreshing blacklist info failed, ErrMsg: {}", new_user_info.uid, value.err_json())),
