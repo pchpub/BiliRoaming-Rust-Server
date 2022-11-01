@@ -188,7 +188,7 @@ fn main() -> std::io::Result<()> {
                     break;
                 }
             };
-            println!("[Debug] r:{}",r.len());
+            // println!("[Debug] r:{}",r.len());
             match receive_data {
                 SendData::Playurl(value) => {
                     match get_playurl_background(&pool_background, &value, &anti_speedtest_cfg)
