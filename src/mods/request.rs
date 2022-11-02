@@ -45,8 +45,8 @@ pub fn getwebpage(
             .unwrap();
         match transfer.perform() {
             Ok(()) => (),
-            Err(_value) => {
-                // println!("[Debug] getwebpage error -> {}", value); // 不必要
+            Err(value) => {
+                println!("getwebpage error -> {}", value);
                 return Err(());
             }
         }
