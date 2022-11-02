@@ -1,22 +1,23 @@
-use super::background_tasks::update_cached_playurl_background;
-use super::ep_info::{get_ep_need_vip, get_ep_need_vip_background};
+use super::background_tasks::{update_cached_playurl_background, update_area_cache_background};
+use super::ep_info::get_ep_need_vip;
 use super::request::{redis_get, redis_set};
 use super::types::*;
 use chrono::prelude::*;
 use deadpool_redis::Pool;
 use qstring::QString;
+
 /*
 番剧区域缓存
 */
 #[inline]
 pub async fn get_cached_ep_area(
     params: &PlayurlParams<'_>,
-    redis_pool: &Pool,
-) -> Result<EpAreaCacheType, ()> {
+    bili_runtime: &BiliRuntime<'_>,
+) -> Option<Area> {
     let ep_id = params.ep_id;
     let req_area_num = params.area_num as u8;
-    let key = format!("e{ep_id}1401");
-    let data_raw = redis_get(redis_pool, &key).await;
+    // let key = format!("e{ep_id}1401");
+    let data_raw = bili_runtime.get_cache(CacheType::EpArea(ep_id)).await;
     if let Some(value) = data_raw {
         let mut ep_area_data: [u8; 4] = [2, 2, 2, 2];
         let mut is_all_available = true;
@@ -38,20 +39,20 @@ pub async fn get_cached_ep_area(
 
         if is_all_available {
             if req_area_num == 4 && ep_area_data[3] == 0 {
-                return Ok(EpAreaCacheType::Available(Area::Th));
+                Some(Area::Th)
             } else if ep_area_data[req_area_num as usize - 1] == 0 {
-                return Ok(EpAreaCacheType::Available(Area::new(req_area_num)));
+                Some(Area::new(req_area_num))
             } else {
                 if ep_area_data[1] == 0 {
-                    return Ok(EpAreaCacheType::Available(Area::Hk));
+                    Some(Area::Hk)
                 } else if ep_area_data[2] == 0 {
-                    return Ok(EpAreaCacheType::Available(Area::Tw));
+                    Some(Area::Tw)
                 } else if ep_area_data[3] == 0 {
-                    return Ok(EpAreaCacheType::Available(Area::Th));
+                    Some(Area::Th)
                 } else if ep_area_data[0] == 0 {
-                    return Ok(EpAreaCacheType::Available(Area::Cn));
+                    Some(Area::Cn)
                 } else {
-                    return Err(()); //不这样搞的话可能被攻击时会出大问题
+                    None //不这样搞的话可能被攻击时会出大问题
                 }
             }
         } else {
@@ -59,27 +60,30 @@ pub async fn get_cached_ep_area(
             if ep_area_data[req_area_num as usize - 1] == 0 {
                 // if req_area == tw && hk_is_available
                 if req_area_num == 2 && ep_area_data[1] == 0 {
-                    return Ok(EpAreaCacheType::Available(Area::Hk));
+                    Some(Area::Hk)
                 } else {
-                    return Ok(EpAreaCacheType::Available(Area::new(req_area_num)));
+                    Some(Area::new(req_area_num))
                 }
             } else {
-                return Ok(EpAreaCacheType::NoCurrentAreaData(key, value));
+                update_area_cache_background(params, bili_runtime).await;
+                None
             }
         }
     } else {
-        return Ok(EpAreaCacheType::NoEpData);
-    };
+        update_area_cache_background(params, bili_runtime).await;
+        None
+    }
 }
 
 #[inline]
 pub async fn update_area_cache(
     http_body: &str,
     params: &PlayurlParams<'_>,
-    key: &str,
+    // key: &str,
     value: &str,
     bili_runtime: &BiliRuntime<'_>,
 ) {
+    let ep_id = params.ep_id;
     let is_available = check_ep_available(http_body);
     let area_num = params.area_num as usize;
     let new_value = {
@@ -89,7 +93,9 @@ pub async fn update_area_cache(
             value[..area_num - 1].to_owned() + "1" + &value[area_num..]
         }
     };
-    bili_runtime.redis_set(key, &new_value, 0).await;
+    bili_runtime
+        .update_cache(CacheType::EpArea(ep_id), &new_value, 0)
+        .await;
 }
 
 #[inline]
@@ -146,7 +152,10 @@ pub async fn get_cached_user_info(
     access_key: &str,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Option<UserInfo> {
-    match bili_runtime.redis_get(&format!("{access_key}20501")).await {
+    match bili_runtime
+        .get_cache(CacheType::UserInfo(access_key))
+        .await
+    {
         Some(value) => Some(serde_json::from_str(&value).unwrap()),
         None => None,
     }
@@ -157,7 +166,7 @@ pub async fn update_user_info_cache(new_user_info: &UserInfo, bili_runtime: &Bil
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let access_key = &new_user_info.access_key;
-    let key = format!("{access_key}20501");
+    // let key = format!("{access_key}20501");
     let value = new_user_info.to_json();
     let expire_time = (new_user_info.expire_time - ts) / 1000;
     // let _: () = redis_set(redis_pool, &key, &value, expire_time)
@@ -170,15 +179,10 @@ pub async fn update_user_info_cache(new_user_info: &UserInfo, bili_runtime: &Bil
     //     expire_time,
     // )
     // .await
-    // TODO: add general cache type struct for redis set/get
-    bili_runtime.redis_set(&key, &value, expire_time).await;
     bili_runtime
-        .redis_set(
-            &format!("u{}20501", new_user_info.uid),
-            &access_key,
-            expire_time,
-        )
-        .await
+        .update_cache(CacheType::UserInfo(access_key), &value, expire_time)
+        .await;
+    // bili_runtime.redis_set(&key, &value, expire_time).await
 }
 
 pub async fn get_cached_blacklist_info(
@@ -228,7 +232,6 @@ pub async fn get_cached_blacklist_info(
             None => None,
         }
     }
-    
 }
 /// `update_blacklist_info_cache` 保存UserCerinfo信息到本地缓存
 pub async fn update_blacklist_info_cache(
@@ -262,7 +265,7 @@ pub async fn get_cached_playurl(
 ) -> Result<String, ()> {
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
-    let key = get_plaurl_cache_key(params, false, bili_runtime).await;
+    let key = get_playurl_cache_key(params, false, bili_runtime).await;
 
     let need_fresh: bool;
     let return_data;
@@ -299,7 +302,7 @@ pub async fn update_cached_playurl(
 ) {
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
-    let key = get_plaurl_cache_key(params, true, bili_runtime).await;
+    let key = get_playurl_cache_key(params, true, bili_runtime).await;
 
     let mut body_data_json: serde_json::Value = serde_json::from_str(body_data).unwrap();
     let code = body_data_json["code"].as_i64().unwrap();
@@ -327,7 +330,7 @@ pub async fn update_cached_playurl(
     bili_runtime.redis_set(&key, &value, expire_time).await
 }
 
-async fn get_plaurl_cache_key(
+async fn get_playurl_cache_key(
     params: &PlayurlParams<'_>,
     need_redis_key: bool,
     bili_runtime: &BiliRuntime<'_>,
@@ -612,55 +615,3 @@ pub async fn update_cached_ep_info_redis(ep_info: EpInfo, redis_pool: &Pool) {
 // pub async fn update_cache<T> (key: &str, value: T) -> T {
 
 // }
-
-pub enum CacheType<'cache_type, T>
-where
-    T: std::fmt::Display,
-    // U: serde_json::ser::Formatter
-{
-    Playurl((Area, PlayurlParams<'cache_type>, T)),
-    EpArea(T),
-    EpVipInfo(T),
-    EpInfo(T), // not implemented
-    UserInfo(T),
-    UserCerInfo(T),
-}
-impl<'cache_type, T> CacheType<'cache_type, T>
-where
-    T: std::fmt::Display,
-{
-    async fn update_redis(key: &str, value: &str, expire_time: u64, redis_pool: &Pool) {
-        redis_set(redis_pool, key, value, expire_time)
-            .await
-            .unwrap()
-    }
-    pub async fn update(self, redis_pool: &Pool) {
-        match self {
-            CacheType::Playurl(params) => {
-                let (area, params, data) = params;
-                let ep_id = params.ep_id;
-                let cid = params.cid;
-
-                let need_vip = if let Some(value) =
-                    get_ep_need_vip_background(params.ep_id, redis_pool).await
-                {
-                    value as u8
-                } else {
-                    // should not
-                    params.is_vip as u8
-                };
-                let is_tv = (params.is_tv && params.is_app) as u8;
-                let is_app: &str = if params.is_app { "01" } else { "07" };
-                let area_num = area.num();
-                let key = format!("e{ep_id}c{cid}v{need_vip}t{is_tv}{area_num}{is_app}01");
-
-                Self::update_redis(&key, &data.to_string(), 0, redis_pool).await
-            }
-            CacheType::EpArea(_) => todo!(),
-            CacheType::EpVipInfo(_) => todo!(),
-            CacheType::EpInfo(_) => todo!(),
-            CacheType::UserInfo(_) => todo!(),
-            CacheType::UserCerInfo(_) => todo!(),
-        }
-    }
-}

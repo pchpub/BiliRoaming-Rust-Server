@@ -21,7 +21,10 @@ pub async fn get_user_info(
         match get_upstream_bili_account_info(access_key, appkey, appsec, user_agent, bili_runtime)
             .await
         {
-            Ok(value) => Ok(value),
+            Ok(value) => {
+                update_user_info_cache(&value, bili_runtime).await;
+                Ok(value)
+            }
             Err(value) => Err(value),
         }
     } else {
@@ -388,30 +391,30 @@ async fn to_resign_info(resin_info_str: &str) -> UserResignInfo {
     serde_json::from_str(resin_info_str).unwrap()
 }
 
-// background task
-pub async fn get_user_info_background(
-    access_key: &str,
-    appkey: &str,
-    appsec: &str,
-    user_agent: &str,
-    bili_runtime: &BiliRuntime<'_>,
-) -> Result<UserInfo, EType> {
-    // mixed with blacklist function
-    match get_cached_user_info(access_key, bili_runtime).await {
-        Some(value) => Ok(value),
-        None => {
-            match get_upstream_bili_account_info(
-                access_key,
-                appkey,
-                appsec,
-                user_agent,
-                bili_runtime,
-            )
-            .await
-            {
-                Ok(value) => Ok(value),
-                Err(value) => Err(value),
-            }
-        }
-    }
-}
+// // background task
+// pub async fn get_user_info_background(
+//     access_key: &str,
+//     appkey: &str,
+//     appsec: &str,
+//     user_agent: &str,
+//     bili_runtime: &BiliRuntime<'_>,
+// ) -> Result<UserInfo, EType> {
+//     // mixed with blacklist function
+//     match get_cached_user_info(access_key, bili_runtime).await {
+//         Some(value) => Ok(value),
+//         None => {
+//             match get_upstream_bili_account_info(
+//                 access_key,
+//                 appkey,
+//                 appsec,
+//                 user_agent,
+//                 bili_runtime,
+//             )
+//             .await
+//             {
+//                 Ok(value) => Ok(value),
+//                 Err(value) => Err(value),
+//             }
+//         }
+//     }
+// }

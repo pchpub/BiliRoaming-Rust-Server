@@ -1,3 +1,4 @@
+use super::request::{redis_get, redis_set};
 use async_channel::{Sender, TrySendError};
 use chrono::{FixedOffset, TimeZone, Utc};
 use deadpool_redis::Pool;
@@ -5,10 +6,6 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, hash::Hash, sync::Arc};
 use urlencoding::encode;
-
-use super::request::{redis_get, redis_set};
-pub const SERVER_GENERAL_ERROR_MESSAGE: &str = "服务器内部错误";
-pub const SERVER_NETWORK_ERROR_MESSAGE: &str = "服务器网络错误";
 
 /*
 * the following is server config related
@@ -186,6 +183,16 @@ impl<'bili_runtime> BiliRuntime<'bili_runtime> {
         }
     }
     // TODO: Easier Config
+    pub async fn get_cache(&self, cache_type: CacheType<'_>) -> Option<String> {
+        let key = cache_type.gen_key();
+        redis_get(self.redis_pool, &key).await
+    }
+    pub async fn update_cache(&self, cache_type: CacheType<'_>, value: &str, expire_time: u64) {
+        let key = cache_type.gen_key();
+        redis_set(self.redis_pool, &key, value, expire_time)
+            .await
+            .unwrap()
+    }
     pub async fn redis_get(&self, key: &str) -> Option<String> {
         redis_get(self.redis_pool, key).await
     }
@@ -279,6 +286,100 @@ impl ReqType {
             ReqType::Accesskey => unimplemented!(),
         }
     }
+}
+
+pub enum CacheType<'cache_type> {
+    Playurl(PlayurlParams<'cache_type>, &'cache_type str),
+    EpArea(&'cache_type str),
+    EpVipInfo(&'cache_type str),
+    EpInfo(&'cache_type str), // not implemented
+    UserInfo(&'cache_type str),
+    UserCerInfo(&'cache_type str),
+}
+impl<'cache_type> CacheType<'cache_type> {
+    // async fn update_redis(key: &str, value: &str, expire_time: u64, redis_pool: &Pool) {
+    //     redis_set(redis_pool, key, value, expire_time)
+    //         .await
+    //         .unwrap()
+    // }
+    // for better performance
+    pub fn gen_key(self) -> String {
+        match self {
+            CacheType::Playurl(_, _) => todo!(),
+            CacheType::EpArea(ep_id) => {
+                let mut key = String::with_capacity(16);
+                key.push_str(ep_id);
+                key += "1401";
+                key
+                // return bili_runtime.redis_get(&key).await
+            }
+            CacheType::EpVipInfo(_) => todo!(),
+            CacheType::EpInfo(_) => todo!(),
+            CacheType::UserInfo(access_key) => {
+                let mut key = String::with_capacity(64);
+                key.push_str("a");
+                key.push_str(access_key);
+                key += "20501";
+                key
+            }
+            CacheType::UserCerInfo(_) => todo!(),
+        }
+    }
+    // Not implemented
+    // pub async fn update(self, redis_pool: &Pool) {
+    //     match self {
+    //         CacheType::Playurl(area, params, data) => {
+    //             let ep_id = params.ep_id;
+    //             let cid = params.cid;
+
+    //             let need_vip = if let Some(value) =
+    //                 get_ep_need_vip_background(params.ep_id, redis_pool).await
+    //             {
+    //                 value as u8
+    //             } else {
+    //                 // should not
+    //                 params.is_vip as u8
+    //             };
+    //             let is_tv = (params.is_tv && params.is_app) as u8;
+    //             let is_app: &str = if params.is_app { "01" } else { "07" };
+    //             let area_num = area.num();
+    //             let key = format!("e{ep_id}c{cid}v{need_vip}t{is_tv}{area_num}{is_app}01");
+
+    //             Self::update_redis(&key, &data.to_string(), 0, redis_pool).await
+    //         }
+    //         CacheType::EpArea(_) => todo!(),
+    //         CacheType::EpVipInfo(_) => todo!(),
+    //         CacheType::EpInfo(_) => todo!(),
+    //         CacheType::UserInfo(_) => todo!(),
+    //         CacheType::UserCerInfo(_) => todo!(),
+    //     }
+    // }
+}
+
+#[macro_export]
+macro_rules! return_http {
+    ($resp:ident) => {
+        match $resp {
+            Ok(value) => {
+                return HttpResponse::Ok()
+                    .content_type(ContentType::json())
+                    .insert_header(("From", "biliroaming-rust-server"))
+                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                    .insert_header(("Access-Control-Allow-Credentials", "true"))
+                    .insert_header(("Access-Control-Allow-Methods", "GET"))
+                    .body(value);
+            },
+            Err(value) => {
+                return HttpResponse::Ok()
+                    .content_type(ContentType::json())
+                    .insert_header(("From", "biliroaming-rust-server"))
+                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+                    .insert_header(("Access-Control-Allow-Credentials", "true"))
+                    .insert_header(("Access-Control-Allow-Methods", "GET"))
+                    .body(value.err_json());
+            }
+        }
+    };
 }
 
 /*
@@ -1176,6 +1277,7 @@ pub struct PlayurlParamsStatic {
     pub appsec: String,
     pub ep_id: String,
     pub cid: String,
+    pub season_id: String,
     pub build: String,
     pub device: String,
     // extra info
@@ -1197,6 +1299,25 @@ impl PlayurlParamsStatic {
             PlayurlType::Thailand
         } else {
             PlayurlType::ChinaWeb
+        }
+    }
+    pub fn as_ref(&self) -> PlayurlParams {
+        PlayurlParams {
+            access_key: &self.access_key,
+            appkey: &self.appkey,
+            appsec: &self.appsec,
+            ep_id: &self.ep_id,
+            cid: &self.cid,
+            season_id: &self.season_id,
+            build: &self.build,
+            device: &self.device,
+            is_app: self.is_app,
+            is_tv: self.is_tv,
+            is_th: self.is_th,
+            is_vip: self.is_vip,
+            area: &self.area,
+            area_num: self.area_num,
+            user_agent: &self.user_agent,
         }
     }
 }
@@ -1246,16 +1367,16 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl> Default
 impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl>
     PlayurlParams<'playurl_params_impl>
 {
-    fn ep_area_to_area_num(&mut self) {
-        match self.area {
-            "cn" => self.area_num = 1,
-            "hk" => self.area_num = 2,
-            "tw" => self.area_num = 3,
-            "th" => self.area_num = 4,
-            _ => {
-                self.area = "hk";
-                self.area_num = 2;
-            }
+    fn init_area(&mut self, area: Area) {
+        self.area_num = area.num();
+        if self.area_num == 4 {
+            self.is_th = true;
+        }
+        match area {
+            Area::Cn => self.area = "cn",
+            Area::Hk => self.area = "hk",
+            Area::Tw => self.area = "tw",
+            Area::Th => self.area = "th",
         }
     }
     pub fn appkey_to_sec(&mut self) -> Result<(), ()> {
@@ -1293,8 +1414,8 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl>
         };
         Ok(())
     }
-    pub fn init_params(&mut self) {
-        self.ep_area_to_area_num();
+    pub fn init_params(&mut self, area: Area) {
+        self.init_area(area);
         self.appkey_to_sec().unwrap();
     }
     pub fn get_playurl_type(&self) -> PlayurlType {
@@ -1477,8 +1598,8 @@ impl std::default::Default for EpInfo {
 }
 
 pub enum EpAreaCacheType {
-    NoEpData,                          //key
-    NoCurrentAreaData(String, String), //key value
+    NoEpData,                  //key
+    NoCurrentAreaData,
     OnlyHasCurrentAreaData(bool),
     Available(Area),
 }

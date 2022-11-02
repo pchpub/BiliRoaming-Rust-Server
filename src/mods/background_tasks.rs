@@ -1,3 +1,4 @@
+use super::cache::update_cached_playurl;
 use super::health::*;
 use super::push::send_report;
 use super::request::redis_set;
@@ -8,9 +9,7 @@ use super::types::{
 };
 use super::upstream_res::*;
 use super::user_info::{get_blacklist_info, get_user_info};
-use async_channel::{Sender, TrySendError};
 use serde_json::json;
-use std::sync::Arc;
 
 /*
 * The following is for generate background task
@@ -27,6 +26,7 @@ pub async fn update_cached_playurl_background(
             appsec: params.appsec.to_string(),
             ep_id: params.ep_id.to_string(),
             cid: params.cid.to_string(),
+            season_id: params.season_id.to_string(),
             build: params.build.to_string(),
             device: params.device.to_string(),
             is_app: params.is_app,
@@ -44,29 +44,20 @@ pub async fn update_area_cache_background(
     params: &PlayurlParams<'_>,
     bili_runtime: &BiliRuntime<'_>,
 ) {
-    let background_task_data =
-        BackgroundTaskType::CacheTask(CacheTask::EpAreaCacheRefresh(params.ep_id.to_owned(), params.access_key.to_owned()));
+    let background_task_data = BackgroundTaskType::CacheTask(CacheTask::EpAreaCacheRefresh(
+        params.ep_id.to_owned(),
+        params.access_key.to_owned(),
+    ));
     bili_runtime.send_task(background_task_data).await
 }
 
 pub async fn update_cached_user_info_background(
     access_key: String,
-    bilisender: Arc<Sender<BackgroundTaskType>>,
+    bili_runtime: &BiliRuntime<'_>,
 ) {
     let background_task_data =
         BackgroundTaskType::CacheTask(CacheTask::UserInfoCacheRefresh(access_key));
-    tokio::spawn(async move {
-        //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
-        match bilisender.try_send(background_task_data) {
-            Ok(_) => (),
-            Err(TrySendError::Full(_)) => {
-                println!("[Error] channel is full");
-            }
-            Err(TrySendError::Closed(_)) => {
-                println!("[Error] channel is closed");
-            }
-        };
-    });
+    bili_runtime.send_task(background_task_data).await
 }
 
 pub async fn background_task_run(
@@ -88,21 +79,23 @@ pub async fn background_task_run(
             }
             HealthTask::HealthReport(value) => {
                 if config.report_open {
+                    let area_num_vec = ["", "01", "02", "03", "04"];
                     let redis_key = match &value {
                         HealthReportType::Playurl(value) => {
-                            let redis_key_vec: Vec<u8> = vec![01, value.area_num, 13, 01];
-                            String::from_utf8(redis_key_vec).unwrap()
+                            let area_num_str = area_num_vec[value.area_num as usize];
+                            ["01", area_num_str, "13", "01"].concat()
                         }
                         HealthReportType::Search(value) => {
-                            let redis_key_vec: Vec<u8> = vec![02, value.area_num, 13, 01];
-                            String::from_utf8(redis_key_vec).unwrap()
+                            let area_num_str = area_num_vec[value.area_num as usize];
+                            ["02", area_num_str, "13", "01"].concat()
                         }
                         HealthReportType::ThSeason(value) => {
-                            let redis_key_vec: Vec<u8> = vec![04, value.area_num, 13, 01];
-                            String::from_utf8(redis_key_vec).unwrap()
+                            let area_num_str = area_num_vec[value.area_num as usize];
+                            ["04", area_num_str, "13", "01"].concat()
                         }
                         HealthReportType::Others(_) => return Ok(()),
                     };
+                    println!("DEBUG: HealthReport {redis_key}");
                     let is_available = value.is_available();
                     if is_available {
                         match redis_get(&redis_pool, &redis_key).await {
@@ -163,10 +156,9 @@ pub async fn background_task_run(
             }
             CacheTask::PlayurlCacheRefresh(params) => {
                 match get_upstream_bili_playurl_background(&params, bili_runtime).await {
-                    Ok(_value) => {
-                        // update_cached_playurl_background(params, &value, &redis_pool, &config)
-                        // .await;
-                        todo!()
+                    Ok(body_data) => {
+                        update_cached_playurl(&params.as_ref(), &body_data, bili_runtime).await;
+                        Ok(())
                     }
                     Err(value) => Err(format!(
                         "[Background Task] | Playurl cache refresh failed, ErrMsg: {value}"
@@ -196,9 +188,8 @@ pub async fn background_task_run(
                 Ok(())
             }
             CacheTask::ProactivePlayurlCacheRefresh => {
-
                 todo!()
-            },
+            }
             CacheTask::EpAreaCacheRefresh(ep_id, access_key) => {
                 // only for area cn, hk, tw, area th not intend to support
                 // // 没弹幕/评论区还不如去看RC-RAWS
@@ -268,7 +259,6 @@ pub async fn background_task_run(
                 let _ = redis_set(&redis_pool, &key, &ep_area_data, 0).await;
                 Ok(())
             }
-            
         },
     }
 }

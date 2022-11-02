@@ -1,5 +1,7 @@
 + 查询数据+地区（1位）+类型（2位）+版本（2位）
-+ 查询数据 a asscesskey
++ 查询数据 
+    + a access_key
+    + u uid/mid
     + e epid
     + c cid
     + v is_vip

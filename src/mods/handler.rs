@@ -1,9 +1,17 @@
-use super::background_tasks::{update_area_cache_background, update_cached_playurl_background};
+use super::cache::{
+    get_cached_ep_area, get_cached_playurl, get_cached_th_season, get_cached_th_subtitle,
+    update_th_season_cache, update_th_subtitle_cache,
+};
 use super::request::async_getwebpage;
 use super::types::{
-    random_string, Area, BackgroundTaskType, BiliConfig, BiliRuntime, EType, EpAreaCacheType,
-    PlayurlParams, SearchParams,
+    random_string, BackgroundTaskType, BiliConfig, BiliRuntime, EType, PlayurlParams, SearchParams,
 };
+use super::upstream_res::{
+    get_upstream_bili_playurl, get_upstream_bili_search, get_upstream_bili_season,
+    get_upstream_bili_subtitle, get_upstream_resigned_access_key,
+};
+use super::user_info::*;
+use crate::return_http;
 use actix_web::http::header::ContentType;
 use actix_web::{HttpRequest, HttpResponse};
 use async_channel::Sender;
@@ -13,16 +21,6 @@ use pcre2::bytes::Regex;
 use qstring::QString;
 use serde_json::{self, json};
 use std::sync::Arc;
-
-use super::cache::{
-    get_cached_ep_area, get_cached_playurl, get_cached_th_season, get_cached_th_subtitle,
-    update_area_cache, update_th_season_cache, update_th_subtitle_cache,
-};
-use super::upstream_res::{
-    get_upstream_bili_playurl, get_upstream_bili_search, get_upstream_bili_season,
-    get_upstream_bili_subtitle, get_upstream_resigned_access_key,
-};
-use super::user_info::*;
 
 // playurl分流
 pub async fn handle_playurl_request(
@@ -175,125 +173,18 @@ pub async fn handle_playurl_request(
         }
         Err(value) => return bili_error(value),
     }
-
-    if config.area_cache_open {
-        if params.ep_id == "" {
-            // should not except zone th
-            let return_data =
-                match get_upstream_bili_playurl(&mut params, &user_info, &bili_runtime).await {
-                    Ok(value) => value,
-                    Err(error_type) => return bili_error(error_type),
-                };
-            return build_response(return_data);
-        };
-        if let Ok(value) = get_cached_ep_area(&params, redis_pool).await {
-            let http_body_return = match value {
-                // if without current area cache data then such ep is never accessed, of course doesnt have cache
-                EpAreaCacheType::NoCurrentAreaData(key, redis_value) => {
-                    match get_upstream_bili_playurl(&mut params, &user_info, &bili_runtime).await {
-                        Ok(http_body) => {
-                            update_area_cache(
-                                &http_body,
-                                &params,
-                                &key,
-                                &redis_value,
-                                &bili_runtime,
-                            )
-                            .await;
-                            http_body
-                        }
-                        Err(error_type) => return bili_error(error_type),
-                    }
-                }
-                EpAreaCacheType::OnlyHasCurrentAreaData(is_exist) => {
-                    if is_exist {
-                        let return_data = match get_cached_playurl(&params, &bili_runtime).await {
-                            Ok(data) => data,
-                            Err(_) => {
-                                match get_upstream_bili_playurl(
-                                    &mut params,
-                                    &user_info,
-                                    &bili_runtime,
-                                )
-                                .await
-                                {
-                                    Ok(value) => value,
-                                    Err(error_type) => return bili_error(error_type),
-                                }
-                            }
-                        };
-                        return_data
-                    } else {
-                        // should not have such condition,
-                        // if so, maybe proxy settings do not correspond one-to-one with the expected region,
-                        // causing update_area_cache_force got error area limit info
-                        // if really encounter with such condition, try to traditionally update area cache
-                        update_cached_playurl_background(&params, &bili_runtime).await;
-                        // update_area_cache_force(bilisender_cl, params.ep_id).await;
-                        return bili_error(EType::OtherError(-404, "该剧集被判定为没有地区能播放"));
-                    }
-                }
-                EpAreaCacheType::Available(area) => {
-                    match area {
-                        Area::Th => {
-                            params.is_th = true;
-                        }
-                        _ => {
-                            params.is_th = false;
-                        }
-                    }
-                    params.init_params();
-                    let return_data = match get_cached_playurl(&params, &bili_runtime).await {
-                        Ok(data) => data,
-                        Err(_) => {
-                            match get_upstream_bili_playurl(&mut params, &user_info, &bili_runtime)
-                                .await
-                            {
-                                Ok(value) => value,
-                                Err(error_type) => return bili_error(error_type),
-                            }
-                        }
-                    };
-                    return_data
-                }
-                EpAreaCacheType::NoEpData => {
-                    // if havent any cache info, try to manally update area cache for later use
-                    update_area_cache_background(&params, &bili_runtime).await;
-                    let return_data = match get_cached_playurl(&params, &bili_runtime).await {
-                        Ok(data) => data,
-                        Err(_) => {
-                            match get_upstream_bili_playurl(&mut params, &user_info, &bili_runtime)
-                                .await
-                            {
-                                Ok(value) => value,
-                                Err(error_type) => return bili_error(error_type),
-                            }
-                        }
-                    };
-                    return_data
-                }
-            };
-            return build_response(http_body_return);
-        } else {
-            let return_data =
-                match get_upstream_bili_playurl(&mut params, &user_info, &bili_runtime).await {
-                    Ok(http_body) => http_body,
-                    Err(error_type) => return bili_error(error_type),
-                };
-            return build_response(return_data);
+    // get area cache
+    if config.area_cache_open && !(params.ep_id == "") {
+        if let Some(area) = get_cached_ep_area(&params, &bili_runtime).await {
+            params.area_num = area.num();
+            params.init_params(area);
         }
-    } else {
-        let return_data = match get_cached_playurl(&params, &bili_runtime).await {
-            Ok(data) => data,
-            Err(_) => {
-                match get_upstream_bili_playurl(&mut params, &user_info, &bili_runtime).await {
-                    Ok(value) => value,
-                    Err(error_type) => return bili_error(error_type),
-                }
-            }
-        };
-        return build_response(return_data);
     }
+    let resp = match get_cached_playurl(&params, &bili_runtime).await {
+        Ok(data) => Ok(data),
+        Err(_) => get_upstream_bili_playurl(&mut params, &user_info, &bili_runtime).await,
+    };
+    return_http!(resp);
 }
 
 pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpResponse {
@@ -433,9 +324,10 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
                 return bili_error(value);
             }
         };
-        get_blacklist_info(&user_info, &bili_runtime).await.unwrap_or(false);
+        get_blacklist_info(&user_info, &bili_runtime)
+            .await
+            .unwrap_or(false);
     }
-    
 
     let host = match req.headers().get("Host") {
         Some(host) => host.to_str().unwrap(),

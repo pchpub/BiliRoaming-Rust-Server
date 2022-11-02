@@ -1,3 +1,5 @@
+use super::background_tasks::update_cached_user_info_background;
+use super::cache::update_cached_playurl;
 use super::health::report_health;
 use super::request::{async_getwebpage, async_postwebpage};
 use super::tools::{check_playurl_need_vip, remove_parameters_playurl};
@@ -41,7 +43,7 @@ pub async fn get_upstream_bili_account_info(
     {
         Ok(data) => data,
         Err(value) => {
-            println!("getuser_list函数寄了 url:{}",url);
+            println!("getuser_list函数寄了 url:{}", url);
             // TODO: add error report
             return Err(value);
         }
@@ -52,7 +54,10 @@ pub async fn get_upstream_bili_account_info(
     let code = if let Some(value) = output_json["code"].as_i64() {
         value
     } else {
-        println!("[USER INFO] Parsing Upstream reply failed, Upstream Reply -> {}", output);
+        println!(
+            "[USER INFO] Parsing Upstream reply failed, Upstream Reply -> {}",
+            output
+        );
         return Err(EType::ServerGeneral);
     };
     match code {
@@ -108,7 +113,10 @@ pub async fn get_upstream_bili_account_info(
             Err(EType::OtherUpstreamError(
                 code,
                 // //我写的什么勾巴代码...
-                output_json["message"].as_str().unwrap_or("NULL").to_string(),
+                output_json["message"]
+                    .as_str()
+                    .unwrap_or("NULL")
+                    .to_string(),
             ))
         }
     }
@@ -178,7 +186,9 @@ pub async fn get_upstream_blacklist_info(
         return Ok(return_data);
     } else {
         println!("鉴权失败: UID {uid}, 上游返回 {getwebpage_data}");
-        return Err(EType::ServerReqError("鉴权失败了喵, Blacklist Server Error"));
+        return Err(EType::ServerReqError(
+            "鉴权失败了喵, Blacklist Server Error",
+        ));
     }
 }
 
@@ -261,9 +271,7 @@ pub async fn get_upstream_bili_playurl(
     let mut body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
     let code = body_data_json["code"].as_i64().unwrap().clone();
     remove_parameters_playurl(&playurl_type, &mut body_data_json).unwrap_or_default();
-
-    // cache playurl
-    // update_cached_playurl(params, &body_data, redis_pool, bilisender);
+    // report health
     let message = body_data_json["message"]
         .as_str()
         .unwrap_or("Error on parsing Json Response")
@@ -288,13 +296,20 @@ pub async fn get_upstream_bili_playurl(
         if let Ok(value) = check_playurl_need_vip(playurl_type, &body_data_json) {
             if value {
                 // let bilisender_cl = Arc::clone(bilisender);
-                // update_cached_user_info_background(params.access_key.to_string(), bilisender_cl)
-                //     .await
+                update_cached_user_info_background(params.access_key.to_string(), bili_runtime)
+                    .await;
+                return Err(EType::OtherError(
+                    -10403,
+                    "检测到可能刚刚买了带会员, 刷新缓存中, 请稍后重试喵",
+                ));
             }
         }
         // TODO: add fallback check
     }
-    Ok(body_data_json.to_string())
+    // update playurl cache
+    let final_data = body_data_json.to_string();
+    update_cached_playurl(params, &final_data, bili_runtime).await;
+    Ok(final_data)
 }
 
 pub async fn get_upstream_bili_playurl_background(
@@ -509,9 +524,7 @@ pub async fn get_upstream_bili_search(
         Ok(data) => {
             // TODO: 有时候, 上游啥都没返回, 程序却还是正常插入search_remake返回了, 待排查原因
             let data_json: serde_json::Value = serde_json::from_str(&data).unwrap();
-            let upstream_code = data_json["code"]
-                .as_i64()
-                .unwrap_or(233);
+            let upstream_code = data_json["code"].as_i64().unwrap_or(233);
             if upstream_code == 0 {
                 Ok(data_json)
             } else {
