@@ -11,8 +11,6 @@ pub async fn send_report(
 ) -> Result<(), String> {
     // println!("[DEBUG] TEST PUSH, {:#?}", report_method);
     let report_health_data = generate_health_report_data(redis_pool).await;
-    let (area_name, data_type) = health_report_type.incident_attr();
-    let color_char = health_report_type.status_color_char();
     match report_config {
         ReportConfig::TgBot(report_config_tg_bot) => {
             let url = format!(
@@ -60,6 +58,8 @@ pub async fn send_report(
             }
         }
         ReportConfig::Custom(report_config_custom) => {
+            let (area_name, data_type) = health_report_type.incident_attr();
+            let color_char = health_report_type.status_color_char();
             match report_config_custom.method {
                 super::types::ReportRequestMethod::Get => {
                     let url = report_config_custom

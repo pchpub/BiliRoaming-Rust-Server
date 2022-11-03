@@ -93,9 +93,12 @@ pub async fn background_task_run(
                             let area_num_str = area_num_vec[value.area_num as usize];
                             ["04", area_num_str, "13", "01"].concat()
                         }
-                        HealthReportType::Others(_) => return Ok(()),
+                        HealthReportType::Others(_) => {
+                            send_report(redis_pool, report_config, &value).await.unwrap();
+                            return Ok(());
+                        }
                     };
-                    println!("DEBUG: HealthReport {redis_key}");
+                    // println!("DEBUG: HealthReport {redis_key}");
                     let is_available = value.is_available();
                     if is_available {
                         match redis_get(&redis_pool, &redis_key).await {
@@ -149,9 +152,9 @@ pub async fn background_task_run(
                 match get_user_info(&access_key, appkey, appsec, user_agent, true, &bili_runtime).await {
                     Ok(new_user_info) => match get_blacklist_info(&new_user_info, bili_runtime).await {
                         Ok(_) => Ok(()),
-                        Err(value) => Err(format!("[Background Task] UID {} | Refreshing blacklist info failed, ErrMsg: {}", new_user_info.uid, value.err_json())),
+                        Err(value) => Err(format!("[Background Task] UID {} | Refreshing blacklist info failed, ErrMsg: {}", new_user_info.uid, value.to_string())),
                     },
-                    Err(value) => Err(format!("[Background Task] ACCESS_KEY {} | Refreshing blacklist info failed, ErrMsg: {}", access_key, value.err_json())),
+                    Err(value) => Err(format!("[Background Task] ACCESS_KEY {} | Refreshing blacklist info failed, ErrMsg: {}", access_key, value.to_string())),
                 }
             }
             CacheTask::PlayurlCacheRefresh(params) => {

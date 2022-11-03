@@ -1,17 +1,16 @@
 use super::cache::{
     get_cached_ep_area, get_cached_playurl, get_cached_th_season, get_cached_th_subtitle,
-    update_th_season_cache, update_th_subtitle_cache,
 };
-use super::request::async_getwebpage;
 use super::types::{
-    random_string, BackgroundTaskType, BiliConfig, BiliRuntime, EType, PlayurlParams, SearchParams,
+    random_string, Area, BackgroundTaskType, BiliConfig, BiliRuntime, EType, PlayurlParams,
+    SearchParams,
 };
 use super::upstream_res::{
     get_upstream_bili_playurl, get_upstream_bili_search, get_upstream_bili_season,
     get_upstream_bili_subtitle, get_upstream_resigned_access_key,
 };
 use super::user_info::*;
-use crate::return_http;
+use crate::{build_response, build_result_response};
 use actix_web::http::header::ContentType;
 use actix_web::{HttpRequest, HttpResponse};
 use async_channel::Sender;
@@ -23,12 +22,7 @@ use serde_json::{self, json};
 use std::sync::Arc;
 
 // playurl分流
-pub async fn handle_playurl_request(
-    req: &HttpRequest,
-    is_app: bool,
-    is_th: bool,
-    // cache: &mut BiliCache,
-) -> HttpResponse {
+pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpResponse {
     let (redis_pool, config, bilisender) = req
         .app_data::<(Pool, BiliConfig, Arc<Sender<BackgroundTaskType>>)>()
         .unwrap();
@@ -40,6 +34,12 @@ pub async fn handle_playurl_request(
         is_th,
         ..Default::default()
     };
+    // detect client ip for log
+    // let client_ip: String = match req.headers().get("X-Real-IP") {
+    //     Some(value) => value.to_str().unwrap().to_owned(),
+    //     None => format!("{:?}", req.peer_addr()),
+    // };
+
     // detect req area
     (params.area, params.area_num) = match query.get("area") {
         Some(area) => match area {
@@ -54,15 +54,20 @@ pub async fn handle_playurl_request(
                 ("th", 4)
             } else {
                 // query param must have "area", or must be invalid req
-                return bili_error(EType::InvalidReq);
+                build_response!(EType::InvalidReq);
             }
         }
     };
+
     // detect req UA
     params.user_agent = match req.headers().get("user-agent") {
         Option::Some(_ua) => req.headers().get("user-agent").unwrap().to_str().unwrap(),
-        _ => return bili_error(EType::ReqUAError),
+        _ => {
+            // warn!("[PLAYURL] IP {client_ip} | Detect req without UA");
+            build_response!(EType::ReqUAError)
+        }
     };
+
     // detect req client ver
     if is_app && config.limit_biliroaming_version_open {
         match req.headers().get("build") {
@@ -71,20 +76,23 @@ pub async fn handle_playurl_request(
                 if version < config.limit_biliroaming_version_min
                     || version > config.limit_biliroaming_version_max
                 {
-                    return bili_error(EType::OtherError(-412, "什么旧版本魔人,升下级"));
+                    build_response!(-412, "什么旧版本魔人,升下级");
                 }
             }
             None => (),
         }
     }
+
     // detect user's appkey
     params.appkey = match query.get("appkey") {
         Option::Some(key) => key,
         _ => "1d8b6e7d45233436",
     };
     if let Err(_) = params.appkey_to_sec() {
-        return bili_error(EType::OtherError(-412, "未知设备"));
+        // error!("[PLAYURL] IP {client_ip} | Detect unknown appkey: {}", params.appkey);
+        build_response!("-412", "未知设备");
     };
+
     // verify req sign
     // TODO: add ignore sign err
     if is_app || is_th {
@@ -98,23 +106,25 @@ pub async fn handle_playurl_request(
                 ))
             ) != &query_string[query_string.len() - 32..])
         {
-            return bili_error(EType::ReqSignError);
+            build_response!(EType::ReqSignError);
         }
     }
+
     // detect user's access_key
     params.access_key = match query.get("access_key") {
         Option::Some(key) => {
             let key = key;
             if key.len() == 0 {
-                return bili_error(EType::UserNotLoginedError);
+                build_response!(EType::UserNotLoginedError);
             } else {
                 key
             }
         }
         _ => {
-            return bili_error(EType::UserNotLoginedError);
+            build_response!(EType::UserNotLoginedError);
         }
     };
+
     // detect req ep
     params.ep_id = match query.get("ep_id") {
         Option::Some(key) => key,
@@ -124,11 +134,10 @@ pub async fn handle_playurl_request(
         Option::Some(key) => key,
         _ => "",
     };
+
     // detect other info
     params.build = query.get("build").unwrap_or("6800300");
-
     params.device = query.get("device").unwrap_or("android");
-
     params.is_tv = match query.get("fnval") {
         Some(value) => match value {
             "130" => true,
@@ -152,16 +161,18 @@ pub async fn handle_playurl_request(
     {
         Ok(value) => value,
         Err(value) => {
-            return bili_error(value);
+            build_response!(value);
         }
     };
+
     // get user's vip status
     params.is_vip = user_info.is_vip();
     // get user's blacklist info
     let white = match get_blacklist_info(&user_info, &bili_runtime).await {
         Ok(value) => value,
-        Err(value) => return bili_error(value),
+        Err(value) => build_response!(value),
     };
+
     // resign if needed
     let resigned_access_key;
     match resign_user_info(white, &params, &bili_runtime).await {
@@ -171,8 +182,9 @@ pub async fn handle_playurl_request(
                 params.access_key = &resigned_access_key;
             }
         }
-        Err(value) => return bili_error(value),
+        Err(value) => build_response!(value),
     }
+
     // get area cache
     if config.area_cache_open && !(params.ep_id == "") {
         if let Some(area) = get_cached_ep_area(&params, &bili_runtime).await {
@@ -180,11 +192,12 @@ pub async fn handle_playurl_request(
             params.init_params(area);
         }
     }
+
     let resp = match get_cached_playurl(&params, &bili_runtime).await {
         Ok(data) => Ok(data),
         Err(_) => get_upstream_bili_playurl(&mut params, &user_info, &bili_runtime).await,
     };
-    return_http!(resp);
+    build_result_response!(resp);
 }
 
 pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool) -> HttpResponse {
@@ -199,6 +212,12 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         is_th,
         ..Default::default()
     };
+    // detect client ip for log
+    // let client_ip: String = match req.headers().get("X-Real-IP") {
+    //     Some(value) => value.to_str().unwrap().to_owned(),
+    //     None => format!("{:?}", req.peer_addr()),
+    // };
+
     // detect req area
     (params.area, params.area_num) = match query.get("area") {
         Some(area) => match area {
@@ -213,15 +232,20 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
                 ("th", 4)
             } else {
                 // query param must have "area", or must be invalid req
-                return bili_error(EType::InvalidReq);
+                build_response!(EType::InvalidReq);
             }
         }
     };
+
     // detect req UA
     params.user_agent = match req.headers().get("user-agent") {
         Option::Some(_ua) => req.headers().get("user-agent").unwrap().to_str().unwrap(),
-        _ => return bili_error(EType::ReqUAError),
+        _ => {
+            // warn!("[SEARCH] IP {client_ip} | Detect req without UA");
+            build_response!(EType::ReqUAError)
+        }
     };
+
     // detect req client ver
     if is_app && config.limit_biliroaming_version_open {
         match req.headers().get("build") {
@@ -230,20 +254,23 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
                 if version < config.limit_biliroaming_version_min
                     || version > config.limit_biliroaming_version_max
                 {
-                    return bili_error(EType::OtherError(-412, "什么旧版本魔人,升下级"));
+                    build_response!(-412, "什么旧版本魔人,升下级");
                 }
             }
             None => (),
         }
     }
+
     // detect user's appkey
     params.appkey = match query.get("appkey") {
         Option::Some(key) => key,
         _ => "1d8b6e7d45233436",
     };
     if let Err(_) = params.appkey_to_sec() {
-        return bili_error(EType::OtherError(-412, "未知设备"));
+        // error!("[SEARCH] IP {client_ip} | Detect unknown appkey: {}", params.appkey);
+        build_response!(-412, "未知设备");
     };
+
     // verify req sign
     // TODO: add ignore sign err
     if is_app || is_th {
@@ -257,37 +284,34 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
                 ))
             ) != &query_string[query_string.len() - 32..])
         {
-            return bili_error(EType::ReqSignError);
+            build_response!(EType::ReqSignError);
         }
     }
+
     // detect user's access_key
     params.access_key = match query.get("access_key") {
         Option::Some(key) => {
             let key = key;
             if key.len() == 0 {
-                return bili_error(EType::UserNotLoginedError);
+                build_response!(EType::UserNotLoginedError);
             } else {
                 key
             }
         }
         _ => {
-            return bili_error(EType::UserNotLoginedError);
+            build_response!(EType::UserNotLoginedError);
         }
     };
+
     // detect other info
     params.build = query.get("build").unwrap_or("6800300");
-
     params.device = query.get("device").unwrap_or("android");
-
     params.statistics = match query.get("statistics") {
         Some(value) => value,
         _ => "",
     };
-
     params.pn = query.get("pn").unwrap_or("1");
-
     params.fnval = query.get("fnval").unwrap_or("976");
-
     params.keyword = query.get("keyword").unwrap_or("null");
 
     let cookie_buvid3_default = format!("buvid3={}", random_string());
@@ -309,7 +333,7 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
 
     //为了记录accesskey to uid
     if is_app && (!is_th) {
-        let user_info = match get_user_info(
+        match get_user_info(
             params.access_key,
             params.appkey,
             params.appsec,
@@ -319,14 +343,13 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         )
         .await
         {
-            Ok(value) => value,
-            Err(value) => {
-                return bili_error(value);
+            Ok(value) => {
+                get_blacklist_info(&value, &bili_runtime)
+                    .await
+                    .unwrap_or(false);
             }
+            Err(_) => (), // allow blacklist user to search
         };
-        get_blacklist_info(&user_info, &bili_runtime)
-            .await
-            .unwrap_or(false);
     }
 
     let host = match req.headers().get("Host") {
@@ -341,14 +364,14 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         match get_upstream_bili_search(&params, &query, &bili_runtime).await {
             Ok(value) => {
                 if params.pn != "1" {
-                    return build_response(value.to_string());
+                    build_response!(value);
                 };
                 // if !is_app {
                 //     return build_response(value);
                 // }
                 value
             }
-            Err(value) => return bili_error(value),
+            Err(value) => build_response!(value),
         };
 
     let search_remake_date = {
@@ -356,13 +379,13 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
             if let Some(value) = config.appsearch_remake.get(host) {
                 value
             } else {
-                return build_response(body_data_json.to_string());
+                build_response!(body_data_json);
             }
         } else {
             if let Some(value) = config.websearch_remake.get(host) {
                 value
             } else {
-                return build_response(body_data_json.to_string());
+                build_response!(body_data_json);
             }
         }
     };
@@ -396,8 +419,7 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         }
     }
 
-    let body_data = body_data_json.to_string();
-    return build_response(body_data);
+    build_response!(body_data_json);
 }
 
 pub async fn handle_th_season_request(
@@ -416,23 +438,33 @@ pub async fn handle_th_season_request(
         area_num: 4,
         ..Default::default()
     };
+    // detect client ip for log
+    // let client_ip: String = match req.headers().get("X-Real-IP") {
+    //     Some(value) => value.to_str().unwrap().to_owned(),
+    //     None => format!("{:?}", req.peer_addr()),
+    // };
+
     // detect req UA
     params.user_agent = match req.headers().get("user-agent") {
         Option::Some(_ua) => req.headers().get("user-agent").unwrap().to_str().unwrap(),
-        _ => return bili_error(EType::ReqUAError),
+        _ => {
+            // warn!("[TH SEASON] IP {client_ip} | Detect req without UA");
+            build_response!(EType::ReqUAError)
+        }
     };
+
     // detect user's access_key
     params.access_key = match query.get("access_key") {
         Option::Some(key) => {
             let key = key;
             if key.len() == 0 {
-                return bili_error(EType::UserNotLoginedError);
+                build_response!(EType::UserNotLoginedError);
             } else {
                 key
             }
         }
         _ => {
-            return bili_error(EType::UserNotLoginedError);
+            build_response!(EType::UserNotLoginedError);
         }
     };
     // init th appkey & appsec
@@ -463,145 +495,17 @@ pub async fn handle_th_season_request(
     params.season_id = if let Some(value) = query.get("season_id") {
         value
     } else {
-        return bili_error(EType::OtherError(-10403, "参数错误"));
+        // zone th req must have season_id, ep_id is not supported
+        build_response!(-10403, "参数错误");
     };
 
     params.build = query.get("build").unwrap_or("1080003");
 
-    match get_cached_th_season(params.season_id, &bili_runtime).await {
-        Ok(value) => return build_response(value),
-        Err(_) => match get_upstream_bili_season(&params, &bili_runtime).await {
-            Ok(value) => {
-                let body_data = value;
-                let season_remake = move || async move {
-                    if config.th_app_season_sub_open {
-                        let mut body_data_json: serde_json::Value =
-                            serde_json::from_str(&body_data).unwrap();
-                        let season_id: Option<u64>;
-                        let is_result: bool;
-                        match &body_data_json["result"] {
-                            serde_json::Value::Object(value) => {
-                                is_result = true;
-                                season_id = Some(value["season_id"].as_u64().unwrap());
-                            }
-                            serde_json::Value::Null => {
-                                is_result = false;
-                                match &body_data_json["data"] {
-                                    serde_json::Value::Null => {
-                                        season_id = None;
-                                    }
-                                    serde_json::Value::Object(value) => {
-                                        season_id = Some(value["season_id"].as_u64().unwrap());
-                                    }
-                                    _ => {
-                                        season_id = None;
-                                    }
-                                }
-                            }
-                            _ => {
-                                is_result = false;
-                                season_id = None;
-                            }
-                        }
-
-                        match season_id {
-                            None => {
-                                return body_data;
-                            }
-                            Some(_) => (),
-                        }
-
-                        let sub_replace_str = match async_getwebpage(
-                            &format!("{}{}", &config.th_app_season_sub_api, season_id.unwrap()),
-                            false,
-                            "",
-                            params.user_agent,
-                            "",
-                        )
-                        .await
-                        {
-                            Ok(value) => value,
-                            Err(_) => {
-                                return body_data;
-                            }
-                        };
-                        let sub_replace_json: serde_json::Value =
-                            if let Ok(value) = serde_json::from_str(&sub_replace_str) {
-                                value
-                            } else {
-                                return body_data;
-                            };
-                        match sub_replace_json["code"].as_i64().unwrap_or(233) {
-                            0 => {
-                                if body_data_json["result"]["modules"]
-                                    .as_array_mut()
-                                    .unwrap()
-                                    .len()
-                                    == 0
-                                {
-                                    return body_data;
-                                }
-                            }
-                            _ => {
-                                return body_data;
-                            }
-                        }
-                        let mut index_of_replace_json = 0;
-                        let len_of_replace_json =
-                            sub_replace_json["data"].as_array().unwrap().len();
-                        while index_of_replace_json < len_of_replace_json {
-                            let ep: usize = sub_replace_json["data"][index_of_replace_json]["ep"]
-                                .as_u64()
-                                .unwrap() as usize;
-                            let key = sub_replace_json["data"][index_of_replace_json]["key"]
-                                .as_str()
-                                .unwrap();
-                            let lang = sub_replace_json["data"][index_of_replace_json]["lang"]
-                                .as_str()
-                                .unwrap();
-                            let url = sub_replace_json["data"][index_of_replace_json]["url"]
-                                .as_str()
-                                .unwrap();
-                            if is_result {
-                                let element = format!("{{\"id\":{index_of_replace_json},\"key\":\"{key}\",\"title\":\"[非官方] {lang} {}\",\"url\":\"https://{url}\"}}",config.th_app_season_sub_name);
-                                body_data_json["result"]["modules"][0]["data"]["episodes"][ep]
-                                    ["subtitles"]
-                                    .as_array_mut()
-                                    .unwrap()
-                                    .insert(0, serde_json::from_str(&element).unwrap());
-                            }
-                            index_of_replace_json += 1;
-                        }
-
-                        if config.aid_replace_open {
-                            let len_of_episodes = body_data_json["result"]["modules"][0]["data"]
-                                ["episodes"]
-                                .as_array()
-                                .unwrap()
-                                .len();
-                            let mut index = 0;
-                            while index < len_of_episodes {
-                                body_data_json["result"]["modules"][0]["data"]["episodes"][index]
-                                    .as_object_mut()
-                                    .unwrap()
-                                    .insert("aid".to_string(), serde_json::json!(&config.aid));
-                                index += 1;
-                            }
-                        }
-
-                        let body_data = body_data_json.to_string();
-                        return body_data;
-                    } else {
-                        return body_data;
-                    }
-                };
-                let body_data = season_remake().await;
-                update_th_season_cache(params.season_id, &body_data, &bili_runtime).await;
-                return build_response(body_data);
-            }
-            Err(error_type) => return bili_error(error_type),
-        },
-    }
+    let resp = match get_cached_th_season(params.season_id, &bili_runtime).await {
+        Ok(value) => Ok(value),
+        Err(_) => get_upstream_bili_season(&params, &bili_runtime).await,
+    };
+    build_result_response!(resp);
 }
 
 pub async fn handle_th_subtitle_request(req: &HttpRequest, _: bool, _: bool) -> HttpResponse {
@@ -612,15 +516,22 @@ pub async fn handle_th_subtitle_request(req: &HttpRequest, _: bool, _: bool) -> 
     let query_string = req.query_string();
     let query = QString::from(query_string);
     let mut params = PlayurlParams {
-        area: "th",
-        area_num: 4,
         ..Default::default()
     };
-    params.appkey_to_sec().unwrap();
+    params.init_params(Area::Th);
+    // detect client ip for log
+    // let client_ip: String = match req.headers().get("X-Real-IP") {
+    //     Some(value) => value.to_str().unwrap().to_owned(),
+    //     None => format!("{:?}", req.peer_addr()),
+    // };
+
     // detect req UA
     params.user_agent = match req.headers().get("user-agent") {
         Option::Some(_ua) => req.headers().get("user-agent").unwrap().to_str().unwrap(),
-        _ => return bili_error(EType::ReqUAError),
+        _ => {
+            // warn!("[TH SUBTITLE] IP {client_ip} | Detect req without UA");
+            build_response!(EType::ReqUAError)
+        }
     };
     // detect req ep
     params.ep_id = match query.get("ep_id") {
@@ -628,22 +539,17 @@ pub async fn handle_th_subtitle_request(req: &HttpRequest, _: bool, _: bool) -> 
         _ => "",
     };
 
-    match get_cached_th_subtitle(&params, &bili_runtime).await {
-        Ok(value) => build_response(value),
+    let resp = match get_cached_th_subtitle(&params, &bili_runtime).await {
+        Ok(value) => Ok(value),
         Err(is_expired) => {
             if is_expired {
-                match get_upstream_bili_subtitle(&params, query_string, &bili_runtime).await {
-                    Ok(value) => {
-                        update_th_subtitle_cache(&value, &params, &bili_runtime).await;
-                        build_response(value)
-                    }
-                    Err(error_type) => bili_error(error_type),
-                }
+                get_upstream_bili_subtitle(&params, query_string, &bili_runtime).await
             } else {
-                bili_error(EType::ServerGeneral)
+                Err(EType::ServerGeneral)
             }
         }
-    }
+    };
+    build_result_response!(resp)
 }
 
 pub async fn handle_api_access_key_request(req: &HttpRequest) -> HttpResponse {
@@ -653,22 +559,28 @@ pub async fn handle_api_access_key_request(req: &HttpRequest) -> HttpResponse {
     let bili_runtime = BiliRuntime::new(config, redis_pool, bilisender);
     let query_string = req.query_string();
     let query = QString::from(query_string);
+    // detect client ip for log
+    // let client_ip: String = match req.headers().get("X-Real-IP") {
+    //     Some(value) => value.to_str().unwrap().to_owned(),
+    //     None => format!("{:?}", req.peer_addr()),
+    // };
+
     let area_num: u8 = match query.get("area_num") {
         Some(key) => key.parse().unwrap(),
         _ => {
             // query param must have "area", or must be invalid req
-            return bili_error(EType::OtherError(-10403, "参数错误: area_num为空"));
+            build_response!(-10403, "参数错误: area_num为空");
         }
     };
 
     match query.get("sign") {
         Option::Some(key) => {
             if key != &config.api_sign {
-                return bili_error(EType::OtherError(-412, "签名错误"));
+                build_response!(-412, "签名错误");
             }
         }
         _ => {
-            return bili_error(EType::OtherError(-412, "无签名参数"));
+            build_response!(-412, "无签名参数");
         }
     };
 
@@ -679,10 +591,10 @@ pub async fn handle_api_access_key_request(req: &HttpRequest) -> HttpResponse {
     {
         value
     } else {
-        return bili_error(EType::OtherError(-404, "获取AK失败"));
+        build_response!(-404, "获取AK失败");
     };
 
-    build_response(format!(
+    build_response!(format!(
         r#"{{"code":0,"message":"","access_key":"{access_key}","expire_time":{expire_time}}}"#
     ))
 }
@@ -730,21 +642,12 @@ pub async fn errorurl_reg(url: &str) -> Option<u8> {
     }
 }
 
-fn build_response(message: String) -> HttpResponse {
-    return HttpResponse::Ok()
-        .content_type(ContentType::json())
-        .insert_header(("From", "biliroaming-rust-server"))
-        .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-        .insert_header(("Access-Control-Allow-Credentials", "true"))
-        .insert_header(("Access-Control-Allow-Methods", "GET"))
-        .body(message);
-}
-fn bili_error(error_type: EType) -> HttpResponse {
-    return HttpResponse::Ok()
-        .content_type(ContentType::json())
-        .insert_header(("From", "biliroaming-rust-server"))
-        .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-        .insert_header(("Access-Control-Allow-Credentials", "true"))
-        .insert_header(("Access-Control-Allow-Methods", "GET"))
-        .body(error_type.err_json());
-}
+// fn build_response(message: String) -> HttpResponse {
+//     return HttpResponse::Ok()
+//         .content_type(ContentType::json())
+//         .insert_header(("From", "biliroaming-rust-server"))
+//         .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
+//         .insert_header(("Access-Control-Allow-Credentials", "true"))
+//         .insert_header(("Access-Control-Allow-Methods", "GET"))
+//         .body(message);
+// }

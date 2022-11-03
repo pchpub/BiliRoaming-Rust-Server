@@ -1,5 +1,5 @@
 use super::background_tasks::update_cached_user_info_background;
-use super::cache::update_cached_playurl;
+use super::cache::{update_cached_playurl, update_th_season_cache, update_th_subtitle_cache, update_user_info_cache};
 use super::health::report_health;
 use super::request::{async_getwebpage, async_postwebpage};
 use super::tools::{check_playurl_need_vip, remove_parameters_playurl};
@@ -31,7 +31,13 @@ pub async fn get_upstream_bili_account_info(
         "https://app.bilibili.com/x/v2/account/myinfo?access_key={}&appkey={}&ts={}&sign={:x}",
         access_key, appkey, ts_min, sign
     );
-    //println!("{}",url);
+    // trace!(
+    //     "[UPSTREAM USER_INFO] AK {} | RAW QUERY -> APPKEY {} TS {} APPSEC {}",
+    //     access_key,
+    //     appkey,
+    //     ts_min,
+    //     appsec
+    // );
     let output = match async_getwebpage(
         &url,
         bili_runtime.config.cn_proxy_accesskey_open,
@@ -43,21 +49,47 @@ pub async fn get_upstream_bili_account_info(
     {
         Ok(data) => data,
         Err(value) => {
-            println!("getuser_list函数寄了 url:{}", url);
-            // TODO: add error report
+            println!(
+                "[UPSTREAM USER_INFO] AK {} | Req failed. Network Problems. RAW QUERY -> APPKEY {} TS {} APPSEC {} Use Proxy {} - {}",
+                access_key, appkey, ts_min, appsec, bili_runtime.config.cn_proxy_accesskey_open, &bili_runtime.config.cn_proxy_accesskey_url,
+            );
+            let health_report_type = HealthReportType::Others(HealthData {
+                area_num: 0,
+                is_200_ok: false,
+                upstream_reply: UpstreamReply {
+                    proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
+                    proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
+                    ..Default::default()
+                },
+                is_custom: true,
+                custom_message: "致命错误! 获取用户信息失败! ".to_owned(),
+            });
+            report_health(health_report_type, bili_runtime).await;
             return Err(value);
         }
     };
 
-    //println!("{}",output);
+    //trace!("[UPSTREAM USER_INFO] AK {} | Upstream Reply: {}",access_key, output);
     let output_json: serde_json::Value = serde_json::from_str(&output).unwrap();
     let code = if let Some(value) = output_json["code"].as_i64() {
         value
     } else {
-        println!(
-            "[USER INFO] Parsing Upstream reply failed, Upstream Reply -> {}",
-            output
-        );
+        // error!(
+        //     "[UPSTREAM USER_INFO] Parsing Upstream reply failed, Upstream Reply -> {}",
+        //     output
+        // );
+        let health_report_type = HealthReportType::Others(HealthData {
+            area_num: 0,
+            is_200_ok: true,
+            upstream_reply: UpstreamReply {
+                proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
+                proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
+                ..Default::default()
+            },
+            is_custom: true,
+            custom_message: format!("致命错误! 解析用户信息失败! \n上游返回: {output_json}"),
+        });
+        report_health(health_report_type, bili_runtime).await;
         return Err(EType::ServerGeneral);
     };
     match code {
@@ -77,37 +109,50 @@ pub async fn get_upstream_bili_account_info(
                     }
                 }, //用户状态25天强制更新
             };
-            // TODO: Add Cache: update_cached_user_info
+            update_user_info_cache(&output_struct, bili_runtime).await;
             Ok(output_struct)
         }
         -400 => {
-            println!("[USER INFO] AK {} | Get UserInfo failed -400. REQ Params -> APPKEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
+            println!("[UPSTREAM USER_INFO] AK {} | Get UserInfo failed -400. REQ Params -> APPKEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
                 access_key, appkey, ts_min, appsec, sign, output_json
             );
             Err(EType::OtherError(-400, "可能你用的不是手机"))
         }
         -101 => {
             println!(
-                "[USER INFO] AK {} | Get UserInfo failed -101. Upstream Reply -> {}",
+                "[UPSTREAM USER_INFO] AK {} | Get UserInfo failed -101. Upstream Reply -> {}",
                 access_key, output_json
             );
             Err(EType::UserNotLoginedError)
         }
         -3 => {
-            println!("[USER INFO] AK {} | Get UserInfo failed -3. REQ Params -> APPKEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
+            println!("[UPSTREAM USER_INFO] AK {} | Get UserInfo failed -3. REQ Params -> APPKEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
                 access_key, appkey, ts_min, appsec, sign, output_json
             );
             Err(EType::ReqSignError)
         }
         -412 => {
             println!(
-                "[USER INFO] AK {} | Get UserInfo failed -412. Upstream Reply -> {}",
+                "[UPSTREAM USER_INFO] AK {} | Get UserInfo failed -412. Upstream Reply -> {}",
                 access_key, output_json
             );
+            let health_report_type = HealthReportType::Others(HealthData {
+                area_num: 0,
+                is_200_ok: true,
+                upstream_reply: UpstreamReply {
+                    code: -412,
+                    message: output_json["message"].as_str().unwrap_or("null").to_owned(),
+                    proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
+                    proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
+                },
+                is_custom: true,
+                custom_message: format!("致命错误! 机子-412啦! \n上游返回: {output_json}"),
+            });
+            report_health(health_report_type, bili_runtime).await;
             Err(EType::ServerFatalError)
         }
         _ => {
-            println!("[USER INFO] AK {} | Get UserInfo failed. REQ Params -> APPKEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
+            println!("[UPSTREAM USER_INFO] AK {} | Get UserInfo failed. REQ Params -> APPKEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
                 access_key, appkey, ts_min, appsec, sign, output_json
             );
             Err(EType::OtherUpstreamError(
@@ -539,7 +584,6 @@ pub async fn get_upstream_bili_search(
                             message: upstream_message.to_string(),
                             proxy_open: proxy_open,
                             proxy_url: String::from(proxy_url),
-                            ..Default::default()
                         },
                     )),
                     bili_runtime,
@@ -592,14 +636,21 @@ pub async fn get_upstream_bili_subtitle(
         md5::compute(format!("{unsigned_url}{app_sec}"))
     );
     let api = "https://app.biliintl.com/intl/gateway/v2/app/subtitle";
-    return async_getwebpage(
+    match async_getwebpage(
         &format!("{api}?{signed_url}"),
         proxy_open,
         proxy_url,
         params.user_agent,
         "",
     )
-    .await;
+    .await
+    {
+        Ok(value) => {
+            update_th_subtitle_cache(&value, params, bili_runtime).await;
+            Ok(value)
+        }
+        Err(value) => Err(value),
+    }
 }
 
 pub async fn get_upstream_bili_season(
@@ -641,10 +692,133 @@ pub async fn get_upstream_bili_season(
     )
     .await
     {
-        Ok(data) => {
+        Ok(body_data) => {
             // println!("[Debug] ss_id:{}", season_id);
             // println!("[Debug] data:{}", data);
-            Ok(data)
+            let season_remake = move || async move {
+                if config.th_app_season_sub_open {
+                    let mut body_data_json: serde_json::Value =
+                        serde_json::from_str(&body_data).unwrap();
+                    let season_id: Option<u64>;
+                    let is_result: bool;
+                    match &body_data_json["result"] {
+                        serde_json::Value::Object(value) => {
+                            is_result = true;
+                            season_id = Some(value["season_id"].as_u64().unwrap());
+                        }
+                        serde_json::Value::Null => {
+                            is_result = false;
+                            match &body_data_json["data"] {
+                                serde_json::Value::Null => {
+                                    season_id = None;
+                                }
+                                serde_json::Value::Object(value) => {
+                                    season_id = Some(value["season_id"].as_u64().unwrap());
+                                }
+                                _ => {
+                                    season_id = None;
+                                }
+                            }
+                        }
+                        _ => {
+                            is_result = false;
+                            season_id = None;
+                        }
+                    }
+
+                    match season_id {
+                        None => {
+                            return body_data;
+                        }
+                        Some(_) => (),
+                    }
+
+                    let sub_replace_str = match async_getwebpage(
+                        &format!("{}{}", &config.th_app_season_sub_api, season_id.unwrap()),
+                        false,
+                        "",
+                        params.user_agent,
+                        "",
+                    )
+                    .await
+                    {
+                        Ok(value) => value,
+                        Err(_) => {
+                            return body_data;
+                        }
+                    };
+                    let sub_replace_json: serde_json::Value =
+                        if let Ok(value) = serde_json::from_str(&sub_replace_str) {
+                            value
+                        } else {
+                            return body_data;
+                        };
+                    match sub_replace_json["code"].as_i64().unwrap_or(233) {
+                        0 => {
+                            if body_data_json["result"]["modules"]
+                                .as_array_mut()
+                                .unwrap()
+                                .len()
+                                == 0
+                            {
+                                return body_data;
+                            }
+                        }
+                        _ => {
+                            return body_data;
+                        }
+                    }
+                    let mut index_of_replace_json = 0;
+                    let len_of_replace_json = sub_replace_json["data"].as_array().unwrap().len();
+                    while index_of_replace_json < len_of_replace_json {
+                        let ep: usize = sub_replace_json["data"][index_of_replace_json]["ep"]
+                            .as_u64()
+                            .unwrap() as usize;
+                        let key = sub_replace_json["data"][index_of_replace_json]["key"]
+                            .as_str()
+                            .unwrap();
+                        let lang = sub_replace_json["data"][index_of_replace_json]["lang"]
+                            .as_str()
+                            .unwrap();
+                        let url = sub_replace_json["data"][index_of_replace_json]["url"]
+                            .as_str()
+                            .unwrap();
+                        if is_result {
+                            let element = format!("{{\"id\":{index_of_replace_json},\"key\":\"{key}\",\"title\":\"[非官方] {lang} {}\",\"url\":\"https://{url}\"}}",config.th_app_season_sub_name);
+                            body_data_json["result"]["modules"][0]["data"]["episodes"][ep]
+                                ["subtitles"]
+                                .as_array_mut()
+                                .unwrap()
+                                .insert(0, serde_json::from_str(&element).unwrap());
+                        }
+                        index_of_replace_json += 1;
+                    }
+
+                    if config.aid_replace_open {
+                        let len_of_episodes = body_data_json["result"]["modules"][0]["data"]
+                            ["episodes"]
+                            .as_array()
+                            .unwrap()
+                            .len();
+                        let mut index = 0;
+                        while index < len_of_episodes {
+                            body_data_json["result"]["modules"][0]["data"]["episodes"][index]
+                                .as_object_mut()
+                                .unwrap()
+                                .insert("aid".to_string(), serde_json::json!(&config.aid));
+                            index += 1;
+                        }
+                    }
+
+                    let body_data = body_data_json.to_string();
+                    return body_data;
+                } else {
+                    return body_data;
+                }
+            };
+            let body_data = season_remake().await;
+            update_th_season_cache(params.season_id, &body_data, &bili_runtime).await;
+            Ok(body_data)
         }
         Err(value) => {
             // if config.report_open {
