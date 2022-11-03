@@ -777,110 +777,22 @@ pub async fn get_upstream_bili_season(
             // println!("[Debug] ss_id:{}", season_id);
             // println!("[Debug] data:{}", data);
             let season_remake = move || async move {
-                if config.th_app_season_sub_open {
+                if config.th_app_season_sub_open || config.aid_replace_open {
                     let mut body_data_json: serde_json::Value =
                         serde_json::from_str(&body_data).unwrap();
-                    let season_id: Option<u64>;
-                    let is_result: bool;
-                    match &body_data_json["result"] {
-                        serde_json::Value::Object(value) => {
-                            is_result = true;
-                            season_id = Some(value["season_id"].as_u64().unwrap());
-                        }
-                        serde_json::Value::Null => {
-                            is_result = false;
-                            match &body_data_json["data"] {
-                                serde_json::Value::Null => {
-                                    season_id = None;
-                                }
-                                serde_json::Value::Object(value) => {
-                                    season_id = Some(value["season_id"].as_u64().unwrap());
-                                }
-                                _ => {
-                                    season_id = None;
-                                }
-                            }
-                        }
-                        _ => {
-                            is_result = false;
-                            season_id = None;
-                        }
-                    }
-
-                    match season_id {
-                        None => {
-                            return body_data;
-                        }
-                        Some(_) => (),
-                    }
-
-                    let sub_replace_str = match async_getwebpage(
-                        &format!("{}{}", &config.th_app_season_sub_api, season_id.unwrap()),
-                        false,
-                        "",
-                        params.user_agent,
-                        "",
-                    )
-                    .await
-                    {
-                        Ok(value) => value,
-                        Err(_) => {
-                            return body_data;
-                        }
-                    };
-                    let sub_replace_json: serde_json::Value =
-                        if let Ok(value) = serde_json::from_str(&sub_replace_str) {
-                            value
-                        } else {
-                            return body_data;
-                        };
-                    match sub_replace_json["code"].as_i64().unwrap_or(233) {
-                        0 => {
-                            if body_data_json["result"]["modules"]
-                                .as_array_mut()
-                                .unwrap()
-                                .len()
-                                == 0
-                            {
-                                return body_data;
-                            }
-                        }
-                        _ => {
-                            return body_data;
-                        }
-                    }
-                    let mut index_of_replace_json = 0;
-                    let len_of_replace_json = sub_replace_json["data"].as_array().unwrap().len();
-                    while index_of_replace_json < len_of_replace_json {
-                        let ep: usize = sub_replace_json["data"][index_of_replace_json]["ep"]
-                            .as_u64()
-                            .unwrap() as usize;
-                        let key = sub_replace_json["data"][index_of_replace_json]["key"]
-                            .as_str()
-                            .unwrap();
-                        let lang = sub_replace_json["data"][index_of_replace_json]["lang"]
-                            .as_str()
-                            .unwrap();
-                        let url = sub_replace_json["data"][index_of_replace_json]["url"]
-                            .as_str()
-                            .unwrap();
-                        if is_result {
-                            let element = format!("{{\"id\":{index_of_replace_json},\"key\":\"{key}\",\"title\":\"[非官方] {lang} {}\",\"url\":\"https://{url}\"}}",config.th_app_season_sub_name);
-                            body_data_json["result"]["modules"][0]["data"]["episodes"][ep]
-                                ["subtitles"]
-                                .as_array_mut()
-                                .unwrap()
-                                .insert(0, serde_json::from_str(&element).unwrap());
-                        }
-                        index_of_replace_json += 1;
-                    }
-
+                    let user_agent = params.user_agent;
                     if config.aid_replace_open {
-                        let len_of_episodes = body_data_json["result"]["modules"][0]["data"]
-                            ["episodes"]
+                        let len_of_episodes = body_data_json["result"]["modules"][0]["data"]["episodes"]
                             .as_array()
                             .unwrap()
                             .len();
+                        // {
+                        //     Some(value) => value.len(),
+                        //     None => {
+                        //         println!("[Debug] error data: {}", body_data_json); //Debug
+                        //         0
+                        //     },
+                        // };
                         let mut index = 0;
                         while index < len_of_episodes {
                             body_data_json["result"]["modules"][0]["data"]["episodes"][index]
@@ -890,15 +802,144 @@ pub async fn get_upstream_bili_season(
                             index += 1;
                         }
                     }
-
-                    let body_data = body_data_json.to_string();
-                    return body_data;
+                    
+                    if config.th_app_season_sub_open {
+                        let season_id: Option<u64>;
+                        let is_result: bool;
+                        match &body_data_json["result"] {
+                            serde_json::Value::Object(value) => {
+                                is_result = true;
+                                season_id = Some(value["season_id"].as_u64().unwrap());
+                            }
+                            serde_json::Value::Null => {
+                                is_result = false;
+                                match &body_data_json["data"] {
+                                    serde_json::Value::Null => {
+                                        season_id = None;
+                                    }
+                                    serde_json::Value::Object(value) => {
+                                        season_id = Some(value["season_id"].as_u64().unwrap());
+                                    }
+                                    _ => {
+                                        season_id = None;
+                                    }
+                                }
+                            }
+                            _ => {
+                                is_result = false;
+                                season_id = None;
+                            }
+                        }
+    
+                        match season_id {
+                            None => {
+                                if config.aid_replace_open {
+                                    return serde_json::to_string(&body_data_json).unwrap();
+                                }else{
+                                    return body_data;
+                                }
+                            }
+                            Some(_) => (),
+                        }
+    
+                        let sub_replace_str = match async_getwebpage(
+                            &format!("{}{}", &config.th_app_season_sub_api, season_id.unwrap()),
+                            false,
+                            "",
+                            &user_agent,
+                            "",
+                        )
+                        .await
+                        {
+                            Ok(value) => value,
+                            Err(_) => {
+                                if config.aid_replace_open {
+                                    return serde_json::to_string(&body_data_json).unwrap();
+                                }else{
+                                    return body_data;
+                                }
+                            }
+                        };
+                        let sub_replace_json: serde_json::Value =
+                            if let Ok(value) = serde_json::from_str(&sub_replace_str) {
+                                value
+                            } else {
+                                if config.aid_replace_open {
+                                    return serde_json::to_string(&body_data_json).unwrap();
+                                }else{
+                                    return body_data;
+                                }
+                            };
+                        match sub_replace_json["code"].as_i64().unwrap_or(233) {
+                            0 => {
+                                if body_data_json["result"]["modules"]
+                                    .as_array_mut()
+                                    .unwrap()
+                                    .len()
+                                    == 0
+                                {
+                                    if config.aid_replace_open {
+                                        return serde_json::to_string(&body_data_json).unwrap();
+                                    }else{
+                                        return body_data;
+                                    }
+                                }
+                            }
+                            _ => {
+                                if config.aid_replace_open {
+                                    return serde_json::to_string(&body_data_json).unwrap();
+                                }else{
+                                    return body_data;
+                                }
+                            }
+                        }
+                        let mut index_of_replace_json = 0;
+                        let len_of_replace_json = sub_replace_json["data"].as_array().unwrap().len();
+                        while index_of_replace_json < len_of_replace_json {
+                            let ep: usize = sub_replace_json["data"][index_of_replace_json]["ep"]
+                                .as_u64()
+                                .unwrap() as usize;
+                            let key = sub_replace_json["data"][index_of_replace_json]["key"]
+                                .as_str()
+                                .unwrap();
+                            let lang = sub_replace_json["data"][index_of_replace_json]["lang"]
+                                .as_str()
+                                .unwrap();
+                            let url = sub_replace_json["data"][index_of_replace_json]["url"]
+                                .as_str()
+                                .unwrap();
+                            if is_result {
+                                let element = format!("{{\"id\":{index_of_replace_json},\"key\":\"{key}\",\"title\":\"[非官方] {lang} {}\",\"url\":\"https://{url}\"}}",config.th_app_season_sub_name);
+                                body_data_json["result"]["modules"][0]["data"]["episodes"][ep]["subtitles"]
+                                    .as_array_mut()
+                                    .unwrap()
+                                    .insert(0, serde_json::from_str(&element).unwrap());
+                            }
+                            index_of_replace_json += 1;
+                        }
+                    }
+    
+                    return serde_json::to_string(&body_data_json).unwrap();
                 } else {
                     return body_data;
                 }
             };
             let body_data = season_remake().await;
             update_th_season_cache(params.season_id, &body_data, &bili_runtime).await;
+            report_health(
+                HealthReportType::ThSeason(HealthData::init(
+                    Area::Th,
+                    true,
+                    UpstreamReply {
+                        code: 0,
+                        proxy_open,
+                        proxy_url: String::from(proxy_url),
+                        ..Default::default()
+                    },
+                )),
+                bili_runtime,
+            )
+            .await;
             Ok(body_data)
         }
         Err(value) => {

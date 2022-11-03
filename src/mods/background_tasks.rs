@@ -135,6 +135,8 @@ pub async fn background_task_run(
                                     bili_runtime.redis_set(&redis_key, "0", 0).await
                                 } else if err_num != 0 {
                                     bili_runtime.redis_set(&redis_key, "0", 0).await
+                                } else {
+                                    return Ok(())
                                 }
                             }
                             None => bili_runtime.redis_set(&redis_key, "0", 0).await,
