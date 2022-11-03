@@ -1,6 +1,9 @@
 use super::background_tasks::update_cached_user_info_background;
-use super::cache::{update_cached_playurl, update_th_season_cache, update_th_subtitle_cache, update_user_info_cache};
-use super::health::report_health;
+use super::cache::{
+    check_ep_available, update_blacklist_info_cache, update_cached_playurl, update_th_season_cache,
+    update_th_subtitle_cache, update_user_info_cache, update_area_cache,
+};
+use super::health::{check_proxy_health, report_health};
 use super::request::{async_getwebpage, async_postwebpage};
 use super::tools::{check_playurl_need_vip, remove_parameters_playurl};
 use super::types::{
@@ -146,7 +149,9 @@ pub async fn get_upstream_bili_account_info(
                     proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
                 },
                 is_custom: true,
-                custom_message: format!("致命错误! 机子-412啦! \n上游返回: {output_json}"),
+                custom_message: format!(
+                    "[UPSTREAM USER_INFO] 致命错误! 机子-412喵! \n上游返回: {output_json}"
+                ),
             });
             report_health(health_report_type, bili_runtime).await;
             Err(EType::ServerFatalError)
@@ -155,9 +160,23 @@ pub async fn get_upstream_bili_account_info(
             println!("[UPSTREAM USER_INFO] AK {} | Get UserInfo failed. REQ Params -> APPKEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
                 access_key, appkey, ts_min, appsec, sign, output_json
             );
+            let health_report_type = HealthReportType::Others(HealthData {
+                area_num: 0,
+                is_200_ok: true,
+                upstream_reply: UpstreamReply {
+                    code,
+                    message: output_json["message"].as_str().unwrap_or("null").to_owned(),
+                    proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
+                    proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
+                },
+                is_custom: true,
+                custom_message: format!(
+                    "[UPSTREAM USER_INFO] 致命错误! 未知的错误码! \n上游返回: {output_json}"
+                ),
+            });
+            report_health(health_report_type, bili_runtime).await;
             Err(EType::OtherUpstreamError(
                 code,
-                // //我写的什么勾巴代码...
                 output_json["message"]
                     .as_str()
                     .unwrap_or("NULL")
@@ -168,12 +187,13 @@ pub async fn get_upstream_bili_account_info(
 }
 
 pub async fn get_upstream_blacklist_info(
-    uid: &u64,
+    user_info: &UserInfo,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserCerinfo, EType> {
     // // currently upstream only support query using uid...
     let dt = Local::now();
     let ts = dt.timestamp() as u64;
+    let uid = user_info.uid;
     //let user_cerinfo_str = String::new();
     let user_agent = format!("biliroaming-rust-server/{}", env!("CARGO_PKG_VERSION"));
     let api = match &bili_runtime.config.blacklist_config {
@@ -184,7 +204,22 @@ pub async fn get_upstream_blacklist_info(
     let getwebpage_data =
         match async_getwebpage(&format!("{api}{uid}"), false, "", &user_agent, "").await {
             Ok(data) => data,
-            Err(_) => return Err(EType::ServerNetworkError("鉴权失败了喵")),
+            Err(_) => {
+                // error!("[UPSTREAM USER_CER_INFO] 服务器网络问题");
+                let health_report_type = HealthReportType::Others(HealthData {
+                    area_num: 0,
+                    is_200_ok: false,
+                    upstream_reply: UpstreamReply {
+                        ..Default::default()
+                    },
+                    is_custom: true,
+                    custom_message: format!(
+                        "[UPSTREAM USER_CER_INFO] 致命错误! 请求黑名单失败: 网络问题! "
+                    ),
+                });
+                report_health(health_report_type, bili_runtime).await;
+                return Err(EType::ServerNetworkError("鉴权失败了喵"));
+            }
         };
     let getwebpage_json: serde_json::Value = match serde_json::from_str(&getwebpage_data) {
         Ok(value) => value,
@@ -196,7 +231,20 @@ pub async fn get_upstream_blacklist_info(
             //     ban_until: 0,
             //     status_expire_time: 0,
             // };
-            println!("[Error] 请接入在线黑名单");
+            // error!("[UPSTREAM USER_CER_INFO] 上游返回好像不是JSON... 是不是没接入公共黑名单?");
+            // trace!("[UPSTREAM USER_CER_INFO] 上游返回: {getwebpage_data}");
+            let health_report_type = HealthReportType::Others(HealthData {
+                area_num: 0,
+                is_200_ok: true,
+                upstream_reply: UpstreamReply {
+                    ..Default::default()
+                },
+                is_custom: true,
+                custom_message: format!(
+                    "[UPSTREAM USER_CER_INFO] 致命错误! 解析Json数据失败: {getwebpage_data}"
+                ),
+            });
+            report_health(health_report_type, bili_runtime).await;
             return Err(EType::ServerReqError(
                 "Blacklist Server Internal Error Json",
             ));
@@ -227,10 +275,23 @@ pub async fn get_upstream_blacklist_info(
             ban_until: getwebpage_json["data"]["ban_until"].as_u64().unwrap_or(0),
         };
         //println!("[Debug] uid:{}", return_data.uid);
-        // TODO: add cache here
+        update_blacklist_info_cache(user_info, &return_data, bili_runtime).await;
         return Ok(return_data);
     } else {
-        println!("鉴权失败: UID {uid}, 上游返回 {getwebpage_data}");
+        // error!("鉴权失败: UID {uid}, 上游返回 {getwebpage_data}");
+        let health_report_type = HealthReportType::Others(HealthData {
+            area_num: 0,
+            is_200_ok: true,
+            upstream_reply: UpstreamReply {
+                code,
+                ..Default::default()
+            },
+            is_custom: true,
+            custom_message: format!(
+                "[UPSTREAM USER_CER_INFO] 致命错误! 上游返回: {getwebpage_data}"
+            ),
+        });
+        report_health(health_report_type, bili_runtime).await;
         return Err(EType::ServerReqError(
             "鉴权失败了喵, Blacklist Server Error",
         ));
@@ -311,45 +372,53 @@ pub async fn get_upstream_bili_playurl(
     .await
     {
         Ok(data) => data,
-        Err(value) => return Err(value),
+        Err(value) => {
+            check_proxy_health(params.area_num, bili_runtime).await;
+            return Err(value);
+        }
     };
     let mut body_data_json: serde_json::Value = serde_json::from_str(&body_data).unwrap();
     let code = body_data_json["code"].as_i64().unwrap().clone();
     remove_parameters_playurl(&playurl_type, &mut body_data_json).unwrap_or_default();
     // report health
-    let message = body_data_json["message"]
-        .as_str()
-        .unwrap_or("Error on parsing Json Response")
-        .to_string();
-    let health_report_data = HealthReportType::Playurl(HealthData::init(
-        Area::new(params.area_num as u8),
-        true,
-        UpstreamReply {
-            code,
-            message,
-            proxy_open,
-            // .clone used here may do harm to perf for such func is used frequently
-            // as biliconfig lives much longer, why not use String::from to create a new String?
-            // proxy_url: String::from(proxy_url.as_str()),
-            proxy_url: proxy_url.to_string(),
-        },
-    ));
-    report_health(health_report_data, bili_runtime).await;
-    // check user's vip status
-    if !params.is_vip {
-        // TODO: add vip only feature here
-        if let Ok(value) = check_playurl_need_vip(playurl_type, &body_data_json) {
-            if value {
-                // let bilisender_cl = Arc::clone(bilisender);
-                update_cached_user_info_background(params.access_key.to_string(), bili_runtime)
-                    .await;
-                return Err(EType::OtherError(
-                    -10403,
-                    "检测到可能刚刚买了带会员, 刷新缓存中, 请稍后重试喵",
-                ));
+    if !check_ep_available(&body_data_json) {
+        update_area_cache(&body_data_json, params, bili_runtime).await;
+
+        let message = body_data_json["message"]
+            .as_str()
+            .unwrap_or("Error on parsing Json Response")
+            .to_string();
+        let health_report_data = HealthReportType::Playurl(HealthData::init(
+            Area::new(params.area_num as u8),
+            true,
+            UpstreamReply {
+                code,
+                message,
+                proxy_open,
+                // .clone used here may do harm to perf for such func is used frequently
+                // as biliconfig lives much longer, why not use String::from to create a new String?
+                // proxy_url: String::from(proxy_url.as_str()),
+                proxy_url: proxy_url.to_string(),
+            },
+        ));
+        report_health(health_report_data, bili_runtime).await;
+    } else {
+        // check user's vip status
+        if !params.is_vip {
+            // TODO: add vip only feature here
+            if let Ok(value) = check_playurl_need_vip(playurl_type, &body_data_json) {
+                if value {
+                    // let bilisender_cl = Arc::clone(bilisender);
+                    update_cached_user_info_background(params.access_key.to_string(), bili_runtime)
+                        .await;
+                    return Err(EType::OtherError(
+                        -10403,
+                        "检测到可能刚刚买了带会员, 刷新缓存中, 请稍后重试喵",
+                    ));
+                }
             }
+            // TODO: add fallback check
         }
-        // TODO: add fallback check
     }
     // update playurl cache
     let final_data = body_data_json.to_string();

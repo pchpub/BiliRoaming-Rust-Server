@@ -100,7 +100,7 @@ pub async fn get_blacklist_info(
             let data = match get_cached_blacklist_info(user_info, bili_runtime).await {
                 Some(value) => {
                     if value.status_expire_time < ts {
-                        match get_upstream_blacklist_info(&user_info.uid, &bili_runtime).await {
+                        match get_upstream_blacklist_info(&user_info, &bili_runtime).await {
                             Ok(value) => {
                                 update_blacklist_info_cache(user_info, &value, bili_runtime).await;
                                 value
@@ -111,7 +111,7 @@ pub async fn get_blacklist_info(
                         value
                     }
                 }
-                None => match get_upstream_blacklist_info(&user_info.uid, &bili_runtime).await {
+                None => match get_upstream_blacklist_info(&user_info, &bili_runtime).await {
                     Ok(value) => {
                         update_blacklist_info_cache(user_info, &value, bili_runtime).await;
                         value
@@ -149,7 +149,7 @@ pub async fn get_blacklist_info(
             let data = match get_cached_blacklist_info(user_info, bili_runtime).await {
                 Some(value) => {
                     if value.status_expire_time < ts {
-                        match get_upstream_blacklist_info(&user_info.uid, &bili_runtime).await {
+                        match get_upstream_blacklist_info(&user_info, &bili_runtime).await {
                             Ok(value) => {
                                 update_blacklist_info_cache(user_info, &value, bili_runtime).await;
                                 value
@@ -160,7 +160,7 @@ pub async fn get_blacklist_info(
                         value
                     }
                 }
-                None => match get_upstream_blacklist_info(&user_info.uid, &bili_runtime).await {
+                None => match get_upstream_blacklist_info(&user_info, &bili_runtime).await {
                     Ok(value) => {
                         update_blacklist_info_cache(user_info, &value, bili_runtime).await;
                         value

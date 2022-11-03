@@ -1,4 +1,4 @@
-use super::background_tasks::{update_cached_playurl_background, update_area_cache_background};
+use super::background_tasks::{update_area_cache_background, update_cached_playurl_background};
 use super::ep_info::get_ep_need_vip;
 use super::request::{redis_get, redis_set};
 use super::types::*;
@@ -17,7 +17,7 @@ pub async fn get_cached_ep_area(
     let ep_id = params.ep_id;
     let req_area_num = params.area_num as u8;
     // let key = format!("e{ep_id}1401");
-    let data_raw = bili_runtime.get_cache(CacheType::EpArea(ep_id)).await;
+    let data_raw = bili_runtime.get_cache(&CacheType::EpArea(ep_id)).await;
     if let Some(value) = data_raw {
         let mut ep_area_data: [u8; 4] = [2, 2, 2, 2];
         let mut is_all_available = true;
@@ -77,15 +77,17 @@ pub async fn get_cached_ep_area(
 
 #[inline]
 pub async fn update_area_cache(
-    http_body: &str,
+    http_body_json: &serde_json::Value,
     params: &PlayurlParams<'_>,
     // key: &str,
-    value: &str,
+    // value: &str,
     bili_runtime: &BiliRuntime<'_>,
 ) {
     let ep_id = params.ep_id;
-    let is_available = check_ep_available(http_body);
+    let is_available = check_ep_available(http_body_json);
     let area_num = params.area_num as usize;
+    let cache_type = CacheType::EpArea(ep_id);
+    let value = bili_runtime.get_cache(&cache_type).await.unwrap_or("2222".to_string());
     let new_value = {
         if is_available {
             value[..area_num - 1].to_owned() + "0" + &value[area_num..]
@@ -94,14 +96,14 @@ pub async fn update_area_cache(
         }
     };
     bili_runtime
-        .update_cache(CacheType::EpArea(ep_id), &new_value, 0)
+        .update_cache(&cache_type, &new_value, 0)
         .await;
 }
 
 #[inline]
-fn check_ep_available(http_body: &str) -> bool {
+pub fn check_ep_available(http_body_json: &serde_json::Value) -> bool {
     // 此处判断来自 @cxw620
-    let http_body_json: serde_json::Value = serde_json::from_str(http_body).unwrap();
+    // let http_body_json: serde_json::Value = serde_json::from_str(http_body).unwrap();
     let code = http_body_json["code"].as_i64().unwrap_or(233);
     let message = http_body_json["message"].as_str().unwrap_or("").clone();
     /*
@@ -153,7 +155,7 @@ pub async fn get_cached_user_info(
     bili_runtime: &BiliRuntime<'_>,
 ) -> Option<UserInfo> {
     match bili_runtime
-        .get_cache(CacheType::UserInfo(access_key))
+        .get_cache(&CacheType::UserInfo(access_key, 1145141919810))
         .await
     {
         Some(value) => Some(serde_json::from_str(&value).unwrap()),
@@ -166,6 +168,7 @@ pub async fn update_user_info_cache(new_user_info: &UserInfo, bili_runtime: &Bil
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let access_key = &new_user_info.access_key;
+    let uid = new_user_info.uid;
     // let key = format!("{access_key}20501");
     let value = new_user_info.to_json();
     let expire_time = (new_user_info.expire_time - ts) / 1000;
@@ -180,7 +183,7 @@ pub async fn update_user_info_cache(new_user_info: &UserInfo, bili_runtime: &Bil
     // )
     // .await
     bili_runtime
-        .update_cache(CacheType::UserInfo(access_key), &value, expire_time)
+        .update_cache(&CacheType::UserInfo(access_key, uid), &value, expire_time)
         .await;
     // bili_runtime.redis_set(&key, &value, expire_time).await
 }
@@ -240,20 +243,24 @@ pub async fn update_blacklist_info_cache(
     bili_runtime: &BiliRuntime<'_>,
 ) {
     let value = new_user_cer_info.to_json();
+    let cache_type = CacheType::UserCerInfo(&user_info.access_key, user_info.uid);
     bili_runtime
-        .redis_set(
-            &format!("{}20602", &user_info.uid),
-            &value,
-            1 * 24 * 60 * 60,
-        )
+        .update_cache(&cache_type, &value, 1 * 24 * 60 * 60)
         .await;
-    bili_runtime
-        .redis_set(
-            &format!("a{}20602", &user_info.access_key),
-            &value,
-            1 * 24 * 60 * 60,
-        )
-        .await;
+    // bili_runtime
+    //     .redis_set(
+    //         &format!("{}20602", &user_info.uid),
+    //         &value,
+    //         1 * 24 * 60 * 60,
+    //     )
+    //     .await;
+    // bili_runtime
+    //     .redis_set(
+    //         &format!("a{}20602", &user_info.access_key),
+    //         &value,
+    //         1 * 24 * 60 * 60,
+    //     )
+    //     .await;
 }
 
 /*

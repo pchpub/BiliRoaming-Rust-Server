@@ -1,6 +1,9 @@
 use super::{
     request::{async_getwebpage, redis_get},
-    types::{Area, BackgroundTaskType, BiliRuntime, HealthReportType, HealthTask, ReqType},
+    types::{
+        Area, BackgroundTaskType, BiliRuntime, HealthData, HealthReportType, HealthTask, ReqType,
+        UpstreamReply,
+    },
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -15,10 +18,7 @@ pub async fn report_health(health_report_type: HealthReportType, bili_runtime: &
 * 主动检测上游代理状态
 * now only check playurl proxy(I think it's enough)
 */
-pub async fn check_proxy_health(
-    area_num: u8,
-    bili_runtime: &BiliRuntime<'_>,
-) -> Result<(), String> {
+pub async fn check_proxy_health(area_num: u8, bili_runtime: &BiliRuntime<'_>) {
     let redis_pool = bili_runtime.redis_pool;
     let config = bili_runtime.config;
     let bili_user_status_api: &str = "https://api.bilibili.com/pgc/view/web/season/user/status";
@@ -30,45 +30,60 @@ pub async fn check_proxy_health(
     let access_key = if let Some(value) = redis_get(redis_pool, "a1301").await {
         value
     } else {
-        return Err("[ERROR] fail to get access_key".to_string());
+        println!("[CHECK_PROXY_HEALTH] fail to get access_key");
+        return;
     };
     // actually should always use struct Area to pass param area
     let area: Area = Area::new(area_num);
     // let area_num = area.num();
     let req_type = ReqType::Playurl(area, true);
-    let (proxy_open, proxy_url) = &req_type.get_proxy(config);
+    let (proxy_open, proxy_url) = req_type.get_proxy(config);
     let url = format!("{bili_user_status_api}?access_key={access_key}&season_id=")
         + match Area::new(area_num) {
             Area::Cn => season_id_cn_only,
             Area::Hk => season_id_hk_only,
             Area::Tw => season_id_tw_only,
             Area::Th => {
-                match get_server_ip_area(
-                    &config.tw_proxy_playurl_open,
-                    &config.tw_proxy_playurl_url,
+                if let Some(value) = match get_server_ip_area(
+                    &config.th_proxy_playurl_open,
+                    &config.th_proxy_playurl_url,
                     user_agent,
                 )
                 .await
                 {
                     Ok(value) => {
-                        if value == 4 {
-                            return Ok(());
+                        if value != 4 {
+                            Some(
+                                "Zone {area_num} -> Detect Proxy Area Not Suitable, actual [{value}]"
+                            )
                         } else {
-                            return Err(format!(
-                            "Zone {area_num} -> Detect Proxy Area Not Suitable, actual [{value}]"
-                        ));
+                            None
                         }
                     }
                     Err(code) => match code {
-                        2333 => return Err(format!("Zone {area_num} -> ISP Banned!")),
-                        _ => {
-                            return Err(format!("Zone {area_num} -> Unknown Upstream Error {code}"))
-                        }
+                        2333 => Some("Zone {area_num} -> ISP Banned!"),
+                        _ => Some("Zone {area_num} -> Unknown Upstream Error {code}"),
                     },
+                } {
+                    println!("[CHECK_PROXY_HEALTH] {value}");
+                    let health_report_type = HealthReportType::Others(HealthData {
+                        area_num: 0,
+                        is_200_ok: false,
+                        upstream_reply: UpstreamReply {
+                            ..Default::default()
+                        },
+                        is_custom: true,
+                        custom_message: format!("[CHECK_PROXY_HEALTH] {value}"),
+                    });
+                    report_health(health_report_type, bili_runtime).await;
+                    return;
+                } else {
+                    return;
                 }
             }
         };
-    match async_getwebpage(&url, *proxy_open, proxy_url, user_agent, "").await {
+    if let Some(value) = match async_getwebpage(&url, proxy_open, proxy_url, user_agent, "").await
+    {
         Ok(value) => {
             let json_result =
                 serde_json::from_str(&value).unwrap_or(json!({"code": -2333, "message": ""}));
@@ -81,16 +96,30 @@ pub async fn check_proxy_health(
                 0 => {
                     let result = json_result.get("result").unwrap();
                     if result["area_limit"].as_i64().unwrap() != 0 {
-                        Err(format!("Zone {area_num} -> Detect Proxy Area Not Suitable"))
+                        Some("Zone {area_num} -> Detect Proxy Area Not Suitable")
                     } else {
-                        Ok(())
+                        None
                     }
                 }
-                -2333 => Err(format!("Zone {area_num} -> Parse Json Error: {value}")),
-                _ => Err(format!("Zone {area_num} -> Unknown Error {code}: {value}")),
+                -2333 => Some("Zone {area_num} -> Parse Json Error: {value}"),
+                _ => Some("Zone {area_num} -> Unknown Error {code}: {value}"),
             }
         }
-        Err(_) => Err(format!("Zone {area_num} -> Detect Unavailable Proxy")),
+        Err(_) => Some("Zone {area_num} -> Detect Unavailable Proxy"),
+    } {
+        println!("[CHECK_PROXY_HEALTH] {value}");
+        let health_report_type = HealthReportType::Others(HealthData {
+            area_num,
+            is_200_ok: false,
+            upstream_reply: UpstreamReply {
+                proxy_open,
+                proxy_url: proxy_url.to_owned(),
+                ..Default::default()
+            },
+            is_custom: true,
+            custom_message: format!("[CHECK_PROXY_HEALTH] {value}"),
+        });
+        report_health(health_report_type, bili_runtime).await;
     }
 }
 

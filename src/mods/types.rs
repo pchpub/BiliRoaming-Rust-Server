@@ -183,15 +183,22 @@ impl<'bili_runtime> BiliRuntime<'bili_runtime> {
         }
     }
     // TODO: Easier Config
-    pub async fn get_cache(&self, cache_type: CacheType<'_>) -> Option<String> {
-        let key = cache_type.gen_key();
-        redis_get(self.redis_pool, &key).await
+    pub async fn get_cache(&self, cache_type: &CacheType<'_>) -> Option<String> {
+        let keys = cache_type.gen_key();
+        for key in keys {
+            if let Some(value) = redis_get(self.redis_pool, &key).await {
+                return Some(value);
+            }
+        }
+        None
     }
-    pub async fn update_cache(&self, cache_type: CacheType<'_>, value: &str, expire_time: u64) {
-        let key = cache_type.gen_key();
-        redis_set(self.redis_pool, &key, value, expire_time)
-            .await
-            .unwrap()
+    pub async fn update_cache(&self, cache_type: &CacheType<'_>, value: &str, expire_time: u64) {
+        let keys = cache_type.gen_key();
+        for key in keys {
+            redis_set(self.redis_pool, &key, value, expire_time)
+                .await
+                .unwrap()
+        }
     }
     pub async fn redis_get(&self, key: &str) -> Option<String> {
         redis_get(self.redis_pool, key).await
@@ -293,8 +300,8 @@ pub enum CacheType<'cache_type> {
     EpArea(&'cache_type str),
     EpVipInfo(&'cache_type str),
     EpInfo(&'cache_type str), // not implemented
-    UserInfo(&'cache_type str),
-    UserCerInfo(&'cache_type str),
+    UserInfo(&'cache_type str, u64),
+    UserCerInfo(&'cache_type str, u64),
 }
 impl<'cache_type> CacheType<'cache_type> {
     // async fn update_redis(key: &str, value: &str, expire_time: u64, redis_pool: &Pool) {
@@ -303,27 +310,44 @@ impl<'cache_type> CacheType<'cache_type> {
     //         .unwrap()
     // }
     // for better performance
-    pub fn gen_key(self) -> String {
+    pub fn gen_key(&self) -> Vec<String> {
+        let mut keys = vec![];
         match self {
             CacheType::Playurl(_, _) => todo!(),
             CacheType::EpArea(ep_id) => {
                 let mut key = String::with_capacity(16);
                 key.push_str(ep_id);
                 key += "1401";
-                key
-                // return bili_runtime.redis_get(&key).await
+                keys.push(key);
             }
             CacheType::EpVipInfo(_) => todo!(),
             CacheType::EpInfo(_) => todo!(),
-            CacheType::UserInfo(access_key) => {
+            CacheType::UserInfo(access_key, uid) => {
                 let mut key = String::with_capacity(64);
                 key.push_str("a");
                 key.push_str(access_key);
                 key += "20501";
-                key
+                keys.push(key);
+                let mut key = String::with_capacity(32);
+                key.push_str("u");
+                key.push_str(&uid.to_string());
+                key += "20501";
+                keys.push(key);
             }
-            CacheType::UserCerInfo(_) => todo!(),
-        }
+            CacheType::UserCerInfo(access_key, uid) => {
+                let mut key = String::with_capacity(64);
+                key.push_str("a");
+                key.push_str(access_key);
+                key += "20602";
+                keys.push(key);
+                let mut key = String::with_capacity(32);
+                key.push_str("u");
+                key.push_str(&uid.to_string());
+                key += "20602";
+                keys.push(key);
+            }
+        };
+        keys
     }
     // Not implemented
     // pub async fn update(self, redis_pool: &Pool) {

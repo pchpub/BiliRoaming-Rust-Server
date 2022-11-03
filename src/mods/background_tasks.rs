@@ -71,9 +71,7 @@ pub async fn background_task_run(
         BackgroundTaskType::HealthTask(value) => match value {
             HealthTask::HealthCheck(value) => {
                 for area_num in &value.need_check_area {
-                    if let Err(value) = check_proxy_health(*area_num, bili_runtime).await {
-                        println!("[Background Task] Proxy health check failed: {value}");
-                    }
+                    check_proxy_health(*area_num, bili_runtime).await;
                 }
                 Ok(())
             }
