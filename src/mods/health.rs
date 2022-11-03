@@ -1,5 +1,5 @@
 use super::{
-    request::{async_getwebpage, redis_get},
+    request::async_getwebpage,
     types::{
         Area, BackgroundTaskType, BiliRuntime, HealthData, HealthReportType, HealthTask, ReqType,
         UpstreamReply,
@@ -8,9 +8,18 @@ use super::{
 use serde_json::json;
 use std::collections::HashMap;
 
+/// `report_health` 后台任务: 报告健康信息
 pub async fn report_health(health_report_type: HealthReportType, bili_runtime: &BiliRuntime<'_>) {
     let background_task_data =
         BackgroundTaskType::HealthTask(HealthTask::HealthReport(health_report_type));
+    bili_runtime.send_task(background_task_data).await;
+}
+
+/// `check_health_background` 后台任务: 检测代理可用性
+/// - 将检测所有区域的代理可用性
+/// - 仅检测playurl的代理
+pub async fn check_health_background(bili_runtime: &BiliRuntime<'_>) {
+    let background_task_data = BackgroundTaskType::HealthTask(HealthTask::HealthCheck);
     bili_runtime.send_task(background_task_data).await;
 }
 
@@ -18,8 +27,11 @@ pub async fn report_health(health_report_type: HealthReportType, bili_runtime: &
 * 主动检测上游代理状态
 * now only check playurl proxy(I think it's enough)
 */
-pub async fn check_proxy_health(area_num: u8, bili_runtime: &BiliRuntime<'_>) {
-    let redis_pool = bili_runtime.redis_pool;
+pub async fn check_proxy_health(
+    area_num: u8,
+    req_type: ReqType,
+    bili_runtime: &BiliRuntime<'_>,
+) -> bool {
     let config = bili_runtime.config;
     let bili_user_status_api: &str = "https://api.bilibili.com/pgc/view/web/season/user/status";
     let season_id_cn_only = "42320	"; // 小林家的龙女仆 第二季 中配版
@@ -27,17 +39,27 @@ pub async fn check_proxy_health(area_num: u8, bili_runtime: &BiliRuntime<'_>) {
     let season_id_tw_only = "33088"; // 輝夜姬想讓人告白？~天才們的戀愛頭腦戰~（僅限台灣地區）
     let _season_th_only = ""; // 东南亚区没有api, 无从直接得知area_limit状态
     let user_agent = "Dalvik/2.1.0 (Linux; U; Android 11; 21091116AC Build/RP1A.200720.011)";
-    let access_key = if let Some(value) = redis_get(redis_pool, "a1301").await {
+    // 暂时只借用带会员的来检测
+    let access_key = if let Some(value) = bili_runtime.redis_get("av11301").await {
         value
     } else {
         println!("[CHECK_PROXY_HEALTH] fail to get access_key");
-        return;
+        return true;
     };
     // actually should always use struct Area to pass param area
-    let area: Area = Area::new(area_num);
+    // let area: Area = Area::new(area_num);
     // let area_num = area.num();
-    let req_type = ReqType::Playurl(area, true);
-    let (proxy_open, proxy_url) = req_type.get_proxy(config);
+    // let req_type = ReqType::Playurl(area, true);
+    // ohhhhh 我的老天爷, 什么勾巴处理方式
+    // 为了热点路径的性能, 不管了
+    let (proxy_open, proxy_url) = match req_type {
+        ReqType::Other(proxy_open, proxy_url) => (proxy_open, proxy_url),
+        _ => {
+            let (proxy_open, proxy_url) = req_type.get_proxy(config);
+            (proxy_open, proxy_url.to_owned())
+        }
+    };
+
     let url = format!("{bili_user_status_api}?access_key={access_key}&season_id=")
         + match Area::new(area_num) {
             Area::Cn => season_id_cn_only,
@@ -76,13 +98,13 @@ pub async fn check_proxy_health(area_num: u8, bili_runtime: &BiliRuntime<'_>) {
                         custom_message: format!("[CHECK_PROXY_HEALTH] {value}"),
                     });
                     report_health(health_report_type, bili_runtime).await;
-                    return;
+                    return false;
                 } else {
-                    return;
+                    return true;
                 }
             }
         };
-    if let Some(value) = match async_getwebpage(&url, proxy_open, proxy_url, user_agent, "").await
+    if let Some(value) = match async_getwebpage(&url, proxy_open, &proxy_url, user_agent, "").await
     {
         Ok(value) => {
             let json_result =
@@ -120,6 +142,9 @@ pub async fn check_proxy_health(area_num: u8, bili_runtime: &BiliRuntime<'_>) {
             custom_message: format!("[CHECK_PROXY_HEALTH] {value}"),
         });
         report_health(health_report_type, bili_runtime).await;
+        return false;
+    } else {
+        return true;
     }
 }
 

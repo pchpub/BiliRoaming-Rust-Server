@@ -1,9 +1,9 @@
 use super::background_tasks::update_cached_user_info_background;
 use super::cache::{
-    check_ep_available, update_blacklist_info_cache, update_cached_playurl, update_th_season_cache,
-    update_th_subtitle_cache, update_user_info_cache, update_area_cache,
+    check_ep_available, update_area_cache, update_blacklist_info_cache, update_cached_playurl,
+    update_th_season_cache, update_th_subtitle_cache, update_user_info_cache,
 };
-use super::health::{check_proxy_health, report_health};
+use super::health::report_health;
 use super::request::{async_getwebpage, async_postwebpage};
 use super::tools::{check_playurl_need_vip, remove_parameters_playurl};
 use super::types::{
@@ -373,7 +373,19 @@ pub async fn get_upstream_bili_playurl(
     {
         Ok(data) => data,
         Err(value) => {
-            check_proxy_health(params.area_num, bili_runtime).await;
+            report_health(
+                HealthReportType::Playurl(HealthData::init(
+                    Area::new(params.area_num),
+                    false,
+                    UpstreamReply {
+                        proxy_open,
+                        proxy_url: String::from(proxy_url),
+                        ..Default::default()
+                    },
+                )),
+                bili_runtime,
+            )
+            .await;
             return Err(value);
         }
     };
@@ -388,20 +400,20 @@ pub async fn get_upstream_bili_playurl(
             .as_str()
             .unwrap_or("Error on parsing Json Response")
             .to_string();
-        let health_report_data = HealthReportType::Playurl(HealthData::init(
-            Area::new(params.area_num as u8),
-            true,
-            UpstreamReply {
-                code,
-                message,
-                proxy_open,
-                // .clone used here may do harm to perf for such func is used frequently
-                // as biliconfig lives much longer, why not use String::from to create a new String?
-                // proxy_url: String::from(proxy_url.as_str()),
-                proxy_url: proxy_url.to_string(),
-            },
-        ));
-        report_health(health_report_data, bili_runtime).await;
+        report_health(
+            HealthReportType::Playurl(HealthData::init(
+                Area::new(params.area_num),
+                true,
+                UpstreamReply {
+                    code,
+                    message,
+                    proxy_open,
+                    proxy_url: String::from(proxy_url),
+                },
+            )),
+            bili_runtime,
+        )
+        .await;
     } else {
         // check user's vip status
         if !params.is_vip {
@@ -651,7 +663,7 @@ pub async fn get_upstream_bili_search(
                         UpstreamReply {
                             code: upstream_code,
                             message: upstream_message.to_string(),
-                            proxy_open: proxy_open,
+                            proxy_open,
                             proxy_url: String::from(proxy_url),
                         },
                     )),
@@ -890,40 +902,19 @@ pub async fn get_upstream_bili_season(
             Ok(body_data)
         }
         Err(value) => {
-            // if config.report_open {
-            //     let num = redis_get(&pool, "0441301")
-            //         .await
-            //         .unwrap_or("0".to_string())
-            //         .as_str()
-            //         .parse::<u32>()
-            //         .unwrap();
-            //     if num == 4 {
-            //         redis_set(&pool, "0441301", "1", 0)
-            //             .await
-            //             .unwrap_or_default();
-            //         let senddata = SendData::Health(SendHealthData {
-            //             data_type: SesourceType::PlayUrl,
-            //             health_type: HealthType::Offline,
-            //             area_num: 4,
-            //         });
-            //         tokio::spawn(async move {
-            //             //println!("[Debug] bilisender_cl.len:{}", bilisender_cl.len());
-            //             match bilisender_cl.try_send(senddata) {
-            //                 Ok(_) => (),
-            //                 Err(TrySendError::Full(_)) => {
-            //                     println!("[Error] channel is full");
-            //                 }
-            //                 Err(TrySendError::Closed(_)) => {
-            //                     println!("[Error] channel is closed");
-            //                 }
-            //             };
-            //         });
-            //     } else {
-            //         redis_set(&pool, "0441301", &(num + 1).to_string(), 0)
-            //             .await
-            //             .unwrap_or_default();
-            //     }
-            // }
+            report_health(
+                HealthReportType::ThSeason(HealthData::init(
+                    Area::Th,
+                    false,
+                    UpstreamReply {
+                        proxy_open,
+                        proxy_url: String::from(proxy_url),
+                        ..Default::default()
+                    },
+                )),
+                bili_runtime,
+            )
+            .await;
             Err(value)
         }
     }

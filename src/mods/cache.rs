@@ -87,7 +87,10 @@ pub async fn update_area_cache(
     let is_available = check_ep_available(http_body_json);
     let area_num = params.area_num as usize;
     let cache_type = CacheType::EpArea(ep_id);
-    let value = bili_runtime.get_cache(&cache_type).await.unwrap_or("2222".to_string());
+    let value = bili_runtime
+        .get_cache(&cache_type)
+        .await
+        .unwrap_or("2222".to_string());
     let new_value = {
         if is_available {
             value[..area_num - 1].to_owned() + "0" + &value[area_num..]
@@ -95,9 +98,7 @@ pub async fn update_area_cache(
             value[..area_num - 1].to_owned() + "1" + &value[area_num..]
         }
     };
-    bili_runtime
-        .update_cache(&cache_type, &new_value, 0)
-        .await;
+    bili_runtime.update_cache(&cache_type, &new_value, 0).await;
 }
 
 #[inline]
@@ -185,7 +186,22 @@ pub async fn update_user_info_cache(new_user_info: &UserInfo, bili_runtime: &Bil
     bili_runtime
         .update_cache(&CacheType::UserInfo(access_key, uid), &value, expire_time)
         .await;
-    // bili_runtime.redis_set(&key, &value, expire_time).await
+    // for health check
+    if new_user_info.is_vip() {
+        bili_runtime
+            .redis_set("uv11301", &new_user_info.uid.to_string(), 0)
+            .await;
+        bili_runtime
+            .redis_set("av11301", &new_user_info.access_key, 0)
+            .await;
+    } else {
+        bili_runtime
+            .redis_set("uv01301", &new_user_info.uid.to_string(), 0)
+            .await;
+        bili_runtime
+            .redis_set("av01301", &new_user_info.access_key, 0)
+            .await;
+    }
 }
 
 pub async fn get_cached_blacklist_info(

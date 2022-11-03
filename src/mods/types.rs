@@ -231,6 +231,7 @@ pub enum ReqType {
     ThSeason,
     ThSubtitle,
     Accesskey,
+    Other(bool, String)
 }
 impl ReqType {
     pub fn get_api<'config>(&self, config: &'config BiliConfig) -> &'config str {
@@ -272,6 +273,7 @@ impl ReqType {
             ReqType::ThSeason => &config.th_app_season_api,
             ReqType::ThSubtitle => &config.th_app_season_sub_api,
             ReqType::Accesskey => unimplemented!(),
+            ReqType::Other(_, _) => "",
         }
     }
     pub fn get_proxy<'config>(&self, config: &'config BiliConfig) -> (bool, &'config str) {
@@ -291,6 +293,7 @@ impl ReqType {
             ReqType::ThSeason => (config.th_proxy_playurl_open, &config.th_proxy_playurl_url),
             ReqType::ThSubtitle => (config.th_proxy_subtitle_open, &config.th_proxy_subtitle_url),
             ReqType::Accesskey => unimplemented!(),
+            ReqType::Other(_, _) => (false, ""),
         }
     }
 }
@@ -466,7 +469,7 @@ pub enum BackgroundTaskType {
     CacheTask(CacheTask),
 }
 pub enum HealthTask {
-    HealthCheck(HealthCheck),
+    HealthCheck,
     HealthReport(HealthReportType),
 }
 pub struct HealthCheck {
@@ -578,6 +581,9 @@ impl HealthData {
         };
     }
     pub fn is_available(&self) -> bool {
+        if !self.is_200_ok {
+            return false;
+        };
         let code = self.upstream_reply.code;
         let message = &self.upstream_reply.message;
         /*

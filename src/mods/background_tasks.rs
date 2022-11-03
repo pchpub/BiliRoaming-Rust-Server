@@ -1,11 +1,10 @@
 use super::cache::update_cached_playurl;
 use super::health::*;
 use super::push::send_report;
-use super::request::redis_set;
-use super::request::{async_getwebpage, redis_get};
+use super::request::async_getwebpage;
 use super::types::{
-    BackgroundTaskType, BiliRuntime, CacheTask, HealthReportType, HealthTask, PlayurlParams,
-    PlayurlParamsStatic,
+    Area, BackgroundTaskType, BiliRuntime, CacheTask, HealthReportType, HealthTask, PlayurlParams,
+    PlayurlParamsStatic, ReqType,
 };
 use super::upstream_res::*;
 use super::user_info::{get_blacklist_info, get_user_info};
@@ -69,70 +68,112 @@ pub async fn background_task_run(
     let report_config = &bili_runtime.config.report_config;
     match task {
         BackgroundTaskType::HealthTask(value) => match value {
-            HealthTask::HealthCheck(value) => {
-                for area_num in &value.need_check_area {
-                    check_proxy_health(*area_num, bili_runtime).await;
-                }
-                Ok(())
-            }
-            HealthTask::HealthReport(value) => {
-                if config.report_open {
-                    let area_num_vec = ["", "01", "02", "03", "04"];
-                    let redis_key = match &value {
-                        HealthReportType::Playurl(value) => {
-                            let area_num_str = area_num_vec[value.area_num as usize];
+            HealthTask::HealthCheck => {
+                // 因为设置里面代理都是分开设置的, 感觉超麻烦的欸, 只检查playurl算了
+                for area_num in [1 as u8, 2, 3, 4] {
+                    if !check_proxy_health(
+                        area_num,
+                        ReqType::Playurl(Area::new(area_num), true),
+                        bili_runtime,
+                    )
+                    .await
+                    {
+                        let redis_key = {
+                            let area_num_vec = ["", "01", "02", "03", "04"];
+                            let area_num_str = area_num_vec[area_num as usize];
                             ["01", area_num_str, "13", "01"].concat()
-                        }
-                        HealthReportType::Search(value) => {
-                            let area_num_str = area_num_vec[value.area_num as usize];
-                            ["02", area_num_str, "13", "01"].concat()
-                        }
-                        HealthReportType::ThSeason(value) => {
-                            let area_num_str = area_num_vec[value.area_num as usize];
-                            ["04", area_num_str, "13", "01"].concat()
-                        }
-                        HealthReportType::Others(_) => {
-                            send_report(redis_pool, report_config, &value).await.unwrap();
-                            return Ok(());
-                        }
-                    };
-                    // println!("DEBUG: HealthReport {redis_key}");
-                    let is_available = value.is_available();
-                    if is_available {
-                        match redis_get(&redis_pool, &redis_key).await {
-                            Some(value) => {
-                                let err_num = value.parse::<u16>().unwrap_or(4);
-                                if err_num >= 4 {
-                                    redis_set(&redis_pool, &redis_key, "0", 0)
-                                        .await
-                                        .unwrap_or_default();
-                                } else if err_num != 0 {
-                                    redis_set(&redis_pool, &redis_key, "0", 0)
-                                        .await
-                                        .unwrap_or_default();
-                                }
-                            }
-                            None => {
-                                redis_set(&redis_pool, &redis_key, "0", 0)
-                                    .await
-                                    .unwrap_or_default();
-                            }
-                        }
-                    } else {
-                        let num = redis_get(&redis_pool, &redis_key)
+                        };
+                        let num = bili_runtime
+                            .redis_get(&redis_key)
                             .await
                             .unwrap_or("0".to_string())
                             .as_str()
                             .parse::<u32>()
                             .unwrap();
                         if num == 4 {
-                            redis_set(&redis_pool, &redis_key, "1", 0)
-                                .await
-                                .unwrap_or_default();
+                            bili_runtime.redis_set(&redis_key, "1", 0).await
                         } else {
-                            redis_set(&redis_pool, &redis_key, &(num + 1).to_string(), 0)
+                            bili_runtime
+                                .redis_set(&redis_key, &(num + 1).to_string(), 0)
                                 .await
-                                .unwrap_or_default();
+                        }
+                    };
+                }
+                Ok(())
+            }
+            HealthTask::HealthReport(value) => {
+                if config.report_open {
+                    let area_num_vec = ["", "01", "02", "03", "04"];
+                    let area_num;
+                    let redis_key = match &value {
+                        HealthReportType::Playurl(value) => {
+                            area_num = area_num_vec[value.area_num as usize];
+                            ["01", area_num, "13", "01"].concat()
+                        }
+                        HealthReportType::Search(value) => {
+                            area_num = area_num_vec[value.area_num as usize];
+                            ["02", area_num, "13", "01"].concat()
+                        }
+                        HealthReportType::ThSeason(value) => {
+                            area_num = area_num_vec[value.area_num as usize];
+                            ["04", area_num, "13", "01"].concat()
+                        }
+                        HealthReportType::Others(_) => {
+                            send_report(redis_pool, report_config, &value)
+                                .await
+                                .unwrap();
+                            return Ok(());
+                        }
+                    };
+                    // println!("DEBUG: HealthReport {redis_key}");
+                    let is_available = value.is_available();
+                    if is_available {
+                        match bili_runtime.redis_get(&redis_key).await {
+                            Some(value) => {
+                                let err_num = value.parse::<u16>().unwrap_or(4);
+                                if err_num >= 4 {
+                                    bili_runtime.redis_set(&redis_key, "0", 0).await
+                                } else if err_num != 0 {
+                                    bili_runtime.redis_set(&redis_key, "0", 0).await
+                                }
+                            }
+                            None => bili_runtime.redis_set(&redis_key, "0", 0).await,
+                        }
+                    } else {
+                        let num = bili_runtime
+                            .redis_get(&redis_key)
+                            .await
+                            .unwrap_or("0".to_string())
+                            .as_str()
+                            .parse::<u32>()
+                            .unwrap();
+                        if num == 4 {
+                            let area_num = area_num.parse::<u8>().unwrap_or(2);
+                            let req_type = match &value {
+                                HealthReportType::Playurl(_) => {
+                                    ReqType::Playurl(Area::new(area_num), true)
+                                }
+                                HealthReportType::Search(_) => {
+                                    ReqType::Search(Area::new(area_num), true)
+                                }
+                                HealthReportType::ThSeason(_) => ReqType::ThSeason,
+                                HealthReportType::Others(value) => ReqType::Other(
+                                    value.upstream_reply.proxy_open,
+                                    value.upstream_reply.proxy_url.clone(),
+                                ),
+                            };
+                            // 超过四次请求失败即检测
+                            if check_proxy_health(area_num, req_type, bili_runtime).await {
+                                bili_runtime.redis_set(&redis_key, "0", 0).await;
+                                return Ok(())
+                            } else {
+                                bili_runtime.redis_set(&redis_key, "1", 0).await
+                            }
+                            
+                        } else {
+                            bili_runtime
+                                .redis_set(&redis_key, &(num + 1).to_string(), 0)
+                                .await
                         }
                     }
                     send_report(&redis_pool, &report_config, &value).await
@@ -257,7 +298,7 @@ pub async fn background_task_run(
                     "{}{}{}{}",
                     ep_area_data[0], ep_area_data[1], ep_area_data[2], ep_area_data[3],
                 );
-                let _ = redis_set(&redis_pool, &key, &ep_area_data, 0).await;
+                let _ = bili_runtime.redis_set(&key, &ep_area_data, 0).await;
                 Ok(())
             }
         },
