@@ -1,6 +1,6 @@
 use actix_files::Files;
 use actix_governor::{Governor, GovernorConfigBuilder};
-use actix_web::http::header::{ContentType};
+use actix_web::http::header::ContentType;
 use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use async_channel::{Receiver, Sender};
 use biliroaming_rust_server::mods::background_tasks::*;
@@ -15,6 +15,7 @@ use biliroaming_rust_server::mods::types::{BackgroundTaskType, BiliConfig, BiliR
 use deadpool_redis::{Config, Pool, Runtime};
 use futures::join;
 use lazy_static::lazy_static;
+use log::{debug, error, info};
 use std::fs;
 use std::sync::Arc;
 
@@ -131,11 +132,28 @@ lazy_static! {
         .unwrap();
     pub static ref CHANNEL: (Sender<BackgroundTaskType>, Receiver<BackgroundTaskType>) =
         async_channel::bounded(120);
-    pub static ref BILISENDER:Arc<Sender<BackgroundTaskType>> = Arc::new(CHANNEL.0.clone());
+    pub static ref BILISENDER: Arc<Sender<BackgroundTaskType>> = Arc::new(CHANNEL.0.clone());
 }
 
 fn main() -> std::io::Result<()> {
-    println!("你好喵~");
+    // init log
+    use chrono::Local;
+    use std::io::Write;
+
+    let env = env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info");
+    env_logger::Builder::from_env(env)
+        .format(|buf, record| {
+            writeln!(
+                buf,
+                "[{}][{:>5}] {}",
+                Local::now().format("%Y-%m-%d %H:%M:%S"),
+                buf.default_styled_level(record.level()),
+                &record.args()
+            )
+        })
+        .init();
+
+    info!("你好喵~");
     ctrlc::set_handler(move || {
         //目前来看这个已经没用了,但以防万一卡死,还是留着好了
         println!("\n已关闭 biliroaming_rust_server");
@@ -177,20 +195,16 @@ fn main() -> std::io::Result<()> {
             let receive_data = match r.recv().await {
                 Ok(it) => it,
                 _ => {
-                    //println!("[Debug] failed to receive data");
+                    debug!("[Channel] failed to receive data");
                     break;
                 }
             };
-            let bili_runtime = BiliRuntime::new(
-                &*SERVER_CONFIG,
-                &*REDIS_POOL,
-                &*BILISENDER,
-            );
+            let bili_runtime = BiliRuntime::new(&*SERVER_CONFIG, &*REDIS_POOL, &*BILISENDER);
             //println!("[Debug] r:{}",r.len());
             tokio::spawn(async move {
                 match background_task_run(receive_data, &bili_runtime).await {
                     Ok(_) => (),
-                    Err(value) => println!("{value}"),
+                    Err(value) => error!("{value}"),
                 };
             });
         }

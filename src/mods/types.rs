@@ -231,7 +231,7 @@ pub enum ReqType {
     ThSeason,
     ThSubtitle,
     Accesskey,
-    Other(bool, String)
+    Other(bool, String),
 }
 impl ReqType {
     pub fn get_api<'config>(&self, config: &'config BiliConfig) -> &'config str {
@@ -299,10 +299,11 @@ impl ReqType {
 }
 
 pub enum CacheType<'cache_type> {
-    Playurl(PlayurlParams<'cache_type>, &'cache_type str),
+    Playurl(PlayurlParams<'cache_type>, bool),
+    ThSeason(&'cache_type str),
+    ThSubtitle(&'cache_type str),
     EpArea(&'cache_type str),
     EpVipInfo(&'cache_type str),
-    EpInfo(&'cache_type str), // not implemented
     UserInfo(&'cache_type str, u64),
     UserCerInfo(&'cache_type str, u64),
 }
@@ -316,15 +317,38 @@ impl<'cache_type> CacheType<'cache_type> {
     pub fn gen_key(&self) -> Vec<String> {
         let mut keys = vec![];
         match self {
-            CacheType::Playurl(_, _) => todo!(),
+            CacheType::Playurl(_params, _need_redis_key) => {
+                // playurl缓存比较特殊, 不在一起处理了
+                unimplemented!()
+            }
+            CacheType::ThSeason(ep_id) => {
+                let mut key = String::with_capacity(16);
+                key.push_str("e");
+                key.push_str(ep_id);
+                key += "41201";
+                keys.push(key);
+            }
+            CacheType::ThSubtitle(season_id) => {
+                let mut key = String::with_capacity(16);
+                key.push_str("s");
+                key.push_str(season_id);
+                key += "41001";
+                keys.push(key);
+            }
             CacheType::EpArea(ep_id) => {
                 let mut key = String::with_capacity(16);
+                key.push_str("e");
                 key.push_str(ep_id);
                 key += "1401";
                 keys.push(key);
             }
-            CacheType::EpVipInfo(_) => todo!(),
-            CacheType::EpInfo(_) => todo!(),
+            CacheType::EpVipInfo(ep_id) => {
+                let mut key = String::with_capacity(64);
+                key.push_str("e");
+                key.push_str(ep_id);
+                key += "150101";
+                keys.push(key);
+            }
             CacheType::UserInfo(access_key, uid) => {
                 let mut key = String::with_capacity(64);
                 key.push_str("a");

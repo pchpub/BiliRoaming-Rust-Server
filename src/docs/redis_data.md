@@ -28,7 +28,7 @@
     + ep_area 14
     + ep_info 15
       + need_vip 01
-      + title 02
-      + season_id 03
+      + title 02 // not used
+      + season_id 03 not_used
 + 版本 ：用于处理版本更新后导致的格式变更
     + now 01

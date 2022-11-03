@@ -3,11 +3,12 @@ use super::health::*;
 use super::push::send_report;
 use super::request::async_getwebpage;
 use super::types::{
-    Area, BackgroundTaskType, BiliRuntime, CacheTask, HealthReportType, HealthTask, PlayurlParams,
-    PlayurlParamsStatic, ReqType,
+    Area, BackgroundTaskType, BiliRuntime, CacheTask, HealthReportType, HealthTask,
+    PlayurlParams, PlayurlParamsStatic, ReqType,
 };
 use super::upstream_res::*;
 use super::user_info::{get_blacklist_info, get_user_info};
+use log::{debug, trace};
 use serde_json::json;
 
 /*
@@ -18,6 +19,11 @@ pub async fn update_cached_playurl_background(
     params: &PlayurlParams<'_>,
     bili_runtime: &BiliRuntime<'_>,
 ) {
+    trace!(
+        "[BACKGROUND TASK] AREA {} | EP {} -> Accept Playurl Cache Refresh Task...",
+        params.area.to_ascii_uppercase(),
+        params.ep_id
+    );
     let background_task_data =
         BackgroundTaskType::CacheTask(CacheTask::PlayurlCacheRefresh(PlayurlParamsStatic {
             access_key: params.access_key.to_string(),
@@ -43,6 +49,11 @@ pub async fn update_area_cache_background(
     params: &PlayurlParams<'_>,
     bili_runtime: &BiliRuntime<'_>,
 ) {
+    trace!(
+        "[BACKGROUND TASK] AREA {} | EP {} -> Accept Area Cache Refresh Task...",
+        params.area.to_ascii_uppercase(),
+        params.ep_id
+    );
     let background_task_data = BackgroundTaskType::CacheTask(CacheTask::EpAreaCacheRefresh(
         params.ep_id.to_owned(),
         params.access_key.to_owned(),
@@ -54,10 +65,22 @@ pub async fn update_cached_user_info_background(
     access_key: String,
     bili_runtime: &BiliRuntime<'_>,
 ) {
+    trace!(
+        "[BACKGROUND TASK] AK {access_key} -> Accept UserInfo Cache Refresh Task..."
+    );
     let background_task_data =
         BackgroundTaskType::CacheTask(CacheTask::UserInfoCacheRefresh(access_key));
     bili_runtime.send_task(background_task_data).await
 }
+
+// pub async fn update_cached_ep_vip_status_background(
+//     force_update: bool,
+//     bili_runtime: &BiliRuntime<'_>,
+// ) {
+//     let background_task_data =
+//         BackgroundTaskType::CacheTask(CacheTask::EpInfoCacheRefresh(force_update, ep_info_vec));
+//     bili_runtime.send_task(background_task_data).await
+// }
 
 pub async fn background_task_run(
     task: BackgroundTaskType,
@@ -125,7 +148,7 @@ pub async fn background_task_run(
                             return Ok(());
                         }
                     };
-                    // println!("DEBUG: HealthReport {redis_key}");
+                    debug!("[BACKGROUND TASK] HealthReport redis_key: {redis_key}");
                     let is_available = value.is_available();
                     if is_available {
                         match bili_runtime.redis_get(&redis_key).await {
@@ -136,7 +159,7 @@ pub async fn background_task_run(
                                 } else if err_num != 0 {
                                     bili_runtime.redis_set(&redis_key, "0", 0).await
                                 } else {
-                                    return Ok(())
+                                    return Ok(());
                                 }
                             }
                             None => bili_runtime.redis_set(&redis_key, "0", 0).await,
@@ -167,11 +190,10 @@ pub async fn background_task_run(
                             // 超过四次请求失败即检测
                             if check_proxy_health(area_num, req_type, bili_runtime).await {
                                 bili_runtime.redis_set(&redis_key, "0", 0).await;
-                                return Ok(())
+                                return Ok(());
                             } else {
                                 bili_runtime.redis_set(&redis_key, "1", 0).await
                             }
-                            
                         } else {
                             bili_runtime
                                 .redis_set(&redis_key, &(num + 1).to_string(), 0)
@@ -209,19 +231,19 @@ pub async fn background_task_run(
                     )),
                 }
             }
-            CacheTask::EpInfoCacheRefresh(force_update, ep_info_vec) => {
-                let _new_ep_info_vec = if force_update {
-                    let ep_id = ep_info_vec[0].ep_id;
-                    if let Ok((_, value)) =
-                        get_upstream_bili_ep_info(&format!("{ep_id}"), false, "").await
-                    {
-                        value
-                    } else {
-                        return Err("[Background Task] ep info cache refresh failed".to_string());
-                    }
-                } else {
-                    ep_info_vec
-                };
+            CacheTask::EpInfoCacheRefresh(_force_update, _ep_info_vec) => {
+                // let _new_ep_info_vec = if force_update {
+                //     let ep_id = ep_info_vec[0].ep_id;
+                //     if let Ok((_, value)) =
+                //         get_upstream_bili_ep_info(&format!("{ep_id}"), false, "").await
+                //     {
+                //         value
+                //     } else {
+                //         return Err("[Background Task] ep info cache refresh failed".to_string());
+                //     }
+                // } else {
+                //     ep_info_vec
+                // };
                 // TODO TOFIX
                 // for ep_info in new_ep_info_vec {
                 //     let redis_pool_cl = Arc::clone(&redis_pool);
@@ -232,7 +254,7 @@ pub async fn background_task_run(
                 Ok(())
             }
             CacheTask::ProactivePlayurlCacheRefresh => {
-                todo!()
+                unimplemented!()
             }
             CacheTask::EpAreaCacheRefresh(ep_id, access_key) => {
                 // only for area cn, hk, tw, area th not intend to support

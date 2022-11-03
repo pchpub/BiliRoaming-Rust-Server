@@ -26,6 +26,8 @@ actix-governor = "0.3.2"
 governor = "0.4.2"
 urlencoding = "2.1.2"
 lazy_static = "1.4.0"
+log = "0.4"
+env_logger = "0.9"
 
 [profile.fast]
 inherits = "release"

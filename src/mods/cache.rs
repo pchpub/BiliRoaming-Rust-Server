@@ -1,9 +1,8 @@
 use super::background_tasks::{update_area_cache_background, update_cached_playurl_background};
 use super::ep_info::get_ep_need_vip;
-use super::request::{redis_get, redis_set};
 use super::types::*;
 use chrono::prelude::*;
-use deadpool_redis::Pool;
+use log::debug;
 use qstring::QString;
 
 /*
@@ -98,6 +97,13 @@ pub async fn update_area_cache(
             value[..area_num - 1].to_owned() + "1" + &value[area_num..]
         }
     };
+    debug!(
+        "[UPDATE_CACHE] AREA {} | EP {} -> is available: {}. New area cache data: {}",
+        params.area.to_ascii_uppercase(),
+        params.ep_id,
+        is_available,
+        new_value
+    );
     bili_runtime.update_cache(&cache_type, &new_value, 0).await;
 }
 
@@ -183,6 +189,13 @@ pub async fn update_user_info_cache(new_user_info: &UserInfo, bili_runtime: &Bil
     //     expire_time,
     // )
     // .await
+    debug!(
+        "[UPDATE_CACHE] UID {} | AK {} -> is VIP: {}. New user_info cache data: {}",
+        new_user_info.uid,
+        new_user_info.access_key,
+        new_user_info.is_vip(),
+        value
+    );
     bili_runtime
         .update_cache(&CacheType::UserInfo(access_key, uid), &value, expire_time)
         .await;
@@ -211,45 +224,25 @@ pub async fn get_cached_blacklist_info(
     //turn to ver 02
     let uid = &user_info.uid;
     let access_key = &user_info.access_key;
-    if *uid != 0 {
-        match bili_runtime.redis_get(&format!("{uid}20602")).await {
-            Some(value) => {
-                match serde_json::from_str(&value) {
-                    Ok(value) => Some(value),
-                    Err(_) => None,
-                }
-                // Some(serde_json::from_str(&value).unwrap())
+    let cache_type = CacheType::UserCerInfo(access_key, *uid);
+    if let Some(cached_value) = bili_runtime.get_cache(&cache_type).await {
+        match serde_json::from_str(&cached_value) {
+            Ok(user_cer_info) => {
+                let user_cer_info: UserCerinfo = user_cer_info;
+                debug!(
+                    "[GET_CACHE][UserCerInfo] UID {} | AK {} -> white {} black {} ban_until {}",
+                    user_info.uid,
+                    user_info.access_key,
+                    user_cer_info.white,
+                    user_cer_info.black,
+                    user_cer_info.ban_until
+                );
+                Some(user_cer_info)
             }
-            None => {
-                if access_key.len() == 0 {
-                    return None;
-                };
-                match bili_runtime.redis_get(&format!("a{access_key}20602")).await {
-                    Some(value) => {
-                        match serde_json::from_str(&value) {
-                            Ok(value) => Some(value),
-                            Err(_) => None,
-                        }
-                        // Some(serde_json::from_str(&value).unwrap())
-                    }
-                    None => None,
-                }
-            }
+            Err(_) => None,
         }
     } else {
-        if access_key.len() == 0 {
-            return None;
-        };
-        match bili_runtime.redis_get(&format!("a{access_key}20602")).await {
-            Some(value) => {
-                match serde_json::from_str(&value) {
-                    Ok(value) => Some(value),
-                    Err(_) => None,
-                }
-                // Some(serde_json::from_str(&value).unwrap())
-            }
-            None => None,
-        }
+        None
     }
 }
 /// `update_blacklist_info_cache` 保存UserCerinfo信息到本地缓存
@@ -258,6 +251,14 @@ pub async fn update_blacklist_info_cache(
     new_user_cer_info: &UserCerinfo,
     bili_runtime: &BiliRuntime<'_>,
 ) {
+    debug!(
+        "[UPDATE_CACHE][UserCerInfo] UID {} | AK {} -> white {} black {} ban_until {}",
+        user_info.uid,
+        user_info.access_key,
+        new_user_cer_info.white,
+        new_user_cer_info.black,
+        new_user_cer_info.ban_until
+    );
     let value = new_user_cer_info.to_json();
     let cache_type = CacheType::UserCerInfo(&user_info.access_key, user_info.uid);
     bili_runtime
@@ -289,6 +290,15 @@ pub async fn get_cached_playurl(
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let key = get_playurl_cache_key(params, false, bili_runtime).await;
+    debug!(
+        "[GET_CACHE][Playurl] AREA {} | EP {} -> is_app: {} is_tv: {} is_vip {}: CacheKey: {}",
+        params.area.to_ascii_uppercase(),
+        params.ep_id,
+        params.is_app,
+        params.is_tv,
+        params.is_vip,
+        key
+    );
 
     let need_fresh: bool;
     let return_data;
@@ -350,14 +360,26 @@ pub async fn update_cached_playurl(
         .clone(),
     };
     let value = format!("{}{body_data}", ts + expire_time * 1000);
+    debug!(
+        "[UPDATE_CACHE][Playurl] AREA {} | EP {} -> is_app: {} is_tv: {} is_vip {} expire_time {}: CacheKey: {}",
+        params.area.to_ascii_uppercase(),
+        params.ep_id,
+        params.is_app,
+        params.is_tv,
+        params.is_vip,
+        expire_time,
+        key
+    );
     bili_runtime.redis_set(&key, &value, expire_time).await
 }
 
+#[inline]
 async fn get_playurl_cache_key(
     params: &PlayurlParams<'_>,
     need_redis_key: bool,
     bili_runtime: &BiliRuntime<'_>,
 ) -> String {
+    let mut key = String::with_capacity(32);
     let need_vip = if need_redis_key {
         if let Some(value) = get_ep_need_vip(params.ep_id, bili_runtime).await {
             value as u8
@@ -370,22 +392,30 @@ async fn get_playurl_cache_key(
     };
     match params.is_app {
         true => {
-            if params.is_tv {
-                format!(
-                    "e{}c{}v{need_vip}t1{}0101",
-                    params.ep_id, params.cid, params.area_num
-                )
-            } else {
-                format!(
-                    "e{}c{}v{need_vip}t0{}0101",
-                    params.ep_id, params.cid, params.area_num
-                )
-            }
+            key.push_str("e");
+            key.push_str(params.ep_id);
+            key.push_str("c");
+            key.push_str(params.cid);
+            key.push_str("v");
+            key.push_str(&format!("{}", need_vip));
+            key.push_str("t");
+            key.push_str(&format!("{}", params.is_tv as u8));
+            key.push_str(&format!("0{}", params.area_num));
+            key += "0101";
+            key
         }
-        false => format!(
-            "e{}c{}v{need_vip}t0{}0701",
-            params.ep_id, params.cid, params.area_num
-        ),
+        false => {
+            key.push_str("e");
+            key.push_str(params.ep_id);
+            key.push_str("c");
+            key.push_str(params.cid);
+            key.push_str("v");
+            key.push_str(&format!("{}", need_vip));
+            key.push_str("t0");
+            key.push_str(&format!("0{}", params.area_num));
+            key += "0701";
+            key
+        }
     }
 }
 
@@ -505,9 +535,11 @@ pub async fn get_cached_th_season(
 ) -> Result<String, ()> {
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
-    let key = format!("s{}41001", season_id);
     let redis_get_data: String;
-    match bili_runtime.redis_get(&key).await {
+    match bili_runtime
+        .get_cache(&CacheType::ThSeason(season_id))
+        .await
+    {
         Some(value) => {
             let redis_get_data_expire_time = &value[..13].parse::<u64>().unwrap();
             if redis_get_data_expire_time > &ts {
@@ -525,13 +557,14 @@ pub async fn get_cached_th_season(
 pub async fn update_th_season_cache(season_id: &str, data: &str, bili_runtime: &BiliRuntime<'_>) {
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
-    let key = format!("s{}41001", season_id);
     let expire_time = match bili_runtime.config.cache.get(&"season".to_string()) {
         Some(value) => value,
         None => &1800,
     };
     let value = format!("{}{data}", ts + expire_time * 1000);
-    bili_runtime.redis_set(&key, &value, *expire_time).await;
+    bili_runtime
+        .update_cache(&CacheType::ThSeason(season_id), &value, *expire_time)
+        .await;
 }
 
 /*
@@ -544,8 +577,10 @@ pub async fn get_cached_th_subtitle(
 ) -> Result<String, bool> {
     let dt = Local::now();
     let ts = dt.timestamp() as u64;
-    let key = format!("e{}41201", params.ep_id);
-    match bili_runtime.redis_get(&key).await {
+    match bili_runtime
+        .get_cache(&&CacheType::ThSubtitle(params.ep_id))
+        .await
+    {
         Some(value) => {
             if &value[..13].parse::<u64>().unwrap() < &(ts * 1000) {
                 Err(true)
@@ -564,77 +599,9 @@ pub async fn update_th_subtitle_cache(
 ) {
     let dt = Local::now();
     let ts = dt.timestamp() as u64;
-    let key = format!("e{}41201", params.ep_id);
     let expire_time = bili_runtime.config.cache.get("thsub").unwrap_or(&14400);
     let value = format!("{}{data}", (ts + expire_time) * 1000);
-    bili_runtime.redis_set(&key, &value, *expire_time).await;
+    bili_runtime
+        .update_cache(&CacheType::ThSubtitle(params.ep_id), &value, *expire_time)
+        .await;
 }
-
-/*
-* ep info信息缓存
-*/
-pub async fn get_cached_ep_info(ep_id: &str, redis_pool: &Pool) -> Result<EpInfo, ()> {
-    let key = format!("e{ep_id}1501");
-    // data stucture: {ep_id},{0},{title},{season_id}
-    match redis_get(redis_pool, &key).await {
-        Some(value) => {
-            // 热点路径频繁序列化/反序列化十分耗资源, 确认如此?
-            let ep_info: EpInfo = if let Ok(ep_info) = serde_json::from_str(&value) {
-                ep_info
-            } else {
-                // should not
-                println!(
-                    "[EP INFO] EP {ep_id} | Parsing cached data error: {}",
-                    value
-                );
-                return Err(());
-            };
-            Ok(ep_info)
-        }
-        None => {
-            // println!("[EP INFO] EP {ep_id} | No cached data");
-            Err(())
-        }
-    }
-}
-
-/** `update_cached_ep_info`
- * 在获取上游ep_info后, get_upstream_bili_ep_info同时返回, 通过后台任务刷新ep_info缓存
-*/
-pub async fn update_cached_ep_info_background(
-    force_update: bool,
-    ep_info_vec: Vec<EpInfo>,
-    bili_runtime: &BiliRuntime<'_>,
-) {
-    let background_task_data =
-        BackgroundTaskType::CacheTask(CacheTask::EpInfoCacheRefresh(force_update, ep_info_vec));
-    bili_runtime.send_task(background_task_data).await
-}
-
-pub async fn update_cached_ep_info_redis(ep_info: EpInfo, redis_pool: &Pool) {
-    redis_set(
-        &redis_pool,
-        &format!("e{}150101", ep_info.ep_id),
-        &(ep_info.need_vip as u8).to_string(),
-        0,
-    )
-    .await;
-    redis_set(
-        &redis_pool,
-        &format!("e{}150201", ep_info.ep_id),
-        &ep_info.title,
-        0,
-    )
-    .await;
-    redis_set(
-        &redis_pool,
-        &format!("e{}150301", ep_info.ep_id),
-        &ep_info.season_id.to_string(),
-        0,
-    )
-    .await;
-}
-
-// pub async fn update_cache<T> (key: &str, value: T) -> T {
-
-// }

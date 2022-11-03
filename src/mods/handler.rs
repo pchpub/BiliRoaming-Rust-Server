@@ -15,6 +15,7 @@ use actix_web::http::header::ContentType;
 use actix_web::{HttpRequest, HttpResponse};
 use async_channel::Sender;
 use deadpool_redis::Pool;
+use log::{debug, error, trace, warn};
 use md5;
 use pcre2::bytes::Regex;
 use qstring::QString;
@@ -35,10 +36,10 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
         ..Default::default()
     };
     // detect client ip for log
-    // let client_ip: String = match req.headers().get("X-Real-IP") {
-    //     Some(value) => value.to_str().unwrap().to_owned(),
-    //     None => format!("{:?}", req.peer_addr()),
-    // };
+    let client_ip: String = match req.headers().get("X-Real-IP") {
+        Some(value) => value.to_str().unwrap().to_owned(),
+        None => format!("{:?}", req.peer_addr()),
+    };
 
     // detect req area
     (params.area, params.area_num) = match query.get("area") {
@@ -63,7 +64,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     params.user_agent = match req.headers().get("user-agent") {
         Option::Some(_ua) => req.headers().get("user-agent").unwrap().to_str().unwrap(),
         _ => {
-            // warn!("[PLAYURL] IP {client_ip} | Detect req without UA");
+            warn!("[GET PLAYURL] IP {client_ip} -> Detect req without UA");
             build_response!(EType::ReqUAError)
         }
     };
@@ -89,7 +90,10 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
         _ => "1d8b6e7d45233436",
     };
     if let Err(_) = params.appkey_to_sec() {
-        // error!("[PLAYURL] IP {client_ip} | Detect unknown appkey: {}", params.appkey);
+        error!(
+            "[GET PLAYURL] IP {client_ip} -> Detect unknown appkey: {}",
+            params.appkey
+        );
         build_response!("-412", "未知设备");
     };
 
@@ -179,6 +183,14 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
         Ok(value) => {
             if let Some(value) = value {
                 (params.is_vip, resigned_access_key) = (value.0, value.1);
+                trace!(
+                    "[GET PLAYURL] IP {client_ip} | UID {} | AREA {} | EP {} -> Use Resigned UserInfo: AK {} isVIP {}",
+                    user_info.uid,
+                    params.area.to_ascii_uppercase(),
+                    params.ep_id,
+                    &resigned_access_key,
+                    params.is_vip
+                );
                 params.access_key = &resigned_access_key;
             }
         }
@@ -188,13 +200,34 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     // get area cache
     if config.area_cache_open && !(params.ep_id == "") {
         if let Some(area) = get_cached_ep_area(&params, &bili_runtime).await {
+            trace!(
+                "[GET PLAYURL] IP {client_ip} | UID {} | AREA {} | EP {} -> Use Cached Area: AREA_NUM {}",
+                user_info.uid,
+                params.area.to_ascii_uppercase(),
+                params.ep_id,
+                area.num()
+            );
             params.area_num = area.num();
             params.init_params(area);
         }
     }
 
+    trace!(
+        "[GET PLAYURL] IP {client_ip} | UID {} | AREA {} | EP {} -> REQ TRACE",
+        user_info.uid,
+        params.area.to_ascii_uppercase(),
+        params.ep_id
+    );
     let resp = match get_cached_playurl(&params, &bili_runtime).await {
-        Ok(data) => Ok(data),
+        Ok(data) => {
+            debug!(
+                "[GET PLAYURL] IP {client_ip} | UID {} | AREA {} | EP {} -> Serve from cache",
+                user_info.uid,
+                params.area.to_ascii_uppercase(),
+                params.ep_id
+            );
+            Ok(data)
+        }
         Err(_) => get_upstream_bili_playurl(&mut params, &user_info, &bili_runtime).await,
     };
     build_result_response!(resp);
@@ -213,10 +246,10 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         ..Default::default()
     };
     // detect client ip for log
-    // let client_ip: String = match req.headers().get("X-Real-IP") {
-    //     Some(value) => value.to_str().unwrap().to_owned(),
-    //     None => format!("{:?}", req.peer_addr()),
-    // };
+    let client_ip: String = match req.headers().get("X-Real-IP") {
+        Some(value) => value.to_str().unwrap().to_owned(),
+        None => format!("{:?}", req.peer_addr()),
+    };
 
     // detect req area
     (params.area, params.area_num) = match query.get("area") {
@@ -241,7 +274,7 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
     params.user_agent = match req.headers().get("user-agent") {
         Option::Some(_ua) => req.headers().get("user-agent").unwrap().to_str().unwrap(),
         _ => {
-            // warn!("[SEARCH] IP {client_ip} | Detect req without UA");
+            warn!("[GET SEARCH] IP {client_ip} | Detect req without UA");
             build_response!(EType::ReqUAError)
         }
     };
@@ -267,7 +300,10 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         _ => "1d8b6e7d45233436",
     };
     if let Err(_) = params.appkey_to_sec() {
-        // error!("[SEARCH] IP {client_ip} | Detect unknown appkey: {}", params.appkey);
+        error!(
+            "[GET SEARCH] IP {client_ip} | Detect unknown appkey: {}",
+            params.appkey
+        );
         build_response!(-412, "未知设备");
     };
 
@@ -332,7 +368,7 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
     };
 
     //为了记录accesskey to uid
-    if is_app && (!is_th) {
+    let uid = if is_app && (!is_th) {
         match get_user_info(
             params.access_key,
             params.appkey,
@@ -347,10 +383,13 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
                 get_blacklist_info(&value, &bili_runtime)
                     .await
                     .unwrap_or(false);
+                value.uid
             }
-            Err(_) => (), // allow blacklist user to search
-        };
-    }
+            Err(_) => 0, // allow blacklist user to search
+        }
+    } else {
+        0
+    };
 
     let host = match req.headers().get("Host") {
         Some(host) => host.to_str().unwrap(),
@@ -360,6 +399,12 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         },
     };
 
+    trace!(
+        "[GET SEARCH] IP {client_ip} | UID {} | AREA {} | KEYWORD {} -> REQ TRACE",
+        uid,
+        params.area.to_ascii_uppercase(),
+        params.keyword
+    );
     let mut body_data_json: serde_json::Value =
         match get_upstream_bili_search(&params, &query, &bili_runtime).await {
             Ok(value) => {
@@ -439,16 +484,16 @@ pub async fn handle_th_season_request(
         ..Default::default()
     };
     // detect client ip for log
-    // let client_ip: String = match req.headers().get("X-Real-IP") {
-    //     Some(value) => value.to_str().unwrap().to_owned(),
-    //     None => format!("{:?}", req.peer_addr()),
-    // };
+    let client_ip: String = match req.headers().get("X-Real-IP") {
+        Some(value) => value.to_str().unwrap().to_owned(),
+        None => format!("{:?}", req.peer_addr()),
+    };
 
     // detect req UA
     params.user_agent = match req.headers().get("user-agent") {
         Option::Some(_ua) => req.headers().get("user-agent").unwrap().to_str().unwrap(),
         _ => {
-            // warn!("[TH SEASON] IP {client_ip} | Detect req without UA");
+            warn!("[GET TH_SEASON] IP {client_ip} | Detect req without UA");
             build_response!(EType::ReqUAError)
         }
     };
@@ -501,8 +546,18 @@ pub async fn handle_th_season_request(
 
     params.build = query.get("build").unwrap_or("1080003");
 
+    trace!(
+        "[GET TH_SEASON] IP {client_ip} | AREA TH | SID {} -> REQ TRACE",
+        params.season_id
+    );
     let resp = match get_cached_th_season(params.season_id, &bili_runtime).await {
-        Ok(value) => Ok(value),
+        Ok(value) => {
+            debug!(
+                "[GET TH_SEASON] IP {client_ip} | AREA TH | SID {} -> Serve from cache",
+                params.season_id
+            );
+            Ok(value)
+        }
         Err(_) => get_upstream_bili_season(&params, &bili_runtime).await,
     };
     build_result_response!(resp);
@@ -520,16 +575,16 @@ pub async fn handle_th_subtitle_request(req: &HttpRequest, _: bool, _: bool) -> 
     };
     params.init_params(Area::Th);
     // detect client ip for log
-    // let client_ip: String = match req.headers().get("X-Real-IP") {
-    //     Some(value) => value.to_str().unwrap().to_owned(),
-    //     None => format!("{:?}", req.peer_addr()),
-    // };
+    let client_ip: String = match req.headers().get("X-Real-IP") {
+        Some(value) => value.to_str().unwrap().to_owned(),
+        None => format!("{:?}", req.peer_addr()),
+    };
 
     // detect req UA
     params.user_agent = match req.headers().get("user-agent") {
         Option::Some(_ua) => req.headers().get("user-agent").unwrap().to_str().unwrap(),
         _ => {
-            // warn!("[TH SUBTITLE] IP {client_ip} | Detect req without UA");
+            warn!("[GET TH_SUBTITLE] IP {client_ip} | Detect req without UA");
             build_response!(EType::ReqUAError)
         }
     };
@@ -539,8 +594,18 @@ pub async fn handle_th_subtitle_request(req: &HttpRequest, _: bool, _: bool) -> 
         _ => "",
     };
 
+    trace!(
+        "[GET TH_SUBTITLE] IP {client_ip} | AREA TH | EP {} -> Req trace",
+        params.ep_id
+    );
     let resp = match get_cached_th_subtitle(&params, &bili_runtime).await {
-        Ok(value) => Ok(value),
+        Ok(value) => {
+            debug!(
+                "[GET TH_SUBTITLE] IP {client_ip} | AREA TH | EP {} -> Serve from cache",
+                params.ep_id
+            );
+            Ok(value)
+        }
         Err(is_expired) => {
             if is_expired {
                 get_upstream_bili_subtitle(&params, query_string, &bili_runtime).await
@@ -615,7 +680,7 @@ pub async fn errorurl_reg(url: &str) -> Option<u8> {
     } else {
         return None;
     };
-    //println!("{:?}",caps);
+    trace!("[ERRORURL_REG] {:?}", caps);
     let mut res_url: &str = "";
     let mut index = 1;
     while index <= 8 {
