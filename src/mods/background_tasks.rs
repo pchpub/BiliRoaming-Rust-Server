@@ -126,7 +126,7 @@ pub async fn background_task_run(
             }
             HealthTask::HealthReport(value) => {
                 if config.report_open {
-                    let area_num_vec = ["", "01", "02", "03", "04"];
+                    let area_num_vec = ["", "1", "2", "3", "4"];
                     let area_num;
                     let redis_key = match &value {
                         HealthReportType::Playurl(value) => {

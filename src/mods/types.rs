@@ -322,7 +322,7 @@ impl<'cache_type> CacheType<'cache_type> {
                 let mut key = String::with_capacity(32);
                 // not safe, 1 + 48 = 49, num 1's ascii...
                 let area_num_str =
-                    unsafe { String::from_utf8_unchecked(vec![48, params.area_num + 48]) };
+                    unsafe { String::from_utf8_unchecked(vec![params.area_num + 48]) };
                 let is_tv_str = unsafe { String::from_utf8_unchecked(vec![params.area_num + 48]) };
                 let user_is_vip_str = unsafe { String::from_utf8_unchecked(vec![params.is_vip as u8 + 48]) };
                 match params.is_app {
@@ -704,7 +704,8 @@ impl HealthData {
                 // link: https://t.me/biliroaming_chat/1231065
                 //       https://t.me/biliroaming_chat/1231113
             }
-            -404 => false,
+            // -404除非EP弄错或者东南亚区域的ep, 否则不可能出现吧... 暂且认为是健康的
+            -404 => true,
             _ => false,
         }
     }
