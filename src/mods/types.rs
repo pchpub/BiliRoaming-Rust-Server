@@ -323,7 +323,7 @@ impl<'cache_type> CacheType<'cache_type> {
                 // not safe, 1 + 48 = 49, num 1's ascii...
                 let area_num_str =
                     unsafe { String::from_utf8_unchecked(vec![params.area_num + 48]) };
-                let is_tv_str = unsafe { String::from_utf8_unchecked(vec![params.area_num + 48]) };
+                let is_tv_str = unsafe { String::from_utf8_unchecked(vec![params.is_tv as u8 + 48]) };
                 let user_is_vip_str = unsafe { String::from_utf8_unchecked(vec![params.is_vip as u8 + 48]) };
                 match params.is_app {
                     true => {

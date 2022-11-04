@@ -67,6 +67,7 @@ pub fn check_playurl_need_vip(
     }
 }
 
+#[inline]
 pub fn remove_parameters_playurl(
     playurl_type: &PlayurlType,
     data: &mut serde_json::Value,
