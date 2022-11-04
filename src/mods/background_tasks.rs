@@ -1,10 +1,11 @@
 use super::cache::update_cached_playurl;
+use super::ep_info::update_ep_vip_status_cache;
 use super::health::*;
 use super::push::send_report;
 use super::request::async_getwebpage;
 use super::types::{
     Area, BackgroundTaskType, BiliRuntime, CacheTask, CacheType, HealthReportType, HealthTask,
-    PlayurlParams, PlayurlParamsStatic, ReqType,
+    PlayurlParams, PlayurlParamsStatic, ReqType, EpInfo,
 };
 use super::upstream_res::*;
 use super::user_info::{get_blacklist_info, get_user_info};
@@ -45,7 +46,7 @@ pub async fn update_cached_playurl_background(
     bili_runtime.send_task(background_task_data).await
 }
 
-pub async fn update_area_cache_background(
+pub async fn update_cached_area_background(
     params: &PlayurlParams<'_>,
     bili_runtime: &BiliRuntime<'_>,
 ) {
@@ -71,14 +72,15 @@ pub async fn update_cached_user_info_background(
     bili_runtime.send_task(background_task_data).await
 }
 
-// pub async fn update_cached_ep_vip_status_background(
-//     force_update: bool,
-//     bili_runtime: &BiliRuntime<'_>,
-// ) {
-//     let background_task_data =
-//         BackgroundTaskType::CacheTask(CacheTask::EpInfoCacheRefresh(force_update, ep_info_vec));
-//     bili_runtime.send_task(background_task_data).await
-// }
+pub async fn update_cached_ep_vip_status_background(
+    force_update: bool,
+    ep_info_vec: Vec<EpInfo>,
+    bili_runtime: &BiliRuntime<'_>,
+) {
+    let background_task_data =
+        BackgroundTaskType::CacheTask(CacheTask::EpInfoCacheRefresh(force_update, ep_info_vec));
+    bili_runtime.send_task(background_task_data).await
+}
 
 pub async fn background_task_run(
     task: BackgroundTaskType,
@@ -230,7 +232,7 @@ pub async fn background_task_run(
                     )),
                 }
             }
-            CacheTask::EpInfoCacheRefresh(_force_update, _ep_info_vec) => {
+            CacheTask::EpInfoCacheRefresh(_force_update, new_ep_info_vec) => {
                 // let _new_ep_info_vec = if force_update {
                 //     let ep_id = ep_info_vec[0].ep_id;
                 //     if let Ok((_, value)) =
@@ -243,13 +245,9 @@ pub async fn background_task_run(
                 // } else {
                 //     ep_info_vec
                 // };
-                // TODO TOFIX
-                // for ep_info in new_ep_info_vec {
-                //     let redis_pool_cl = Arc::clone(&redis_pool);
-                //     tokio::spawn(async move {
-                //         update_cached_ep_info_redis(ep_info, &redis_pool_cl).await
-                //     });
-                // }
+                for ep_info in new_ep_info_vec {
+                    update_ep_vip_status_cache(&ep_info.ep_id.to_string(), ep_info.need_vip, bili_runtime).await;
+                }
                 Ok(())
             }
             CacheTask::ProactivePlayurlCacheRefresh => {

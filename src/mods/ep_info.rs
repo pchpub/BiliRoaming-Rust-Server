@@ -1,3 +1,4 @@
+use super::background_tasks::update_cached_ep_vip_status_background;
 use super::types::{BiliRuntime, CacheType};
 use super::upstream_res::get_upstream_bili_ep_info;
 use log::debug;
@@ -30,8 +31,9 @@ pub async fn get_ep_need_vip(ep_id: &str, bili_runtime: &BiliRuntime<'_>) -> Opt
         }
         None => {
             match get_upstream_bili_ep_info(ep_id, false, "", bili_runtime).await {
-                Ok((value, _)) => {
-                    update_ep_vip_status_cache(ep_id, value.need_vip, bili_runtime).await;
+                Ok((value, ep_info_vec)) => {
+                    update_cached_ep_vip_status_background(false, ep_info_vec, bili_runtime).await;
+                    // update_ep_vip_status_cache(ep_id, value.need_vip, bili_runtime).await;
                     Some(value.need_vip as u8)
                 }
                 Err(_) => None,

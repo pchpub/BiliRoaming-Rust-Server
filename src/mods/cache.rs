@@ -1,4 +1,4 @@
-use super::background_tasks::{update_area_cache_background, update_cached_playurl_background};
+use super::background_tasks::{update_cached_area_background, update_cached_playurl_background};
 use super::ep_info::get_ep_need_vip;
 use super::types::*;
 use chrono::prelude::*;
@@ -64,14 +64,14 @@ pub async fn get_cached_ep_area(
                     Some(Area::new(req_area_num))
                 }
             } else if ep_area_data[req_area_num as usize - 1] == 2 {
-                update_area_cache_background(params, bili_runtime).await;
+                update_cached_area_background(params, bili_runtime).await;
                 None
             } else {
                 None
             }
         }
     } else {
-        update_area_cache_background(params, bili_runtime).await;
+        update_cached_area_background(params, bili_runtime).await;
         None
     }
 }
