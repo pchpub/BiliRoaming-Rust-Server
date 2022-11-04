@@ -1419,6 +1419,15 @@ impl Area {
             Area::Th => 4,
         }
     }
+
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            Area::Cn => "cn",
+            Area::Hk => "hk",
+            Area::Tw => "tw",
+            Area::Th => "th",
+        }
+    }
 }
 
 /*

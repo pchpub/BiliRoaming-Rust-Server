@@ -1,5 +1,6 @@
 use curl::easy::{Easy, List};
 use deadpool_redis::{redis::cmd, Pool};
+use log::{debug, error};
 use std::fs::OpenOptions;
 use std::io::Read;
 use std::path::Path;
@@ -18,8 +19,7 @@ pub fn getwebpage(
     proxy_url: String,
     user_agent: String,
     cookie: String,
-) -> Result<String, bool>
-{
+) -> Result<String, bool> {
     let mut data = Vec::new();
     let mut handle = Easy::new();
     handle.url(&url).unwrap();
@@ -52,10 +52,7 @@ pub fn getwebpage(
         match transfer.perform() {
             Ok(()) => (),
             Err(value) => {
-                println!(
-                    "[GET WEBPAGE] PROXY {proxy_open}:{proxy_url} | ERROR -> {}",
-                    value
-                );
+                debug!("[GET WEBPAGE] PROXY {proxy_open} | {proxy_url} -> ERROR: {value}",);
                 return Err(true);
             }
         }
@@ -78,8 +75,7 @@ pub async fn async_getwebpage(
     proxy_url: &str,
     user_agent: &str,
     cookie: &str,
-) -> Result<String, EType>
-{
+) -> Result<String, EType> {
     let url = url.to_owned();
     let proxy_open = proxy_open.to_owned();
     let proxy_url = proxy_url.to_owned();
@@ -88,11 +84,13 @@ pub async fn async_getwebpage(
     match spawn_blocking(move || getwebpage(url, proxy_open, proxy_url, user_agent, cookie)).await {
         Ok(value) => match value {
             Ok(value) => return Ok(value),
-            Err(is_network_problem) => if is_network_problem {
-                return Err(EType::ServerNetworkError("上游错误"))
-            } else {
-                return Err(EType::ServerGeneral)
-            },
+            Err(is_network_problem) => {
+                if is_network_problem {
+                    return Err(EType::ServerNetworkError("上游错误"));
+                } else {
+                    return Err(EType::ServerGeneral);
+                }
+            }
         },
         _ => return Err(EType::ServerGeneral),
     }
@@ -150,10 +148,7 @@ pub fn postwebpage(
         match transfer.perform() {
             Ok(()) => (),
             Err(value) => {
-                println!(
-                    "[POST WEBPAGE] PROXY {proxy_open}:{proxy_url} | ERROR -> {}",
-                    value
-                );
+                debug!("[POST WEBPAGE] PROXY {proxy_open} | {proxy_url} -> ERROR: {value}");
                 return Err(true);
             }
         }
@@ -182,16 +177,17 @@ pub async fn async_postwebpage(
     let proxy_open = proxy_open.to_owned();
     let proxy_url = proxy_url.to_owned();
     let user_agent = user_agent.to_owned();
-    match spawn_blocking(move || postwebpage(url, content, proxy_open, proxy_url, user_agent))
-        .await
+    match spawn_blocking(move || postwebpage(url, content, proxy_open, proxy_url, user_agent)).await
     {
         Ok(value) => match value {
             Ok(value) => return Ok(value),
-            Err(is_network_problem) => if is_network_problem {
-                return Err(EType::ServerNetworkError("上游错误"))
-            } else {
-                return Err(EType::ServerGeneral)
-            },
+            Err(is_network_problem) => {
+                if is_network_problem {
+                    return Err(EType::ServerNetworkError("上游错误"));
+                } else {
+                    return Err(EType::ServerGeneral);
+                }
+            }
         },
         _ => return Err(EType::ServerGeneral),
     }
@@ -207,7 +203,7 @@ pub fn download<P: AsRef<Path>>(
     let mut data = if let Ok(value) = OpenOptions::new().write(true).open(file_name.as_ref()) {
         value
     } else {
-        println!("[Error] 无法打开文件,无法自动更新,请检查权限");
+        error!("[Error] 无法打开文件,无法自动更新,请检查权限");
         return Err(());
     };
     //let mut data = Vec::new();
@@ -241,7 +237,7 @@ pub fn download<P: AsRef<Path>>(
         match transfer.perform() {
             Ok(()) => (),
             Err(err) => {
-                println!("[Error] download failed: {}", err);
+                error!("[Error] download failed: {}", err);
                 return Err(());
             }
         }
@@ -260,7 +256,7 @@ pub async fn redis_get(redis: &Pool, key: &str) -> Option<String> {
 }
 
 pub async fn redis_set(redis: &Pool, key: &str, value: &str, expire_time: u64) -> Option<()> {
-    // println!("key:{} value:{}", key,value);
+    // debug!("key:{} value:{}", key,value);
     let mut conn = redis.get().await.unwrap();
     if expire_time != 0 {
         match cmd("SETEX")

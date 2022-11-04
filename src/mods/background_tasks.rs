@@ -3,12 +3,12 @@ use super::health::*;
 use super::push::send_report;
 use super::request::async_getwebpage;
 use super::types::{
-    Area, BackgroundTaskType, BiliRuntime, CacheTask, HealthReportType, HealthTask,
+    Area, BackgroundTaskType, BiliRuntime, CacheTask, CacheType, HealthReportType, HealthTask,
     PlayurlParams, PlayurlParamsStatic, ReqType,
 };
 use super::upstream_res::*;
 use super::user_info::{get_blacklist_info, get_user_info};
-use log::{debug, trace};
+use log::{debug, error, trace, info};
 use serde_json::json;
 
 /*
@@ -65,9 +65,7 @@ pub async fn update_cached_user_info_background(
     access_key: String,
     bili_runtime: &BiliRuntime<'_>,
 ) {
-    trace!(
-        "[BACKGROUND TASK] AK {access_key} -> Accept UserInfo Cache Refresh Task..."
-    );
+    trace!("[BACKGROUND TASK] AK {access_key} -> Accept UserInfo Cache Refresh Task...");
     let background_task_data =
         BackgroundTaskType::CacheTask(CacheTask::UserInfoCacheRefresh(access_key));
     bili_runtime.send_task(background_task_data).await
@@ -216,9 +214,9 @@ pub async fn background_task_run(
                 match get_user_info(&access_key, appkey, appsec, user_agent, true, &bili_runtime).await {
                     Ok(new_user_info) => match get_blacklist_info(&new_user_info, bili_runtime).await {
                         Ok(_) => Ok(()),
-                        Err(value) => Err(format!("[Background Task] UID {} | Refreshing blacklist info failed, ErrMsg: {}", new_user_info.uid, value.to_string())),
+                        Err(value) => Err(format!("[BACKGROUND TASK] UID {} | Refreshing blacklist info failed, ErrMsg: {}", new_user_info.uid, value.to_string())),
                     },
-                    Err(value) => Err(format!("[Background Task] ACCESS_KEY {} | Refreshing blacklist info failed, ErrMsg: {}", access_key, value.to_string())),
+                    Err(value) => Err(format!("[BACKGROUND TASK] ACCESS_KEY {} | Refreshing blacklist info failed, ErrMsg: {}", access_key, value.to_string())),
                 }
             }
             CacheTask::PlayurlCacheRefresh(params) => {
@@ -228,7 +226,7 @@ pub async fn background_task_run(
                         Ok(())
                     }
                     Err(value) => Err(format!(
-                        "[Background Task] | Playurl cache refresh failed, ErrMsg: {value}"
+                        "[BACKGROUND TASK] | Playurl cache refresh failed, ErrMsg: {value}"
                     )),
                 }
             }
@@ -240,7 +238,7 @@ pub async fn background_task_run(
                 //     {
                 //         value
                 //     } else {
-                //         return Err("[Background Task] ep info cache refresh failed".to_string());
+                //         return Err("[BACKGROUND TASK] ep info cache refresh failed".to_string());
                 //     }
                 // } else {
                 //     ep_info_vec
@@ -267,6 +265,11 @@ pub async fn background_task_run(
                 let area_to_check = [
                     (
                         format!("{bili_user_status_api}?access_key={access_key}&ep_id={ep_id}"),
+                        config.cn_proxy_playurl_open,
+                        &config.cn_proxy_playurl_url,
+                    ),
+                    (
+                        format!("{bili_user_status_api}?access_key={access_key}&ep_id={ep_id}"),
                         config.hk_proxy_playurl_open,
                         &config.hk_proxy_playurl_url,
                     ),
@@ -275,14 +278,9 @@ pub async fn background_task_run(
                         config.tw_proxy_playurl_open,
                         &config.tw_proxy_playurl_url,
                     ),
-                    (
-                        format!("{bili_user_status_api}?access_key={access_key}&ep_id={ep_id}"),
-                        config.cn_proxy_playurl_open,
-                        &config.cn_proxy_playurl_url,
-                    ),
                 ];
                 let mut area_num: u8 = 0;
-                let mut ep_area_data: [u8; 4] = [2, 2, 2, 2];
+                let mut ep_area_data: [&str; 4] = ["2", "2", "2", "2"];
                 for item in area_to_check {
                     area_num += 1;
                     let (url, proxy_open, proxy_url) = item;
@@ -291,39 +289,43 @@ pub async fn background_task_run(
                                 let json_result = serde_json::from_str(&value)
                                     .unwrap_or(json!({"code": -2333, "message": ""}));
                                 let code = json_result["code"]
-                                    .as_str()
-                                    .unwrap_or("233")
-                                    .parse::<i64>()
-                                    .unwrap_or(233);
+                                    .as_i64()
+                                    .unwrap_or(-2333);
                                 match code {
                                     0 => {
                                         let result = json_result.get("result").unwrap();
                                         if result["area_limit"].as_i64().unwrap() != 0 {
-                                            ep_area_data[(area_num - 1) as usize] = 1;
+                                            ep_area_data[(area_num - 1) as usize] = "1";
                                         } else {
-                                            ep_area_data[(area_num - 1) as usize] = 0;
+                                            ep_area_data[3 as usize] = "1";
+                                            ep_area_data[(area_num - 1) as usize] = "0";
                                         }
                                     }
+                                    -404 => {
+                                        // 东南亚区贼恶心...
+                                        info!("[BACKGROUND TASK] EP {ep_id} | PROXY_OPEN {proxy_open} | PROXY_URL {proxy_url} -> Check EP available zone -404: maybe zone th");
+                                        ep_area_data[(area_num - 1) as usize] = "1";
+                                        ep_area_data[3 as usize] = "0";
+                                    }
                                     -2333 => {
-                                        println!("Check EP {ep_id} available zone using proxy {proxy_open}-{proxy_url} failed -> Json Parsing Error: {value}");
+                                        error!("[BACKGROUND TASK] EP {ep_id} | PROXY_OPEN {proxy_open} | PROXY_URL {proxy_url} -> Check EP available zone failed: Json Parsing Error: {value}");
                                         continue;
                                     }
                                     _ => {
-                                        ep_area_data[(area_num - 1) as usize] = 1;
-                                        println!("Check EP {ep_id} available zone using proxy {proxy_open}-{proxy_url} failed -> Unknown Error Code {code}: {value}");
+                                        ep_area_data[(area_num - 1) as usize] = "1";
+                                        error!("[BACKGROUND TASK] EP {ep_id} | PROXY_OPEN {proxy_open} | PROXY_URL {proxy_url} -> Check EP available zone failed: Unknown Error Code {code}: {value}");
                                         continue;
                                     }
                                 }
                             }
-                            Err(_) => println!("Check EP {ep_id} available zone using proxy {proxy_open}-{proxy_url} failed -> Network Error"),
+                            Err(_) => error!("[BACKGROUND TASK] EP {ep_id} | PROXY_OPEN {proxy_open} | PROXY_URL {proxy_url} -> Check EP available zone failed: Network Error"),
                         }
                 }
-                let key = format!("e{ep_id}1401");
-                let ep_area_data = &format!(
-                    "{}{}{}{}",
-                    ep_area_data[0], ep_area_data[1], ep_area_data[2], ep_area_data[3],
-                );
-                let _ = bili_runtime.redis_set(&key, &ep_area_data, 0).await;
+                let ep_area_data = ep_area_data.concat();
+                debug!("[BACKGROUND TASK] EP {ep_id} | Check EP available zone finished: {ep_area_data}");
+                bili_runtime
+                    .update_cache(&CacheType::EpArea(&ep_id), &ep_area_data, 0)
+                    .await;
                 Ok(())
             }
         },
