@@ -318,14 +318,13 @@ impl<'cache_type> CacheType<'cache_type> {
     pub fn gen_key(&self) -> Vec<String> {
         let mut keys = vec![];
         match self {
-            CacheType::Playurl(params, need_vip) => {
+            CacheType::Playurl(params, ep_need_vip) => {
                 let mut key = String::with_capacity(32);
-                let need_vip = *need_vip as u8;
                 // not safe, 1 + 48 = 49, num 1's ascii...
-                let need_vip_str = unsafe { String::from_utf8_unchecked(vec![need_vip + 48]) };
                 let area_num_str =
                     unsafe { String::from_utf8_unchecked(vec![48, params.area_num + 48]) };
                 let is_tv_str = unsafe { String::from_utf8_unchecked(vec![params.area_num + 48]) };
+                let user_is_vip_str = unsafe { String::from_utf8_unchecked(vec![params.is_vip as u8 + 48]) };
                 match params.is_app {
                     true => {
                         key.push_str("e");
@@ -333,7 +332,7 @@ impl<'cache_type> CacheType<'cache_type> {
                         key.push_str("c");
                         key.push_str(params.cid);
                         key.push_str("v");
-                        key.push_str(&need_vip_str);
+                        key.push_str(&user_is_vip_str);
                         key.push_str("t");
                         key.push_str(&is_tv_str);
                         key.push_str(&area_num_str);
@@ -345,13 +344,44 @@ impl<'cache_type> CacheType<'cache_type> {
                         key.push_str("c");
                         key.push_str(params.cid);
                         key.push_str("v");
-                        key.push_str(&need_vip_str);
+                        key.push_str(&user_is_vip_str);
                         key.push_str("t0");
                         key.push_str(&area_num_str);
                         key += "0701";
                     }
                 };
                 keys.push(key);
+                // 若不是带会员专享, ep_need_vip == false, 就给non-vip也存上一份
+                if !*ep_need_vip && params.is_vip {
+                    let mut key = String::with_capacity(32);
+                    let ep_need_vip_str = unsafe { String::from_utf8_unchecked(vec![*ep_need_vip as u8 + 48]) };
+                    match params.is_app {
+                        true => {
+                            key.push_str("e");
+                            key.push_str(params.ep_id);
+                            key.push_str("c");
+                            key.push_str(params.cid);
+                            key.push_str("v");
+                            key.push_str(&ep_need_vip_str);
+                            key.push_str("t");
+                            key.push_str(&is_tv_str);
+                            key.push_str(&area_num_str);
+                            key += "0101";
+                        }
+                        false => {
+                            key.push_str("e");
+                            key.push_str(params.ep_id);
+                            key.push_str("c");
+                            key.push_str(params.cid);
+                            key.push_str("v");
+                            key.push_str(&ep_need_vip_str);
+                            key.push_str("t0");
+                            key.push_str(&area_num_str);
+                            key += "0701";
+                        }
+                    };
+                    keys.push(key);
+                }
             }
             CacheType::ThSeason(ep_id) => {
                 let mut key = String::with_capacity(16);
@@ -752,21 +782,21 @@ impl HealthReportType {
                 } else {
                     None
                 }
-            },
+            }
             HealthReportType::Search(value) => {
                 if value.is_custom {
                     Some(&value.custom_message)
                 } else {
                     None
                 }
-            },
+            }
             HealthReportType::ThSeason(value) => {
                 if value.is_custom {
                     Some(&value.custom_message)
                 } else {
                     None
                 }
-            },
+            }
             HealthReportType::Others(_) => None,
         }
     }

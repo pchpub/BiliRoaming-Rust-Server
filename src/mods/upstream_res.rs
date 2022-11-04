@@ -1041,13 +1041,14 @@ pub async fn get_upstream_bili_ep_info(
     // 获取番剧信息
     // 1 season_id for later use
     // 2 ep need vip
-    fn parse_data(value: String, ep_id: &str) -> Result<(EpInfo, Vec<EpInfo>), ()> {
+    fn parse_data(value: String, ep_id: &str) -> Result<(EpInfo, Vec<EpInfo>), i64> {
         let value_json = serde_json::from_str(&value).unwrap_or(serde_json::json!({"code":-2333}));
         let mut ep_info_vec: Vec<EpInfo> = vec![];
         let mut current_ep_info: EpInfo = EpInfo {
             ..Default::default()
         };
-        if value_json["code"].as_i64().unwrap_or(-2333) == 0 {
+        let upstream_code = value_json["code"].as_i64().unwrap_or(-2333);
+        if upstream_code == 0 {
             let result_json = &value_json["result"];
             let series_title = result_json["series_title"]
                 .as_str()
@@ -1088,7 +1089,7 @@ pub async fn get_upstream_bili_ep_info(
             }
             Ok((current_ep_info, ep_info_vec))
         } else {
-            return Err(());
+            return Err(upstream_code);
         }
     }
     let bili_hidden_season_api =
@@ -1106,13 +1107,27 @@ pub async fn get_upstream_bili_ep_info(
     {
         Ok(value) => match parse_data(value, ep_id) {
             Ok(value) => Ok(value),
-            Err(_) => {
+            Err(upstream_code_hidden) => {
                 match async_getwebpage(&bili_season_api, proxy_open, proxy_url, user_agent, "")
                     .await
                 {
                     Ok(value) => match parse_data(value, ep_id) {
                         Ok(value) => Ok(value),
-                        Err(_) => Err(()),
+                        Err(upstream_code) => {
+                            if upstream_code_hidden == -404 && upstream_code == -404 {
+                                // both -404 means zone th
+                                Ok((
+                                    EpInfo {
+                                        need_vip: false,
+                                        ..Default::default()
+                                    },
+                                    vec![],
+                                ))
+                            } else {
+                                error!("[GET EP_INFO] EP {ep_id} -> 获取番剧信息失败: 上游问题 E {upstream_code_hidden}/{upstream_code}");
+                                Err(())
+                            }
+                        }
                     },
                     Err(_) => {
                         report_health(
@@ -1137,7 +1152,38 @@ pub async fn get_upstream_bili_ep_info(
                 }
             }
         },
-        Err(_) => Err(()),
+        Err(_) => {
+            // hidden_bili_season_api failed then try bili_season_api
+            match async_getwebpage(&bili_season_api, proxy_open, proxy_url, user_agent, "").await {
+                Ok(value) => match parse_data(value, ep_id) {
+                    Ok(value) => Ok(value),
+                    Err(upstream_code) => {
+                        error!("[GET EP_INFO] EP {ep_id} -> 获取番剧信息失败: 上游问题 E -500/{upstream_code}");
+                        Err(())
+                    }
+                },
+                Err(_) => {
+                    report_health(
+                        HealthReportType::Others(HealthData {
+                            area_num: 0,
+                            is_200_ok: false,
+                            upstream_reply: UpstreamReply {
+                                proxy_open,
+                                proxy_url: proxy_url.to_string(),
+                                ..Default::default()
+                            },
+                            is_custom: true,
+                            custom_message: String::from(
+                                "[GET EP_INFO] 获取番剧信息失败! 网络问题!",
+                            ),
+                        }),
+                        bili_runtime,
+                    )
+                    .await;
+                    Err(())
+                }
+            }
+        }
     }
 }
 

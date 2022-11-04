@@ -292,14 +292,21 @@ pub async fn get_cached_playurl(
     let cache_type = CacheType::Playurl(params, params.is_vip);
     let need_fresh: bool;
     let return_data;
-    let cached_data = match bili_runtime.get_cache(&cache_type).await {
-        Some(value) => Some(value),
-        None => None,
-    };
+    let cached_data = bili_runtime.get_cache(&cache_type).await;
 
     match cached_data {
         Some(value) => {
             let cached_data_expire_time = &value[..13].parse::<u64>().unwrap();
+            debug!(
+                "[GET PLAYURL][C] AREA {} | EP {} -> is_app: {} is_tv: {} is_vip {} expire_time {} CacheKey: {} 获取缓存成功 ",
+                params.area.to_ascii_uppercase(),
+                params.ep_id,
+                params.is_app,
+                params.is_tv,
+                params.is_vip,
+                cached_data_expire_time,
+                &cache_type.gen_key().join("|")
+            );
             if cached_data_expire_time - 1200000 > ts {
                 need_fresh = false;
                 return_data = value[13..].to_string();
@@ -325,13 +332,19 @@ pub async fn update_cached_playurl(
 ) {
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
-    let need_vip = if let Some(value) = get_ep_need_vip(params.ep_id, bili_runtime).await {
+    let ep_need_vip = if let Some(value) = get_ep_need_vip(params.ep_id, bili_runtime).await {
         value == 1
     } else {
-        // should not
-        params.is_vip
+        if params.is_th {
+            // 此处处理东南亚区会员, 好坏一并缓存罢了
+            // // 不想弄了, 麻烦的一批
+            false
+        } else {
+            // should not
+            params.is_vip
+        }
     };
-    let cache_type = CacheType::Playurl(params, need_vip);
+    let cache_type = CacheType::Playurl(params, ep_need_vip);
 
     let mut body_data_json: serde_json::Value = serde_json::from_str(body_data).unwrap();
     let code = body_data_json["code"].as_i64().unwrap();
@@ -356,19 +369,19 @@ pub async fn update_cached_playurl(
         .clone(),
     };
     let value = format!("{}{body_data}", ts + expire_time * 1000);
+    bili_runtime
+        .update_cache(&cache_type, &value, expire_time)
+        .await;
     debug!(
-        "[UPDATE_CACHE][Playurl] AREA {} | EP {} -> is_app: {} is_tv: {} is_vip {} expire_time {}: CacheKey: {}",
+        "[GET PLAYURL][C] AREA {} | EP {} -> is_app: {} is_tv: {} is_vip {} expire_time {} CacheKey: {} 写入缓存成功",
         params.area.to_ascii_uppercase(),
         params.ep_id,
         params.is_app,
         params.is_tv,
         params.is_vip,
         expire_time,
-        &cache_type.gen_key()[0]
+        &cache_type.gen_key().join("|")
     );
-    bili_runtime
-        .update_cache(&cache_type, &value, expire_time)
-        .await
 }
 
 #[inline]
@@ -494,6 +507,11 @@ pub async fn get_cached_th_season(
         .await
     {
         Some(value) => {
+            debug!(
+                "[GET TH_SEASON][C] AREA TH | SID {} -> CacheKey: {} 获取缓存成功 ",
+                season_id,
+                &CacheType::ThSeason(season_id).gen_key().join("|")
+            );
             let redis_get_data_expire_time = &value[..13].parse::<u64>().unwrap();
             if redis_get_data_expire_time > &ts {
                 // TODO: add manual refresh
@@ -518,6 +536,11 @@ pub async fn update_th_season_cache(season_id: &str, data: &str, bili_runtime: &
     bili_runtime
         .update_cache(&CacheType::ThSeason(season_id), &value, *expire_time)
         .await;
+    debug!(
+        "[GET TH_SEASON][C] AREA TH | SID {} -> CacheKey: {} 写入缓存成功",
+        season_id,
+        &CacheType::ThSeason(season_id).gen_key().join("|")
+    );
 }
 
 /*
@@ -535,6 +558,11 @@ pub async fn get_cached_th_subtitle(
         .await
     {
         Some(value) => {
+            debug!(
+                "[GET TH_SUBTITLE][C] AREA TH | EP {} -> CacheKey: {} 获取缓存成功",
+                params.ep_id,
+                &CacheType::ThSeason(params.ep_id).gen_key().join("|")
+            );
             if &value[..13].parse::<u64>().unwrap() < &(ts * 1000) {
                 Err(true)
             } else {
@@ -557,4 +585,9 @@ pub async fn update_th_subtitle_cache(
     bili_runtime
         .update_cache(&CacheType::ThSubtitle(params.ep_id), &value, *expire_time)
         .await;
+    debug!(
+        "[GET TH_SUBTITLE][C] AREA TH | EP {} -> CacheKey: {} 写入缓存成功",
+        params.ep_id,
+        &CacheType::ThSeason(params.ep_id).gen_key().join("|")
+    );
 }
