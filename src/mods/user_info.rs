@@ -1,10 +1,9 @@
-use crate::mods::cache::update_blacklist_info_cache;
-
-use super::cache::{get_cached_blacklist_info, get_cached_user_info, update_user_info_cache};
+use super::cache::{get_cached_blacklist_info, get_cached_user_info};
 use super::request::{async_getwebpage, async_postwebpage};
 use super::types::{BiliRuntime, EType, PlayurlParams, UserInfo, UserResignInfo};
 use super::upstream_res::{get_upstream_bili_account_info, get_upstream_blacklist_info};
 use chrono::prelude::*;
+use log::{debug, info};
 
 // general
 #[inline]
@@ -22,14 +21,29 @@ pub async fn get_user_info(
             .await
         {
             Ok(value) => {
-                update_user_info_cache(&value, bili_runtime).await;
+                debug!(
+                    "[GET USER_INFO] UID {} | AK {} | U.VIP {} -> Got AK {}'s user info from upstream",
+                    value.uid,
+                    value.access_key,
+                    value.is_vip(),
+                    access_key
+                );
                 Ok(value)
             }
             Err(value) => Err(value),
         }
     } else {
         match get_cached_user_info(access_key, bili_runtime).await {
-            Some(value) => Ok(value),
+            Some(value) => {
+                debug!(
+                    "[GET USER_INFO] UID {} | AK {} | U.VIP {} -> Got AK {}'s user info from cache",
+                    value.uid,
+                    value.access_key,
+                    value.is_vip(),
+                    access_key
+                );
+                Ok(value)
+            }
             None => match get_upstream_bili_account_info(
                 access_key,
                 appkey,
@@ -40,15 +54,23 @@ pub async fn get_user_info(
             .await
             {
                 Ok(value) => {
-                    update_user_info_cache(&value, bili_runtime).await;
+                    debug!(
+                        "[GET USER_INFO] UID {} | AK {} | U.VIP {} -> Got AK {}'s user info from upstream",
+                        value.uid,
+                        value.access_key,
+                        value.is_vip(),
+                        access_key
+                    );
                     Ok(value)
                 }
                 Err(value) => {
+                    let dt = Local::now();
+                    let ts = dt.timestamp_millis() as u64;
                     let user_info = UserInfo {
                         access_key: access_key.to_owned(),
                         uid: 0,
                         vip_expire_time: 0,
-                        expire_time: 0,
+                        expire_time: ts + 30 * 60 * 1000,
                     };
                     match get_blacklist_info(&user_info, bili_runtime).await {
                         Ok(_) => Ok(user_info),
@@ -65,13 +87,12 @@ pub async fn get_blacklist_info(
     user_info: &UserInfo,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<bool, EType> {
-    // fn timestamp_to_time(timestamp: &u64) -> String {
-    //     let dt = Utc
-    //         .timestamp(*timestamp as i64, 0)
-    //         .with_timezone(&FixedOffset::east(8 * 3600));
-    //     dt.format(r#"%Y年%m月%d日 %H:%M解封\n请耐心等待"#)
-    //         .to_string()
-    // }
+    fn timestamp_to_time(timestamp: &u64) -> String {
+        let dt = Utc
+            .timestamp(*timestamp as i64, 0)
+            .with_timezone(&FixedOffset::east(8 * 3600));
+        dt.format(r#"%Y年%m月%d日 %H:%M解封"#).to_string()
+    }
     // let uid = &user_info.uid;
     // let access_key = &user_info.access_key;
     match &bili_runtime.config.blacklist_config {
@@ -83,15 +104,33 @@ pub async fn get_blacklist_info(
             {
                 Some(value) => {
                     if value.1 {
+                        info!(
+                            "[GET USER_CER_INFO] UID {} | AK {} -> 本地白名单内",
+                            user_info.uid, user_info.access_key
+                        );
                         return Ok(true);
                     } else if value.0 {
+                        info!(
+                            "[GET USER_CER_INFO] UID {} | AK {} -> 本地黑名单, 滚",
+                            user_info.uid, user_info.access_key
+                        );
                         return Err(EType::UserBlacklistedError(0));
                     }
                     {
+                        debug!(
+                            "[GET USER_CER_INFO] UID {} | AK {} -> 本地验证通过",
+                            user_info.uid, user_info.access_key
+                        );
                         Ok(false)
                     }
                 }
-                None => Err(EType::UserWhitelistedError),
+                None => {
+                    info!(
+                        "[GET USER_CER_INFO] UID {} | AK {} -> 不在本地白名单, 拦截之",
+                        user_info.uid, user_info.access_key
+                    );
+                    Err(EType::UserWhitelistedError)
+                }
             }
         }
         super::types::BlackListType::OnlyOnlineBlackList(_) => {
@@ -101,10 +140,7 @@ pub async fn get_blacklist_info(
                 Some(value) => {
                     if value.status_expire_time < ts {
                         match get_upstream_blacklist_info(&user_info, &bili_runtime).await {
-                            Ok(value) => {
-                                update_blacklist_info_cache(user_info, &value, bili_runtime).await;
-                                value
-                            }
+                            Ok(value) => value,
                             Err(value) => return Err(value),
                         }
                     } else {
@@ -112,10 +148,7 @@ pub async fn get_blacklist_info(
                     }
                 }
                 None => match get_upstream_blacklist_info(&user_info, &bili_runtime).await {
-                    Ok(value) => {
-                        update_blacklist_info_cache(user_info, &value, bili_runtime).await;
-                        value
-                    }
+                    Ok(value) => value,
                     Err(value) => return Err(value),
                 },
             };
@@ -135,8 +168,16 @@ pub async fn get_blacklist_info(
             {
                 Some(value) => {
                     if value.1 {
+                        info!(
+                            "[GET USER_CER_INFO] UID {} | AK {} -> 本地白名单内",
+                            user_info.uid, user_info.access_key
+                        );
                         return Ok(true);
                     } else if value.0 {
+                        info!(
+                            "[GET USER_CER_INFO] UID {} | AK {} -> 本地黑名单, 滚",
+                            user_info.uid, user_info.access_key
+                        );
                         return Err(EType::UserBlacklistedError(0));
                     } else {
                         ()
@@ -150,10 +191,7 @@ pub async fn get_blacklist_info(
                 Some(value) => {
                     if value.status_expire_time < ts {
                         match get_upstream_blacklist_info(&user_info, &bili_runtime).await {
-                            Ok(value) => {
-                                update_blacklist_info_cache(user_info, &value, bili_runtime).await;
-                                value
-                            }
+                            Ok(value) => value,
                             Err(value) => return Err(value),
                         }
                     } else {
@@ -161,18 +199,29 @@ pub async fn get_blacklist_info(
                     }
                 }
                 None => match get_upstream_blacklist_info(&user_info, &bili_runtime).await {
-                    Ok(value) => {
-                        update_blacklist_info_cache(user_info, &value, bili_runtime).await;
-                        value
-                    }
+                    Ok(value) => value,
                     Err(value) => return Err(value),
                 },
             };
             if data.white {
+                info!(
+                    "[GET USER_CER_INFO] UID {} | AK {} -> 在线白名单, 过期时间: {}",
+                    user_info.uid, user_info.access_key, data.status_expire_time
+                );
                 Ok(true)
             } else if data.black {
+                info!(
+                    "[GET USER_CER_INFO] UID {} | AK {} -> 在线黑名单, {}",
+                    user_info.uid,
+                    user_info.access_key,
+                    timestamp_to_time(&data.status_expire_time)
+                );
                 Err(EType::UserBlacklistedError(data.ban_until as i64))
             } else {
+                debug!(
+                    "[GET USER_CER_INFO] UID {} | AK {} -> 非黑白名单用户",
+                    user_info.uid, user_info.access_key
+                );
                 Ok(false)
             }
         }

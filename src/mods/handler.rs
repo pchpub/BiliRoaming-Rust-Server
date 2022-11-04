@@ -10,12 +10,14 @@ use super::upstream_res::{
     get_upstream_bili_subtitle, get_upstream_resigned_access_key,
 };
 use super::user_info::*;
+use crate::mods::health::report_health;
+use crate::mods::types::{HealthData, HealthReportType};
 use crate::{build_response, build_result_response};
 use actix_web::http::header::ContentType;
 use actix_web::{HttpRequest, HttpResponse};
 use async_channel::Sender;
 use deadpool_redis::Pool;
-use log::{debug, error, trace, warn};
+use log::{debug, error, warn};
 use md5;
 use pcre2::bytes::Regex;
 use qstring::QString;
@@ -94,6 +96,18 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
             "[GET PLAYURL] IP {client_ip} -> Detect unknown appkey: {}",
             params.appkey
         );
+        report_health(
+            HealthReportType::Others(HealthData {
+                is_custom: true,
+                custom_message: format!(
+                    "[GET PLAYURL] IP {client_ip} -> Detect unknown appkey: {}",
+                    params.appkey
+                ),
+                ..Default::default()
+            }),
+            &bili_runtime,
+        )
+        .await;
         build_response!("-412", "未知设备");
     };
 
@@ -119,12 +133,14 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
         Option::Some(key) => {
             let key = key;
             if key.len() == 0 {
+                error!("[GET PLAYURL] IP {client_ip} -> Detect req without access_key");
                 build_response!(EType::UserNotLoginedError);
             } else {
                 key
             }
         }
         _ => {
+            error!("[GET PLAYURL] IP {client_ip} -> Detect req without access_key");
             build_response!(EType::UserNotLoginedError);
         }
     };
@@ -171,6 +187,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
 
     // get user's vip status
     params.is_vip = user_info.is_vip();
+
     // get user's blacklist info
     let white = match get_blacklist_info(&user_info, &bili_runtime).await {
         Ok(value) => value,
@@ -183,7 +200,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
         Ok(value) => {
             if let Some(value) = value {
                 (params.is_vip, resigned_access_key) = (value.0, value.1);
-                trace!(
+                debug!(
                     "[GET PLAYURL] IP {client_ip} | UID {} | AREA {} | EP {} -> Use Resigned UserInfo: AK {} isVIP {}",
                     user_info.uid,
                     params.area.to_ascii_uppercase(),
@@ -200,7 +217,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     // get area cache
     if config.area_cache_open && !(params.ep_id == "") {
         if let Some(area) = get_cached_ep_area(&params, &bili_runtime).await {
-            trace!(
+            debug!(
                 "[GET PLAYURL] IP {client_ip} | UID {} | AREA {} | EP {} -> Use Cached Area: AREA_NUM {}",
                 user_info.uid,
                 params.area.to_ascii_uppercase(),
@@ -209,10 +226,17 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
             );
             params.area_num = area.num();
             params.init_params(area);
+        } else {
+            debug!(
+                "[GET PLAYURL] IP {client_ip} | UID {} | AREA {} | EP {} -> No Cached Area",
+                user_info.uid,
+                params.area.to_ascii_uppercase(),
+                params.ep_id,
+            );
         }
     }
 
-    trace!(
+    debug!(
         "[GET PLAYURL] IP {client_ip} | UID {} | AREA {} | EP {} -> REQ TRACE",
         user_info.uid,
         params.area.to_ascii_uppercase(),
@@ -304,6 +328,18 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
             "[GET SEARCH] IP {client_ip} | Detect unknown appkey: {}",
             params.appkey
         );
+        report_health(
+            HealthReportType::Others(HealthData {
+                is_custom: true,
+                custom_message: format!(
+                    "[GET PLAYURL] IP {client_ip} -> Detect unknown appkey: {}",
+                    params.appkey
+                ),
+                ..Default::default()
+            }),
+            &bili_runtime,
+        )
+        .await;
         build_response!(-412, "未知设备");
     };
 
@@ -399,7 +435,7 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         },
     };
 
-    trace!(
+    debug!(
         "[GET SEARCH] IP {client_ip} | UID {} | AREA {} | KEYWORD {} -> REQ TRACE",
         uid,
         params.area.to_ascii_uppercase(),
@@ -546,7 +582,7 @@ pub async fn handle_th_season_request(
 
     params.build = query.get("build").unwrap_or("1080003");
 
-    trace!(
+    debug!(
         "[GET TH_SEASON] IP {client_ip} | AREA TH | SID {} -> REQ TRACE",
         params.season_id
     );
@@ -594,7 +630,7 @@ pub async fn handle_th_subtitle_request(req: &HttpRequest, _: bool, _: bool) -> 
         _ => "",
     };
 
-    trace!(
+    debug!(
         "[GET TH_SUBTITLE] IP {client_ip} | AREA TH | EP {} -> Req trace",
         params.ep_id
     );
@@ -680,7 +716,7 @@ pub async fn errorurl_reg(url: &str) -> Option<u8> {
     } else {
         return None;
     };
-    trace!("[ERRORURL_REG] {:?}", caps);
+    debug!("[ERRORURL_REG] {:?}", caps);
     let mut res_url: &str = "";
     let mut index = 1;
     while index <= 8 {

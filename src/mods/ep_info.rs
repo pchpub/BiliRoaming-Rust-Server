@@ -30,7 +30,7 @@ pub async fn get_ep_need_vip(ep_id: &str, bili_runtime: &BiliRuntime<'_>) -> Opt
         }
         None => {
             debug!("[GET_CACHE] EP {ep_id} -> No cached EP needVIP data");
-            match get_upstream_bili_ep_info(ep_id, false, "").await {
+            match get_upstream_bili_ep_info(ep_id, false, "", bili_runtime).await {
                 Ok((value, _)) => {
                     debug!(
                         "[GET_CACHE][U] EP {ep_id} -> EP needVIP: {}",

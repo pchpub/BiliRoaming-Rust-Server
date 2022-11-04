@@ -289,20 +289,10 @@ pub async fn get_cached_playurl(
 ) -> Result<String, ()> {
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
-    let key = get_playurl_cache_key(params, false, bili_runtime).await;
-    debug!(
-        "[GET_CACHE][Playurl] AREA {} | EP {} -> is_app: {} is_tv: {} is_vip {}: CacheKey: {}",
-        params.area.to_ascii_uppercase(),
-        params.ep_id,
-        params.is_app,
-        params.is_tv,
-        params.is_vip,
-        key
-    );
-
+    let cache_type = CacheType::Playurl(params, params.is_vip);
     let need_fresh: bool;
     let return_data;
-    let cached_data = match bili_runtime.redis_get(&key).await {
+    let cached_data = match bili_runtime.get_cache(&cache_type).await {
         Some(value) => Some(value),
         None => None,
     };
@@ -335,7 +325,13 @@ pub async fn update_cached_playurl(
 ) {
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
-    let key = get_playurl_cache_key(params, true, bili_runtime).await;
+    let need_vip = if let Some(value) = get_ep_need_vip(params.ep_id, bili_runtime).await {
+        value == 1
+    } else {
+        // should not
+        params.is_vip
+    };
+    let cache_type = CacheType::Playurl(params, need_vip);
 
     let mut body_data_json: serde_json::Value = serde_json::from_str(body_data).unwrap();
     let code = body_data_json["code"].as_i64().unwrap();
@@ -368,57 +364,14 @@ pub async fn update_cached_playurl(
         params.is_tv,
         params.is_vip,
         expire_time,
-        key
+        &cache_type.gen_key()[0]
     );
-    bili_runtime.redis_set(&key, &value, expire_time).await
+    bili_runtime
+        .update_cache(&cache_type, &value, expire_time)
+        .await
 }
 
 #[inline]
-async fn get_playurl_cache_key(
-    params: &PlayurlParams<'_>,
-    need_redis_key: bool,
-    bili_runtime: &BiliRuntime<'_>,
-) -> String {
-    let mut key = String::with_capacity(32);
-    let need_vip = if need_redis_key {
-        if let Some(value) = get_ep_need_vip(params.ep_id, bili_runtime).await {
-            value as u8
-        } else {
-            // should not
-            params.is_vip as u8
-        }
-    } else {
-        params.is_vip as u8
-    };
-    match params.is_app {
-        true => {
-            key.push_str("e");
-            key.push_str(params.ep_id);
-            key.push_str("c");
-            key.push_str(params.cid);
-            key.push_str("v");
-            key.push_str(&format!("{}", need_vip));
-            key.push_str("t");
-            key.push_str(&format!("{}", params.is_tv as u8));
-            key.push_str(&format!("0{}", params.area_num));
-            key += "0101";
-            key
-        }
-        false => {
-            key.push_str("e");
-            key.push_str(params.ep_id);
-            key.push_str("c");
-            key.push_str(params.cid);
-            key.push_str("v");
-            key.push_str(&format!("{}", need_vip));
-            key.push_str("t0");
-            key.push_str(&format!("0{}", params.area_num));
-            key += "0701";
-            key
-        }
-    }
-}
-
 fn get_playurl_deadline(
     playurl_type: PlayurlType,
     data: &mut serde_json::Value,

@@ -141,6 +141,7 @@ pub async fn background_task_run(
                             area_num = area_num_vec[value.area_num as usize];
                             ["04", area_num, "13", "01"].concat()
                         }
+                        // 其他类型留给自定义推送
                         HealthReportType::Others(_) => {
                             send_report(redis_pool, report_config, &value)
                                 .await
@@ -172,7 +173,7 @@ pub async fn background_task_run(
                             .as_str()
                             .parse::<u32>()
                             .unwrap();
-                        if num == 4 {
+                        if num >= 4 {
                             let area_num = area_num.parse::<u8>().unwrap_or(2);
                             let req_type = match &value {
                                 HealthReportType::Playurl(_) => {

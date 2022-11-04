@@ -299,7 +299,7 @@ impl ReqType {
 }
 
 pub enum CacheType<'cache_type> {
-    Playurl(PlayurlParams<'cache_type>, bool),
+    Playurl(&'cache_type PlayurlParams<'cache_type>, bool),
     ThSeason(&'cache_type str),
     ThSubtitle(&'cache_type str),
     EpArea(&'cache_type str),
@@ -314,12 +314,44 @@ impl<'cache_type> CacheType<'cache_type> {
     //         .unwrap()
     // }
     // for better performance
+    #[inline]
     pub fn gen_key(&self) -> Vec<String> {
         let mut keys = vec![];
         match self {
-            CacheType::Playurl(_params, _need_redis_key) => {
-                // playurl缓存比较特殊, 不在一起处理了
-                unimplemented!()
+            CacheType::Playurl(params, need_vip) => {
+                let mut key = String::with_capacity(32);
+                let need_vip = *need_vip as u8;
+                // not safe, 1 + 48 = 49, num 1's ascii...
+                let need_vip_str = unsafe { String::from_utf8_unchecked(vec![need_vip + 48]) };
+                let area_num_str =
+                    unsafe { String::from_utf8_unchecked(vec![48, params.area_num + 48]) };
+                let is_tv_str = unsafe { String::from_utf8_unchecked(vec![params.area_num + 48]) };
+                match params.is_app {
+                    true => {
+                        key.push_str("e");
+                        key.push_str(params.ep_id);
+                        key.push_str("c");
+                        key.push_str(params.cid);
+                        key.push_str("v");
+                        key.push_str(&need_vip_str);
+                        key.push_str("t");
+                        key.push_str(&is_tv_str);
+                        key.push_str(&area_num_str);
+                        key += "0101";
+                    }
+                    false => {
+                        key.push_str("e");
+                        key.push_str(params.ep_id);
+                        key.push_str("c");
+                        key.push_str(params.cid);
+                        key.push_str("v");
+                        key.push_str(&need_vip_str);
+                        key.push_str("t0");
+                        key.push_str(&area_num_str);
+                        key += "0701";
+                    }
+                };
+                keys.push(key);
             }
             CacheType::ThSeason(ep_id) => {
                 let mut key = String::with_capacity(16);
@@ -710,6 +742,32 @@ impl HealthReportType {
             HealthReportType::Search(value) => value.is_available(),
             HealthReportType::ThSeason(value) => value.is_available(),
             HealthReportType::Others(_) => false,
+        }
+    }
+    pub fn additional_msg(&self) -> Option<&String> {
+        match self {
+            HealthReportType::Playurl(value) => {
+                if value.is_custom {
+                    Some(&value.custom_message)
+                } else {
+                    None
+                }
+            },
+            HealthReportType::Search(value) => {
+                if value.is_custom {
+                    Some(&value.custom_message)
+                } else {
+                    None
+                }
+            },
+            HealthReportType::ThSeason(value) => {
+                if value.is_custom {
+                    Some(&value.custom_message)
+                } else {
+                    None
+                }
+            },
+            HealthReportType::Others(_) => None,
         }
     }
 }
@@ -1169,8 +1227,13 @@ impl ReportHealthData {
             _ => {
                 let (area_name, data_type) = health_report_type.incident_attr();
                 let color_char = health_report_type.status_color_char();
+                let additional_msg = if let Some(value) = health_report_type.additional_msg() {
+                    value
+                } else {
+                    ""
+                };
                 format!(
-                    "服务器网络状态有变动!\n大陆 Playurl:              {}\n香港 Playurl:              {}\n台湾 Playurl:              {}\n泰区 Playurl:              {}\n大陆 Search:              {}\n香港 Search:              {}\n台湾 Search:              {}\n泰区 Search:              {}\n泰区 Season:              {}\n\n变动: {} {} -> {}",
+                    "服务器网络状态有变动!\n大陆 Playurl:              {}\n香港 Playurl:              {}\n台湾 Playurl:              {}\n泰区 Playurl:              {}\n大陆 Search:              {}\n香港 Search:              {}\n台湾 Search:              {}\n泰区 Search:              {}\n泰区 Season:              {}\n\n变动: {} {} -> {}\n\n补充信息: \n{}",
                     self.health_cn_playurl,
                     self.health_hk_playurl,
                     self.health_tw_playurl,
@@ -1182,7 +1245,8 @@ impl ReportHealthData {
                     self.health_th_season,
                     area_name,
                     data_type,
-                    color_char
+                    color_char,
+                    additional_msg
                 )
             }
         }
@@ -1192,7 +1256,7 @@ impl ReportHealthData {
             HealthReportType::Others(value) => {
                 format!(
                     "服务器温馨提醒您: {}<br>详细信息:<br>区域代码: {}<br>网络正常: {}<br>代理信息: {}-{}<br>上游返回信息: [{}],{}",
-                    value.custom_message,
+                    value.custom_message.replace("\n", "<br>"),
                     value.area_num,
                     value.is_200_ok,
                     value.upstream_reply.proxy_open,
@@ -1204,8 +1268,13 @@ impl ReportHealthData {
             _ => {
                 let (area_name, data_type) = health_report_type.incident_attr();
                 let color_char = health_report_type.status_color_char();
+                let additional_msg = if let Some(value) = health_report_type.additional_msg() {
+                    value.replace("\n", "<br>")
+                } else {
+                    String::new()
+                };
                 format!(
-                    "服务器网络状态有变动!<br>大陆 Playurl: {}<br>香港 Playurl: {}<br>台湾 Playurl: {}<br>泰区 Playurl: {}<br>大陆 Search: {}<br>香港 Search: {}<br>台湾 Search: {}<br>泰区 Search: {}<br>泰区 Season: {}<br>变动: {} {} -> {}",
+                    "服务器网络状态有变动!<br>大陆 Playurl: {}<br>香港 Playurl: {}<br>台湾 Playurl: {}<br>泰区 Playurl: {}<br>大陆 Search: {}<br>香港 Search: {}<br>台湾 Search: {}<br>泰区 Search: {}<br>泰区 Season: {}<br>变动: {} {} -> {}<br>补充信息: <br>{}",
                     self.health_cn_playurl,
                     self.health_hk_playurl,
                     self.health_tw_playurl,
@@ -1217,7 +1286,8 @@ impl ReportHealthData {
                     self.health_th_season,
                     area_name,
                     data_type,
-                    color_char
+                    color_char,
+                    additional_msg
                 )
             }
         }
