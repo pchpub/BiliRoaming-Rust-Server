@@ -652,12 +652,25 @@ impl std::default::Default for HealthData {
 impl HealthData {
     pub fn init(area: Area, is_200_ok: bool, upstream_reply: UpstreamReply) -> HealthData {
         let area_num = area.num();
-        return HealthData {
+        let mut health_data =  HealthData {
             area_num,
             is_200_ok,
             upstream_reply,
             ..Default::default()
         };
+        health_data.is_custom = !health_data.is_available();
+        if health_data.is_custom {
+            health_data.custom_message = format!(
+                "详细信息:\n区域代码: {}\n网络正常: {}\n代理信息: {}-{}\n上游返回信息: [{}],{}",
+                health_data.area_num,
+                health_data.is_200_ok,
+                health_data.upstream_reply.proxy_open,
+                health_data.upstream_reply.proxy_url,
+                health_data.upstream_reply.code,
+                health_data.upstream_reply.message
+            );
+        }
+        health_data
     }
     pub fn init_custom(area: Area, is_200_ok: bool, custom_message: &str) -> HealthData {
         // custom HealthData only for send custom message
