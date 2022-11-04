@@ -1264,7 +1264,7 @@ impl ReportHealthData {
                     ""
                 };
                 format!(
-                    "服务器网络状态有变动!\n大陆 Playurl:              {}\n香港 Playurl:              {}\n台湾 Playurl:              {}\n泰区 Playurl:              {}\n大陆 Search:              {}\n香港 Search:              {}\n台湾 Search:              {}\n泰区 Search:              {}\n泰区 Season:              {}\n\n变动: {} {} -> {}\n\n补充信息: \n{}",
+                    "服务器网络状态有变动!\n\n大陆 Playurl:              {}\n香港 Playurl:              {}\n台湾 Playurl:              {}\n泰区 Playurl:              {}\n大陆 Search:              {}\n香港 Search:              {}\n台湾 Search:              {}\n泰区 Search:              {}\n泰区 Season:              {}\n\n变动: {} {} -> {}\n\n补充信息: \n{}",
                     self.health_cn_playurl,
                     self.health_hk_playurl,
                     self.health_tw_playurl,
