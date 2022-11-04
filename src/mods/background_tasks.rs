@@ -232,19 +232,20 @@ pub async fn background_task_run(
                     )),
                 }
             }
-            CacheTask::EpInfoCacheRefresh(_force_update, new_ep_info_vec) => {
-                // let _new_ep_info_vec = if force_update {
-                //     let ep_id = ep_info_vec[0].ep_id;
-                //     if let Ok((_, value)) =
-                //         get_upstream_bili_ep_info(&format!("{ep_id}"), false, "").await
-                //     {
-                //         value
-                //     } else {
-                //         return Err("[BACKGROUND TASK] ep info cache refresh failed".to_string());
-                //     }
-                // } else {
-                //     ep_info_vec
-                // };
+            CacheTask::EpInfoCacheRefresh(force_update, ep_info_vec) => {
+                let new_ep_info_vec = if force_update {
+                    // 可能有限免的, 一旦如此则强制清除之
+                    let ep_id = ep_info_vec[0].ep_id;
+                    if let Ok((_, value)) =
+                        get_upstream_bili_ep_info(&format!("{ep_id}"), false, "", bili_runtime).await
+                    {
+                        value
+                    } else {
+                        return Err("[BACKGROUND TASK] EpInfo cache force refresh failed".to_string());
+                    }
+                } else {
+                    ep_info_vec
+                };
                 for ep_info in new_ep_info_vec {
                     update_ep_vip_status_cache(&ep_info.ep_id.to_string(), ep_info.need_vip, bili_runtime).await;
                 }

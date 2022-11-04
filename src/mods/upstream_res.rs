@@ -1,3 +1,5 @@
+use crate::mods::background_tasks::update_cached_ep_vip_status_background;
+
 use super::background_tasks::update_cached_user_info_background;
 use super::cache::{
     update_area_cache, update_blacklist_info_cache, update_cached_playurl, update_th_season_cache,
@@ -450,10 +452,35 @@ pub async fn get_upstream_bili_playurl(
             if value {
                 update_cached_user_info_background(params.access_key.to_string(), bili_runtime)
                     .await;
+                update_cached_ep_vip_status_background(
+                    true,
+                    vec![EpInfo {
+                        ep_id: params.ep_id.parse::<u64>().unwrap_or(233),
+                        ..Default::default()
+                    }],
+                    bili_runtime,
+                )
+                .await;
                 error!(
-                    "[GET PLAYURL][U] UID {} | AK {} | AREA {} | EP {} -> 非大会员用户获取了大会员独享视频",
+                    "[GET PLAYURL][U] UID {} | AK {} | AREA {} | EP {} -> 非大会员用户获取了大会员独享视频, 可能大会员状态变动或限免",
                     user_info.uid, user_info.access_key, params.area.to_ascii_uppercase(), params.ep_id
                 );
+                report_health(
+                    HealthReportType::Playurl(HealthData {
+                        area_num: params.area_num,
+                        is_200_ok: true,
+                        upstream_reply: UpstreamReply {
+                            code,
+                            proxy_open,
+                            proxy_url: proxy_url.to_owned(),
+                            ..Default::default()
+                        },
+                        is_custom: true,
+                        custom_message: format!("[GET PLAYURL][U] EP {} -> 非大会员用户获取了大会员独享视频. 可能限免, 请人工核实...", params.ep_id),
+                    }),
+                    bili_runtime,
+                )
+                .await;
                 // return Err(EType::OtherError(
                 //     -10403,
                 //     "检测到可能刚刚买了带会员, 刷新缓存中, 请稍后重试喵",
