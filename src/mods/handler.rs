@@ -186,7 +186,11 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     };
 
     // get user's vip status
-    params.is_vip = user_info.is_vip();
+    params.is_vip = if params.is_th {
+        false
+    } else {
+        user_info.is_vip()
+    };
 
     // get user's blacklist info
     let white = match get_blacklist_info(&user_info, &bili_runtime).await {
@@ -196,7 +200,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
 
     // resign if needed
     let resigned_access_key;
-    match resign_user_info(white, &params, &bili_runtime).await {
+    match resign_user_info(white, &mut params, &bili_runtime).await {
         Ok(value) => {
             if let Some(value) = value {
                 (params.is_vip, resigned_access_key) = (value.0, value.1);

@@ -115,6 +115,10 @@ pub struct BiliConfig {
     pub resign_pub: HashMap<String, bool>,
     #[serde(default = "default_hashmap_false")]
     pub resign_open: HashMap<String, bool>,
+    #[serde(default = "default_hashmap_string")]
+    pub resign_from_local: HashMap<String, String>, //限制白名单共享带会员的uid
+    #[serde(default = "default_true")]
+    pub resign_from_local_open: bool, //启用后白名单将共享带会员
     #[serde(default = "default_hashmap_false")]
     pub resign_api_policy: HashMap<String, bool>, //启用后assesskey从api获取
     #[serde(default = "default_hashmap_string")]

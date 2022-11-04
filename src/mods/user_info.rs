@@ -3,7 +3,7 @@ use super::request::{async_getwebpage, async_postwebpage};
 use super::types::{BiliRuntime, EType, PlayurlParams, UserInfo, UserResignInfo};
 use super::upstream_res::{get_upstream_bili_account_info, get_upstream_blacklist_info};
 use chrono::prelude::*;
-use log::{debug, info};
+use log::{debug, error, info};
 
 // general
 #[inline]
@@ -230,7 +230,7 @@ pub async fn get_blacklist_info(
 
 pub async fn resign_user_info(
     white: bool,
-    params: &PlayurlParams<'_>,
+    params: &mut PlayurlParams<'_>,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<Option<(bool, String)>, EType> {
     let config = bili_runtime.config;
@@ -247,16 +247,36 @@ pub async fn resign_user_info(
             Ok(None)
         }
     } else {
-        if *config.resign_open.get("4").unwrap_or(&false)
+        // 原来这儿还是.get("4"), 实在看不懂, 这儿应该是area_num, 对应的这个区域是否打开resign吧...
+        if *config
+            .resign_open
+            .get(&params.area_num.to_string())
+            .unwrap_or(&false)
             && (white
                 || *config
                     .resign_pub
                     .get(&params.area_num.to_string())
                     .unwrap_or(&false))
         {
-            (new_access_key, _) = get_resigned_access_key(&4, &params.user_agent, bili_runtime)
-                .await
-                .unwrap_or((params.access_key.to_string(), 1));
+            if config.resign_from_local_open {
+                if let Some(value) = bili_runtime.redis_get("v11101").await {
+                    let user_info: UserInfo = serde_json::from_str(&value).unwrap_or(UserInfo {
+                        access_key: params.access_key.to_owned(),
+                        uid: 0,
+                        vip_expire_time: if params.is_vip {
+                            Local::now().timestamp_millis() as u64 + 24 * 60 * 60 * 1000
+                        } else {
+                            0
+                        },
+                        expire_time: 0,
+                    });
+                    return Ok(Some((user_info.is_vip(), user_info.access_key)));
+                }
+            };
+            (new_access_key, _) =
+                get_resigned_access_key(&params.area_num, &params.user_agent, bili_runtime)
+                    .await
+                    .unwrap_or((params.access_key.to_string(), 1));
             let user_info = match get_user_info(
                 params.access_key,
                 params.appkey,
@@ -311,18 +331,18 @@ pub async fn get_resigned_access_key(
         let data = if let Ok(data) = async_getwebpage(&url, false, "", "", "").await {
             data
         } else {
-            println!("[Error] 从非官方接口处获取accesskey失败");
+            error!("[GET RESIGN] 从非官方接口处获取access_key失败");
             return None;
         };
         let webgetpage_data_json: serde_json::Value = if let Ok(value) = serde_json::from_str(&data)
         {
             value
         } else {
-            println!("[Error] json解析失败: {}", data);
+            error!("[GET RESIGN] json解析失败: {}", data);
             return None;
         };
         if webgetpage_data_json["code"].as_i64().unwrap() != 0 {
-            println!("err3");
+            error!("[GET RESIGN] err3");
             return None;
         }
         let access_key = webgetpage_data_json["access_key"]

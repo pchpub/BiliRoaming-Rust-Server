@@ -63,8 +63,10 @@ pub async fn get_cached_ep_area(
                 } else {
                     Some(Area::new(req_area_num))
                 }
-            } else {
+            } else if ep_area_data[req_area_num as usize - 1] == 2 {
                 update_area_cache_background(params, bili_runtime).await;
+                None
+            } else {
                 None
             }
         }
@@ -202,17 +204,18 @@ pub async fn update_user_info_cache(new_user_info: &UserInfo, bili_runtime: &Bil
     // for health check
     if new_user_info.is_vip() {
         bili_runtime
-            .redis_set("uv11301", &new_user_info.uid.to_string(), 0)
+            .redis_set("uv11301", &new_user_info.uid.to_string(), expire_time)
             .await;
         bili_runtime
-            .redis_set("av11301", &new_user_info.access_key, 0)
+            .redis_set("av11301", &new_user_info.access_key, expire_time)
             .await;
+        bili_runtime.redis_set("v11101", &value, expire_time).await
     } else {
         bili_runtime
-            .redis_set("uv01301", &new_user_info.uid.to_string(), 0)
+            .redis_set("uv01301", &new_user_info.uid.to_string(), expire_time)
             .await;
         bili_runtime
-            .redis_set("av01301", &new_user_info.access_key, 0)
+            .redis_set("av01301", &new_user_info.access_key, expire_time)
             .await;
     }
 }
