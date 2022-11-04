@@ -846,11 +846,14 @@ pub async fn get_upstream_bili_season(
                         serde_json::from_str(&body_data).unwrap();
                     let user_agent = params.user_agent;
                     if config.aid_replace_open {
-                        let len_of_episodes = body_data_json["result"]["modules"][0]["data"]
+                        let len_of_episodes = match body_data_json["result"]["modules"][0]["data"]
                             ["episodes"]
                             .as_array()
-                            .unwrap()
-                            .len();
+                        {
+                            // 不这样做油猴脚本会有问题, 偶尔会panic
+                            Some(value) => value.len(),
+                            None => 0,
+                        };
                         // {
                         //     Some(value) => value.len(),
                         //     None => {
