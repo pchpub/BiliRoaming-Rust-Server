@@ -1935,7 +1935,7 @@ impl EType {
     pub fn to_string(self) -> String {
         match self {
             EType::ServerGeneral => {
-                String::from("{{\"code\":-500,\"message\":\"服务器内部错误\"}}")
+                String::from("{\"code\":-500,\"message\":\"服务器内部错误\"}")
             }
             EType::ServerNetworkError(value) => {
                 format!("{{\"code\":-500,\"message\":\"服务器网络错误: {value}\"}}")
@@ -1944,14 +1944,14 @@ impl EType {
                 format!("{{\"code\":-500,\"message\":\"服务器内部错误: {value}\"}}")
             }
             EType::ServerOnlyVIPError => {
-                String::from("{{\"code\":-10403,\"message\":\"服务器不欢迎您: 大会员专享限制\"}}")
+                String::from("{\"code\":-10403,\"message\":\"服务器不欢迎您: 大会员专享限制\"}")
             }
             EType::ServerFatalError => String::from(
-                "{{\"code\":-412,\"message\":\"服务器被草到风控了... 暂时换个服务器吧...\"}}",
+                "{\"code\":-412,\"message\":\"服务器被草到风控了... 暂时换个服务器吧...\"}",
             ),
             // ErrorType::ReqFreqError(_) => todo!(),
-            EType::ReqSignError => String::from("{{\"code\":-3,\"message\":\"API校验密匙错误\"}}"),
-            EType::ReqUAError => String::from("{{\"code\":-412,\"message\":\"请求被拦截\"}}"),
+            EType::ReqSignError => String::from("{\"code\":-3,\"message\":\"API校验密匙错误\"}"),
+            EType::ReqUAError => String::from("{\"code\":-412,\"message\":\"请求被拦截\"}"),
             EType::UserBlacklistedError(timestamp) => {
                 let dt = Utc
                     .timestamp(
@@ -1967,15 +1967,15 @@ impl EType {
                 format!("{{\"code\":-10403,\"message\":\"服务器不欢迎您: 黑名单限制{tips}\"}}")
             }
             EType::UserWhitelistedError => {
-                String::from("{{\"code\":-10403,\"message\":\"服务器不欢迎您: 白名单限制\"}}")
+                String::from("{\"code\":-10403,\"message\":\"服务器不欢迎您: 白名单限制\"}")
             }
             EType::UserNonVIPError => {
-                String::from("{{\"code\":-10403,\"message\":\"大会员专享限制\"}}")
+                String::from("{\"code\":-10403,\"message\":\"大会员专享限制\"}")
             }
             EType::UserNotLoginedError => {
-                String::from("{{\"code\":-101,\"message\":\"账号未登录\",\"ttl\":1}}")
+                String::from("{\"code\":-101,\"message\":\"账号未登录\",\"ttl\":1}")
             }
-            EType::InvalidReq => String::from("{{\"code\":-412,\"message\":\"请求被拦截\"}}"),
+            EType::InvalidReq => String::from("{\"code\":-412,\"message\":\"请求被拦截\"}"),
             EType::OtherError(err_code, err_msg) => {
                 format!("{{\"code\":{err_code},\"message\":\"其他错误: {err_msg}\"}}")
             }
