@@ -12,12 +12,12 @@ use qstring::QString;
 pub async fn get_cached_ep_area(
     params: &PlayurlParams<'_>,
     bili_runtime: &BiliRuntime<'_>,
-) -> Option<Area> {
+) -> Result<Option<Area>, EType> {
     let ep_id = params.ep_id;
     let req_area_num = params.area_num as u8;
     // let key = format!("e{ep_id}1401");
     let data_raw = bili_runtime.get_cache(&CacheType::EpArea(ep_id)).await;
-    if let Some(value) = data_raw {
+    let result = if let Some(value) = data_raw {
         let mut ep_area_data: [u8; 4] = [2, 2, 2, 2];
         // let mut is_all_available = true;
         for (index, char) in value.char_indices() {
@@ -34,7 +34,7 @@ pub async fn get_cached_ep_area(
                 // }
                 _ => {}
             }
-        };
+        }
         match ep_area_data[req_area_num as usize - 1] {
             0 => {
                 if req_area_num == 3 && ep_area_data[2] == 0 {
@@ -42,31 +42,36 @@ pub async fn get_cached_ep_area(
                 } else {
                     Some(Area::new(req_area_num))
                 }
-            },
+            }
             1 => {
                 if req_area_num != 4 {
                     for (i, item) in ep_area_data.iter().enumerate() {
                         if i < 3 && *item == 0 {
-                            return Some(Area::new(i as u8 + 1 ))
+                            return Ok(Some(Area::new(i as u8 + 1)));
+                        } else if *item == 2 {
+                            update_cached_area_background(params, bili_runtime).await;
+                            return Ok(None)
                         }
                     }
                     // cannot be all 111*
                     update_cached_area_background(params, bili_runtime).await;
+                    return Err(EType::OtherError(-404, "非主站番剧"))
+                } else {
+                    return Err(EType::OtherError(-404, "非东南亚区番剧"))
                 }
-                None
-            },
+            }
             2 => {
                 update_cached_area_background(params, bili_runtime).await;
                 if req_area_num != 4 {
                     for (i, item) in ep_area_data.iter().enumerate() {
                         if i < 3 && *item == 0 {
-                            return Some(Area::new(i as u8 + 1 ))
+                            return Ok(Some(Area::new(i as u8 + 1)));
                         }
                     }
                 }
                 None
-            },
-            _ => None
+            }
+            _ => None,
         }
 
     //     if is_all_available {
@@ -109,7 +114,8 @@ pub async fn get_cached_ep_area(
     } else {
         update_cached_area_background(params, bili_runtime).await;
         None
-    }
+    };
+    Ok(result)
 }
 
 #[inline]

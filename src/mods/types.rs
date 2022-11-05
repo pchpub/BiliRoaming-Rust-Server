@@ -1262,7 +1262,7 @@ impl ReportHealthData {
         match health_report_type {
             HealthReportType::Others(value) => {
                 format!(
-                    "服务器温馨提醒您: {}\n详细信息:\n区域代码: {}\n网络正常: {}\n代理信息: {}-{}\n上游返回信息: [{}],{}",
+                    "服务器温馨提醒您: \n{}\n\n详细信息:\n区域代码: {}\n网络正常: {}\n代理信息: {}-{}\n上游返回信息: [{}],{}",
                     value.custom_message,
                     value.area_num,
                     value.is_200_ok,

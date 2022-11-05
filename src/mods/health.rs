@@ -5,6 +5,7 @@ use super::{
         UpstreamReply,
     },
 };
+use log::debug;
 use serde_json::json;
 use std::collections::HashMap;
 
@@ -76,18 +77,18 @@ pub async fn check_proxy_health(
                     Ok(value) => {
                         if value != 4 {
                             Some(
-                                "Zone {area_num} -> Detect Proxy Area Not Suitable, actual [{value}]"
+                                format!("Zone {area_num} -> Detect Proxy Area Not Suitable, actual [{value}]")
                             )
                         } else {
                             None
                         }
                     }
                     Err(code) => match code {
-                        2333 => Some("Zone {area_num} -> ISP Banned!"),
-                        _ => Some("Zone {area_num} -> Unknown Upstream Error {code}"),
+                        2333 => Some(format!("Zone {area_num} -> ISP Banned!")),
+                        _ => Some(format!("Zone {area_num} -> Unknown Upstream Error {code}")),
                     },
                 } {
-                    println!("[CHECK_PROXY_HEALTH] {value}");
+                    debug!("[CHECK_PROXY_HEALTH] AREA TH | Result -> {value}");
                     let health_report_type = HealthReportType::Others(HealthData {
                         area_num: 0,
                         is_200_ok: false,
@@ -118,18 +119,21 @@ pub async fn check_proxy_health(
                 0 => {
                     let result = json_result.get("result").unwrap();
                     if result["area_limit"].as_i64().unwrap() != 0 {
-                        Some("Zone {area_num} -> Detect Proxy Area Not Suitable")
+                        Some(format!("Zone {area_num} -> Detect Proxy Area Not Suitable"))
                     } else {
                         None
                     }
                 }
-                -2333 => Some("Zone {area_num} -> Parse Json Error: {value}"),
-                _ => Some("Zone {area_num} -> Unknown Error {code}: {value}"),
+                -2333 => Some(format!("Zone {area_num} -> Parse Json Error: {value}")),
+                _ => Some(format!("Zone {area_num} -> Unknown Error {code}: {value}")),
             }
         }
-        Err(_) => Some("Zone {area_num} -> Detect Unavailable Proxy"),
+        Err(_) => Some(format!("Zone {area_num} -> Detect Unavailable Proxy")),
     } {
-        println!("[CHECK_PROXY_HEALTH] {value}");
+        debug!(
+            "[CHECK_PROXY_HEALTH] AREA {} | Result -> {value}",
+            Area::new(area_num).to_str().to_ascii_uppercase()
+        );
         let health_report_type = HealthReportType::Others(HealthData {
             area_num,
             is_200_ok: false,
