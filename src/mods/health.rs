@@ -12,7 +12,7 @@ use std::collections::HashMap;
 /// `report_health` 后台任务: 报告健康信息
 pub async fn report_health(health_report_type: HealthReportType, bili_runtime: &BiliRuntime<'_>) {
     let background_task_data =
-        BackgroundTaskType::HealthTask(HealthTask::HealthReport(health_report_type));
+        BackgroundTaskType::Health(HealthTask::HealthReport(health_report_type));
     bili_runtime.send_task(background_task_data).await;
 }
 
@@ -20,7 +20,7 @@ pub async fn report_health(health_report_type: HealthReportType, bili_runtime: &
 /// - 将检测所有区域的代理可用性
 /// - 仅检测playurl的代理
 pub async fn check_health_background(bili_runtime: &BiliRuntime<'_>) {
-    let background_task_data = BackgroundTaskType::HealthTask(HealthTask::HealthCheck);
+    let background_task_data = BackgroundTaskType::Health(HealthTask::HealthCheck);
     bili_runtime.send_task(background_task_data).await;
 }
 

@@ -61,7 +61,7 @@ pub async fn send_report(
             let (area_name, data_type) = health_report_type.incident_attr();
             let color_char = health_report_type.status_color_char();
             match report_config_custom.method {
-                super::types::ReportRequestMethod::Get => {
+                super::types::ReportConfigCustomRequestMethod::Get => {
                     let url = report_config_custom
                         .build_url(&report_health_data, &area_name, &data_type, &color_char)
                         .unwrap();
@@ -74,7 +74,7 @@ pub async fn send_report(
                         }
                     }
                 }
-                super::types::ReportRequestMethod::Post => {
+                super::types::ReportConfigCustomRequestMethod::Post => {
                     let url = report_config_custom
                         .build_url(&report_health_data, &area_name, &data_type, &color_char)
                         .unwrap();
