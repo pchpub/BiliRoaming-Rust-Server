@@ -327,8 +327,10 @@ impl<'cache_type> CacheType<'cache_type> {
                 // not safe, 1 + 48 = 49, num 1's ascii...
                 let area_num_str =
                     unsafe { String::from_utf8_unchecked(vec![params.area_num + 48]) };
-                let is_tv_str = unsafe { String::from_utf8_unchecked(vec![params.is_tv as u8 + 48]) };
-                let user_is_vip_str = unsafe { String::from_utf8_unchecked(vec![params.is_vip as u8 + 48]) };
+                let is_tv_str =
+                    unsafe { String::from_utf8_unchecked(vec![params.is_tv as u8 + 48]) };
+                let user_is_vip_str =
+                    unsafe { String::from_utf8_unchecked(vec![params.is_vip as u8 + 48]) };
                 match params.is_app {
                     true => {
                         key.push_str("e");
@@ -358,7 +360,8 @@ impl<'cache_type> CacheType<'cache_type> {
                 // 若不是带会员专享, ep_need_vip == false, 就给non-vip也存上一份
                 if !*ep_need_vip && params.is_vip {
                     let mut key = String::with_capacity(32);
-                    let ep_need_vip_str = unsafe { String::from_utf8_unchecked(vec![*ep_need_vip as u8 + 48]) };
+                    let ep_need_vip_str =
+                        unsafe { String::from_utf8_unchecked(vec![*ep_need_vip as u8 + 48]) };
                     match params.is_app {
                         true => {
                             key.push_str("e");
@@ -650,9 +653,14 @@ impl std::default::Default for HealthData {
     }
 }
 impl HealthData {
-    pub fn init(area: Area, is_200_ok: bool, upstream_reply: UpstreamReply) -> HealthData {
+    pub fn init(
+        area: Area,
+        is_200_ok: bool,
+        upstream_reply: UpstreamReply,
+        req_id: &str,
+    ) -> HealthData {
         let area_num = area.num();
-        let mut health_data =  HealthData {
+        let mut health_data = HealthData {
             area_num,
             is_200_ok,
             upstream_reply,
@@ -661,11 +669,12 @@ impl HealthData {
         health_data.is_custom = !health_data.is_available();
         if health_data.is_custom {
             health_data.custom_message = format!(
-                "详细信息:\n区域代码: {}\n网络正常: {}\n代理信息: {}-{}\n上游返回信息: [{}],{}",
+                "详细信息:\n区域代码: {}\n网络正常: {}\n代理信息: {}-{}\n请求资源(EP/SID/KEYWORD): {}\n上游返回信息: CODE {}, Message -> {}",
                 health_data.area_num,
                 health_data.is_200_ok,
                 health_data.upstream_reply.proxy_open,
                 health_data.upstream_reply.proxy_url,
+                req_id,
                 health_data.upstream_reply.code,
                 health_data.upstream_reply.message
             );
@@ -1262,7 +1271,7 @@ impl ReportHealthData {
         match health_report_type {
             HealthReportType::Others(value) => {
                 format!(
-                    "服务器温馨提醒您: \n{}\n\n详细信息:\n区域代码: {}\n网络正常: {}\n代理信息: {}-{}\n上游返回信息: [{}],{}",
+                    "服务器温馨提醒您: \n\n{}\n\n详细信息:\n区域代码: {}\n网络正常: {}\n代理信息: {} {}\n上游返回信息: CODE {}, Message -> {}",
                     value.custom_message,
                     value.area_num,
                     value.is_200_ok,
@@ -1281,7 +1290,7 @@ impl ReportHealthData {
                     ""
                 };
                 format!(
-                    "服务器网络状态有变动!\n\n大陆 Playurl:              {}\n香港 Playurl:              {}\n台湾 Playurl:              {}\n泰区 Playurl:              {}\n大陆 Search:              {}\n香港 Search:              {}\n台湾 Search:              {}\n泰区 Search:              {}\n泰区 Season:              {}\n\n变动: {} {} -> {}\n\n补充信息: \n{}",
+                    "服务器网络状态有变动!\n\n大陆 Playurl:              {}\n香港 Playurl:              {}\n台湾 Playurl:              {}\n泰区 Playurl:              {}\n大陆 Search:              {}\n香港 Search:              {}\n台湾 Search:              {}\n泰区 Search:              {}\n泰区 Season:              {}\n\n变动: {} {} -> {}\n\n{}",
                     self.health_cn_playurl,
                     self.health_hk_playurl,
                     self.health_tw_playurl,
@@ -1303,7 +1312,7 @@ impl ReportHealthData {
         match health_report_type {
             HealthReportType::Others(value) => {
                 format!(
-                    "服务器温馨提醒您: {}<br>详细信息:<br>区域代码: {}<br>网络正常: {}<br>代理信息: {}-{}<br>上游返回信息: [{}],{}",
+                    "服务器温馨提醒您: {}<br>详细信息:<br>区域代码: {}<br>网络正常: {}<br>代理信息: {} {}<br>上游返回信息: CODE {}, Message -> {}",
                     value.custom_message.replace("\n", "<br>"),
                     value.area_num,
                     value.is_200_ok,
@@ -1322,7 +1331,7 @@ impl ReportHealthData {
                     String::new()
                 };
                 format!(
-                    "服务器网络状态有变动!<br>大陆 Playurl: {}<br>香港 Playurl: {}<br>台湾 Playurl: {}<br>泰区 Playurl: {}<br>大陆 Search: {}<br>香港 Search: {}<br>台湾 Search: {}<br>泰区 Search: {}<br>泰区 Season: {}<br>变动: {} {} -> {}<br>补充信息: <br>{}",
+                    "服务器网络状态有变动!<br>大陆 Playurl: {}<br>香港 Playurl: {}<br>台湾 Playurl: {}<br>泰区 Playurl: {}<br>大陆 Search: {}<br>香港 Search: {}<br>台湾 Search: {}<br>泰区 Search: {}<br>泰区 Season: {}<br>变动: {} {} -> {}<br>{}",
                     self.health_cn_playurl,
                     self.health_hk_playurl,
                     self.health_tw_playurl,
@@ -1934,9 +1943,7 @@ pub enum EType {
 impl EType {
     pub fn to_string(self) -> String {
         match self {
-            EType::ServerGeneral => {
-                String::from("{\"code\":-500,\"message\":\"服务器内部错误\"}")
-            }
+            EType::ServerGeneral => String::from("{\"code\":-500,\"message\":\"服务器内部错误\"}"),
             EType::ServerNetworkError(value) => {
                 format!("{{\"code\":-500,\"message\":\"服务器网络错误: {value}\"}}")
             }

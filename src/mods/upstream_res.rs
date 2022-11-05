@@ -197,6 +197,10 @@ pub async fn get_upstream_blacklist_info(
     let dt = Local::now();
     let ts = dt.timestamp() as u64;
     let uid = user_info.uid;
+    if uid == 0 {
+        // 仅当出问题才会有uid=0
+        return Err(EType::ServerGeneral)
+    }
     //let user_cerinfo_str = String::new();
     let user_agent = format!("biliroaming-rust-server/{}", env!("CARGO_PKG_VERSION"));
     let api = match &bili_runtime.config.blacklist_config {
@@ -387,6 +391,7 @@ pub async fn get_upstream_bili_playurl(
                         proxy_url: String::from(proxy_url),
                         ..Default::default()
                     },
+                    params.ep_id
                 )),
                 bili_runtime,
             )
@@ -441,6 +446,7 @@ pub async fn get_upstream_bili_playurl(
                 proxy_open,
                 proxy_url: String::from(proxy_url),
             },
+            params.ep_id
         )),
         bili_runtime,
     )
@@ -591,6 +597,7 @@ pub async fn get_upstream_bili_playurl_background(
                         proxy_url: String::from(proxy_url),
                         ..Default::default()
                     },
+                    &params.ep_id
                 )),
                 bili_runtime,
             )
@@ -737,6 +744,7 @@ pub async fn get_upstream_bili_search(
                         proxy_open,
                         proxy_url: String::from(proxy_url),
                     },
+                    params.keyword
                 )),
                 bili_runtime,
             )
@@ -767,6 +775,7 @@ pub async fn get_upstream_bili_search(
                         proxy_url: String::from(proxy_url),
                         ..Default::default()
                     },
+                    params.keyword
                 )),
                 bili_runtime,
             )
@@ -1033,6 +1042,7 @@ pub async fn get_upstream_bili_season(
                         proxy_url: String::from(proxy_url),
                         ..Default::default()
                     },
+                    params.season_id
                 )),
                 bili_runtime,
             )
@@ -1053,6 +1063,7 @@ pub async fn get_upstream_bili_season(
                         proxy_url: String::from(proxy_url),
                         ..Default::default()
                     },
+                    params.season_id
                 )),
                 bili_runtime,
             )

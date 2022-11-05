@@ -63,20 +63,24 @@ pub async fn get_user_info(
                     );
                     Ok(value)
                 }
-                Err(value) => {
-                    let dt = Local::now();
-                    let ts = dt.timestamp_millis() as u64;
-                    let user_info = UserInfo {
-                        access_key: access_key.to_owned(),
-                        uid: 0,
-                        vip_expire_time: 0,
-                        expire_time: ts + 30 * 60 * 1000,
-                    };
-                    match get_blacklist_info(&user_info, bili_runtime).await {
-                        Ok(_) => Ok(user_info),
-                        Err(_) => Err(value),
+                Err(value) => match value {
+                    // 也不知道为啥有一堆access_key失效了的请求
+                    EType::UserNotLoginedError => Err(value),
+                    _ => {
+                        let dt = Local::now();
+                        let ts = dt.timestamp_millis() as u64;
+                        let user_info = UserInfo {
+                            access_key: access_key.to_owned(),
+                            uid: 0,
+                            vip_expire_time: 0,
+                            expire_time: ts + 30 * 60 * 1000,
+                        };
+                        match get_blacklist_info(&user_info, bili_runtime).await {
+                            Ok(_) => Ok(user_info),
+                            Err(_) => Err(value),
+                        }
                     }
-                }
+                },
             },
         }
     }
