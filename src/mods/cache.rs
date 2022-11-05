@@ -37,8 +37,8 @@ pub async fn get_cached_ep_area(
         }
         match ep_area_data[req_area_num as usize - 1] {
             0 => {
-                if req_area_num == 3 && ep_area_data[2] == 0 {
-                    Some(Area::Tw)
+                if req_area_num == 3 && ep_area_data[1] == 0 {
+                    Some(Area::Hk)
                 } else {
                     Some(Area::new(req_area_num))
                 }
