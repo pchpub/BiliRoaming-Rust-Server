@@ -19,7 +19,7 @@ pub async fn get_cached_ep_area(
     let data_raw = bili_runtime.get_cache(&CacheType::EpArea(ep_id)).await;
     if let Some(value) = data_raw {
         let mut ep_area_data: [u8; 4] = [2, 2, 2, 2];
-        let mut is_all_available = true;
+        // let mut is_all_available = true;
         for (index, char) in value.char_indices() {
             match char {
                 '0' => {
@@ -28,48 +28,84 @@ pub async fn get_cached_ep_area(
                 '1' => {
                     ep_area_data[index] = 1; //非0不正常
                 }
-                '2' => {
-                    // means has area which is never accessed
-                    is_all_available = false;
-                }
+                // '2' => {
+                //     // means has area which is never accessed
+                //     is_all_available = false;
+                // }
                 _ => {}
             }
-        }
-
-        if is_all_available {
-            if req_area_num == 4 && ep_area_data[3] == 0 {
-                Some(Area::Th)
-            } else if ep_area_data[req_area_num as usize - 1] == 0 {
-                Some(Area::new(req_area_num))
-            } else {
-                if ep_area_data[1] == 0 {
-                    Some(Area::Hk)
-                } else if ep_area_data[2] == 0 {
+        };
+        match ep_area_data[req_area_num as usize - 1] {
+            0 => {
+                if req_area_num == 3 && ep_area_data[2] == 0 {
                     Some(Area::Tw)
-                } else if ep_area_data[3] == 0 {
-                    Some(Area::Th)
-                } else if ep_area_data[0] == 0 {
-                    Some(Area::Cn)
-                } else {
-                    None //不这样搞的话可能被攻击时会出大问题
-                }
-            }
-        } else {
-            // here just for area hk priority
-            if ep_area_data[req_area_num as usize - 1] == 0 {
-                // if req_area == tw && hk_is_available
-                if req_area_num == 2 && ep_area_data[1] == 0 {
-                    Some(Area::Hk)
                 } else {
                     Some(Area::new(req_area_num))
                 }
-            } else if ep_area_data[req_area_num as usize - 1] == 2 {
+            },
+            1 => {
+                if req_area_num != 4 {
+                    for (i, item) in ep_area_data.iter().enumerate() {
+                        if i < 3 && *item == 0 {
+                            return Some(Area::new(i as u8 + 1 ))
+                        }
+                    }
+                    // cannot be all 111*
+                    update_cached_area_background(params, bili_runtime).await;
+                }
+                None
+            },
+            2 => {
                 update_cached_area_background(params, bili_runtime).await;
+                if req_area_num != 4 {
+                    for (i, item) in ep_area_data.iter().enumerate() {
+                        if i < 3 && *item == 0 {
+                            return Some(Area::new(i as u8 + 1 ))
+                        }
+                    }
+                }
                 None
-            } else {
-                None
-            }
+            },
+            _ => None
         }
+
+    //     if is_all_available {
+    //         if req_area_num == 4 && ep_area_data[3] == 0 {
+    //             Some(Area::Th)
+    //         } else if ep_area_data[req_area_num as usize - 1] == 0 {
+    //             Some(Area::new(req_area_num))
+    //         } else {
+    //             if ep_area_data[1] == 0 {
+    //                 Some(Area::Hk)
+    //             } else if ep_area_data[2] == 0 {
+    //                 Some(Area::Tw)
+    //             } else if ep_area_data[3] == 0 {
+    //                 Some(Area::Th)
+    //             } else if ep_area_data[0] == 0 {
+    //                 Some(Area::Cn)
+    //             } else {
+    //                 None //不这样搞的话可能被攻击时会出大问题
+    //             }
+    //         }
+    //     } else {
+    //         if req_area_num == 4 && ep_area_data[3] == 1 {
+    //             // fix zone th's playurl struct not eq to normal one
+    //             None
+    //         // here just for area hk priority
+    //         } else if ep_area_data[req_area_num as usize - 1] == 0 {
+    //             // if req_area == tw && hk_is_available
+    //             if req_area_num == 2 && ep_area_data[1] == 0 {
+    //                 Some(Area::Hk)
+    //             } else {
+    //                 Some(Area::new(req_area_num))
+    //             }
+    //         } else if ep_area_data[req_area_num as usize - 1] == 2 {
+    //             update_cached_area_background(params, bili_runtime).await;
+    //             None
+    //         } else {
+    //             None
+    //         }
+    //     }
     } else {
         update_cached_area_background(params, bili_runtime).await;
         None
