@@ -158,7 +158,7 @@ pub async fn background_task_run(
                             Some(health_data) => {
                                 let err_num = health_data.parse::<u16>().unwrap_or(max_num_of_err);
                                 bili_runtime.redis_set(&redis_key, "0", 0).await;
-                                if err_num >= max_num_of_err {
+                                if err_num != 0 {
                                     send_report(&redis_pool, &report_config, &value)
                                         .await
                                         .unwrap_or_default();
