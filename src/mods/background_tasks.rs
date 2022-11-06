@@ -156,15 +156,11 @@ pub async fn background_task_run(
                         match bili_runtime.redis_get(&redis_key).await {
                             Some(health_data) => {
                                 let err_num = health_data.parse::<u16>().unwrap_or(max_num_of_err);
+                                bili_runtime.redis_set(&redis_key, "0", 0).await;
                                 if err_num >= max_num_of_err {
-                                    bili_runtime.redis_set(&redis_key, "0", 0).await;
                                     send_report(&redis_pool, &report_config, &value)
                                         .await
                                         .unwrap_or_default();
-                                } else if err_num != 0 {
-                                    bili_runtime.redis_set(&redis_key, "0", 0).await
-                                } else {
-                                    return Ok(());
                                 }
                             }
                             None => {
@@ -181,7 +177,7 @@ pub async fn background_task_run(
                             .unwrap_or("0".to_string())
                             .as_str()
                             .parse::<u16>()
-                            .unwrap();
+                            .unwrap_or(max_num_of_err);
                         if num_of_err >= max_num_of_err {
                             let area_num = area_num.parse::<u8>().unwrap_or(2);
                             let req_type = match &value {

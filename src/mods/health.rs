@@ -111,10 +111,8 @@ pub async fn check_proxy_health(
             let json_result =
                 serde_json::from_str(&value).unwrap_or(json!({"code": -2333, "message": ""}));
             let code = json_result["code"]
-                .as_str()
-                .unwrap_or("233")
-                .parse::<i64>()
-                .unwrap_or(233);
+                .as_i64()
+                .unwrap_or(-2333);
             match code {
                 0 => {
                     let result = json_result.get("result").unwrap();
