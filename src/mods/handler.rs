@@ -186,7 +186,11 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     };
 
     // get user's vip status
-    params.is_vip = user_info.is_vip();
+    params.is_vip = if params.is_th {
+        false
+    } else {
+        user_info.is_vip()
+    };
 
     // get user's blacklist info
     let white = match get_blacklist_info(&user_info, &bili_runtime).await {
@@ -196,7 +200,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
 
     // resign if needed
     let resigned_access_key;
-    match resign_user_info(white, &params, &bili_runtime).await {
+    match resign_user_info(white, &mut params, &bili_runtime).await {
         Ok(value) => {
             if let Some(value) = value {
                 (params.is_vip, resigned_access_key) = (value.0, value.1);
@@ -216,23 +220,29 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
 
     // get area cache
     if config.area_cache_open && !(params.ep_id == "") {
-        if let Some(area) = get_cached_ep_area(&params, &bili_runtime).await {
-            debug!(
-                "[GET PLAYURL] IP {client_ip} | UID {} | AREA {} | EP {} -> Use Cached Area: AREA_NUM {}",
-                user_info.uid,
-                params.area.to_ascii_uppercase(),
-                params.ep_id,
-                area.num()
-            );
-            params.area_num = area.num();
-            params.init_params(area);
-        } else {
-            debug!(
-                "[GET PLAYURL] IP {client_ip} | UID {} | AREA {} | EP {} -> No Cached Area",
-                user_info.uid,
-                params.area.to_ascii_uppercase(),
-                params.ep_id,
-            );
+        match get_cached_ep_area(&params, &bili_runtime).await {
+            Ok(value) => match value {
+                Some(area) => {
+                    debug!(
+                        "[GET PLAYURL] IP {client_ip} | UID {} | AREA {} | EP {} -> Use Cached Area: AREA_NUM {}",
+                        user_info.uid,
+                        params.area.to_ascii_uppercase(),
+                        params.ep_id,
+                        area.num()
+                    );
+                    params.area_num = area.num();
+                    params.init_params(area);
+                },
+                None => {
+                    debug!(
+                        "[GET PLAYURL] IP {client_ip} | UID {} | AREA {} | EP {} -> No Cached Area",
+                        user_info.uid,
+                        params.area.to_ascii_uppercase(),
+                        params.ep_id,
+                    );
+                }
+            },
+            Err(value) => build_response!(value),
         }
     }
 

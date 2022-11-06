@@ -1,4 +1,4 @@
-use super::background_tasks::{update_area_cache_background, update_cached_playurl_background};
+use super::background_tasks::{update_cached_area_background, update_cached_playurl_background};
 use super::ep_info::get_ep_need_vip;
 use super::types::*;
 use chrono::prelude::*;
@@ -12,14 +12,14 @@ use qstring::QString;
 pub async fn get_cached_ep_area(
     params: &PlayurlParams<'_>,
     bili_runtime: &BiliRuntime<'_>,
-) -> Option<Area> {
+) -> Result<Option<Area>, EType> {
     let ep_id = params.ep_id;
     let req_area_num = params.area_num as u8;
     // let key = format!("e{ep_id}1401");
     let data_raw = bili_runtime.get_cache(&CacheType::EpArea(ep_id)).await;
-    if let Some(value) = data_raw {
+    let result = if let Some(value) = data_raw {
         let mut ep_area_data: [u8; 4] = [2, 2, 2, 2];
-        let mut is_all_available = true;
+        // let mut is_all_available = true;
         for (index, char) in value.char_indices() {
             match char {
                 '0' => {
@@ -28,50 +28,94 @@ pub async fn get_cached_ep_area(
                 '1' => {
                     ep_area_data[index] = 1; //非0不正常
                 }
-                '2' => {
-                    // means has area which is never accessed
-                    is_all_available = false;
-                }
+                // '2' => {
+                //     // means has area which is never accessed
+                //     is_all_available = false;
+                // }
                 _ => {}
             }
         }
-
-        if is_all_available {
-            if req_area_num == 4 && ep_area_data[3] == 0 {
-                Some(Area::Th)
-            } else if ep_area_data[req_area_num as usize - 1] == 0 {
-                Some(Area::new(req_area_num))
-            } else {
-                if ep_area_data[1] == 0 {
-                    Some(Area::Hk)
-                } else if ep_area_data[2] == 0 {
-                    Some(Area::Tw)
-                } else if ep_area_data[3] == 0 {
-                    Some(Area::Th)
-                } else if ep_area_data[0] == 0 {
-                    Some(Area::Cn)
-                } else {
-                    None //不这样搞的话可能被攻击时会出大问题
-                }
-            }
-        } else {
-            // here just for area hk priority
-            if ep_area_data[req_area_num as usize - 1] == 0 {
-                // if req_area == tw && hk_is_available
-                if req_area_num == 2 && ep_area_data[1] == 0 {
+        match ep_area_data[req_area_num as usize - 1] {
+            0 => {
+                if req_area_num == 3 && ep_area_data[1] == 0 {
                     Some(Area::Hk)
                 } else {
                     Some(Area::new(req_area_num))
                 }
-            } else {
-                update_area_cache_background(params, bili_runtime).await;
+            }
+            1 => {
+                if req_area_num != 4 {
+                    for (i, item) in ep_area_data.iter().enumerate() {
+                        if i < 3 && *item == 0 {
+                            return Ok(Some(Area::new(i as u8 + 1)));
+                        } else if *item == 2 {
+                            update_cached_area_background(params, bili_runtime).await;
+                            return Ok(None)
+                        }
+                    }
+                    // cannot be all 111*
+                    update_cached_area_background(params, bili_runtime).await;
+                    return Err(EType::OtherError(-404, "非主站番剧"))
+                } else {
+                    return Err(EType::OtherError(-404, "非东南亚区番剧"))
+                }
+            }
+            2 => {
+                update_cached_area_background(params, bili_runtime).await;
+                if req_area_num != 4 {
+                    for (i, item) in ep_area_data.iter().enumerate() {
+                        if i < 3 && *item == 0 {
+                            return Ok(Some(Area::new(i as u8 + 1)));
+                        }
+                    }
+                }
                 None
             }
+            _ => None,
         }
+
+    //     if is_all_available {
+    //         if req_area_num == 4 && ep_area_data[3] == 0 {
+    //             Some(Area::Th)
+    //         } else if ep_area_data[req_area_num as usize - 1] == 0 {
+    //             Some(Area::new(req_area_num))
+    //         } else {
+    //             if ep_area_data[1] == 0 {
+    //                 Some(Area::Hk)
+    //             } else if ep_area_data[2] == 0 {
+    //                 Some(Area::Tw)
+    //             } else if ep_area_data[3] == 0 {
+    //                 Some(Area::Th)
+    //             } else if ep_area_data[0] == 0 {
+    //                 Some(Area::Cn)
+    //             } else {
+    //                 None //不这样搞的话可能被攻击时会出大问题
+    //             }
+    //         }
+    //     } else {
+    //         if req_area_num == 4 && ep_area_data[3] == 1 {
+    //             // fix zone th's playurl struct not eq to normal one
+    //             None
+    //         // here just for area hk priority
+    //         } else if ep_area_data[req_area_num as usize - 1] == 0 {
+    //             // if req_area == tw && hk_is_available
+    //             if req_area_num == 2 && ep_area_data[1] == 0 {
+    //                 Some(Area::Hk)
+    //             } else {
+    //                 Some(Area::new(req_area_num))
+    //             }
+    //         } else if ep_area_data[req_area_num as usize - 1] == 2 {
+    //             update_cached_area_background(params, bili_runtime).await;
+    //             None
+    //         } else {
+    //             None
+    //         }
+    //     }
     } else {
-        update_area_cache_background(params, bili_runtime).await;
+        update_cached_area_background(params, bili_runtime).await;
         None
-    }
+    };
+    Ok(result)
 }
 
 #[inline]
@@ -202,17 +246,18 @@ pub async fn update_user_info_cache(new_user_info: &UserInfo, bili_runtime: &Bil
     // for health check
     if new_user_info.is_vip() {
         bili_runtime
-            .redis_set("uv11301", &new_user_info.uid.to_string(), 0)
+            .redis_set("uv11301", &new_user_info.uid.to_string(), expire_time)
             .await;
         bili_runtime
-            .redis_set("av11301", &new_user_info.access_key, 0)
+            .redis_set("av11301", &new_user_info.access_key, expire_time)
             .await;
+        bili_runtime.redis_set("v11101", &value, expire_time).await
     } else {
         bili_runtime
-            .redis_set("uv01301", &new_user_info.uid.to_string(), 0)
+            .redis_set("uv01301", &new_user_info.uid.to_string(), expire_time)
             .await;
         bili_runtime
-            .redis_set("av01301", &new_user_info.access_key, 0)
+            .redis_set("av01301", &new_user_info.access_key, expire_time)
             .await;
     }
 }

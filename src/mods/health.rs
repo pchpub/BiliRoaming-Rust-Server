@@ -5,13 +5,14 @@ use super::{
         UpstreamReply,
     },
 };
+use log::debug;
 use serde_json::json;
 use std::collections::HashMap;
 
 /// `report_health` 后台任务: 报告健康信息
 pub async fn report_health(health_report_type: HealthReportType, bili_runtime: &BiliRuntime<'_>) {
     let background_task_data =
-        BackgroundTaskType::HealthTask(HealthTask::HealthReport(health_report_type));
+        BackgroundTaskType::Health(HealthTask::HealthReport(health_report_type));
     bili_runtime.send_task(background_task_data).await;
 }
 
@@ -19,7 +20,7 @@ pub async fn report_health(health_report_type: HealthReportType, bili_runtime: &
 /// - 将检测所有区域的代理可用性
 /// - 仅检测playurl的代理
 pub async fn check_health_background(bili_runtime: &BiliRuntime<'_>) {
-    let background_task_data = BackgroundTaskType::HealthTask(HealthTask::HealthCheck);
+    let background_task_data = BackgroundTaskType::Health(HealthTask::HealthCheck);
     bili_runtime.send_task(background_task_data).await;
 }
 
@@ -76,18 +77,18 @@ pub async fn check_proxy_health(
                     Ok(value) => {
                         if value != 4 {
                             Some(
-                                "Zone {area_num} -> Detect Proxy Area Not Suitable, actual [{value}]"
+                                format!("Zone {area_num} -> Detect Proxy Area Not Suitable, actual [{value}]")
                             )
                         } else {
                             None
                         }
                     }
                     Err(code) => match code {
-                        2333 => Some("Zone {area_num} -> ISP Banned!"),
-                        _ => Some("Zone {area_num} -> Unknown Upstream Error {code}"),
+                        2333 => Some(format!("Zone {area_num} -> ISP Banned!")),
+                        _ => Some(format!("Zone {area_num} -> Unknown Upstream Error {code}")),
                     },
                 } {
-                    println!("[CHECK_PROXY_HEALTH] {value}");
+                    debug!("[CHECK_PROXY_HEALTH] AREA TH | Result -> {value}");
                     let health_report_type = HealthReportType::Others(HealthData {
                         area_num: 0,
                         is_200_ok: false,
@@ -110,26 +111,27 @@ pub async fn check_proxy_health(
             let json_result =
                 serde_json::from_str(&value).unwrap_or(json!({"code": -2333, "message": ""}));
             let code = json_result["code"]
-                .as_str()
-                .unwrap_or("233")
-                .parse::<i64>()
-                .unwrap_or(233);
+                .as_i64()
+                .unwrap_or(-2333);
             match code {
                 0 => {
                     let result = json_result.get("result").unwrap();
                     if result["area_limit"].as_i64().unwrap() != 0 {
-                        Some("Zone {area_num} -> Detect Proxy Area Not Suitable")
+                        Some(format!("Zone {area_num} -> Detect Proxy Area Not Suitable"))
                     } else {
                         None
                     }
                 }
-                -2333 => Some("Zone {area_num} -> Parse Json Error: {value}"),
-                _ => Some("Zone {area_num} -> Unknown Error {code}: {value}"),
+                -2333 => Some(format!("Zone {area_num} -> Parse Json Error: {value}")),
+                _ => Some(format!("Zone {area_num} -> Unknown Error {code}: {value}")),
             }
         }
-        Err(_) => Some("Zone {area_num} -> Detect Unavailable Proxy"),
+        Err(_) => Some(format!("Zone {area_num} -> Detect Unavailable Proxy")),
     } {
-        println!("[CHECK_PROXY_HEALTH] {value}");
+        debug!(
+            "[CHECK_PROXY_HEALTH] AREA {} | Result -> {value}",
+            Area::new(area_num).to_str().to_ascii_uppercase()
+        );
         let health_report_type = HealthReportType::Others(HealthData {
             area_num,
             is_200_ok: false,

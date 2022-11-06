@@ -115,6 +115,10 @@ pub struct BiliConfig {
     pub resign_pub: HashMap<String, bool>,
     #[serde(default = "default_hashmap_false")]
     pub resign_open: HashMap<String, bool>,
+    #[serde(default = "default_hashmap_string")]
+    pub resign_from_local: HashMap<String, String>, //限制白名单共享带会员的uid
+    #[serde(default = "default_true")]
+    pub resign_from_local_open: bool, //启用后白名单将共享带会员
     #[serde(default = "default_hashmap_false")]
     pub resign_api_policy: HashMap<String, bool>, //启用后assesskey从api获取
     #[serde(default = "default_hashmap_string")]
@@ -308,12 +312,6 @@ pub enum CacheType<'cache_type> {
     UserCerInfo(&'cache_type str, u64),
 }
 impl<'cache_type> CacheType<'cache_type> {
-    // async fn update_redis(key: &str, value: &str, expire_time: u64, redis_pool: &Pool) {
-    //     redis_set(redis_pool, key, value, expire_time)
-    //         .await
-    //         .unwrap()
-    // }
-    // for better performance
     #[inline]
     pub fn gen_key(&self) -> Vec<String> {
         let mut keys = vec![];
@@ -322,9 +320,11 @@ impl<'cache_type> CacheType<'cache_type> {
                 let mut key = String::with_capacity(32);
                 // not safe, 1 + 48 = 49, num 1's ascii...
                 let area_num_str =
-                    unsafe { String::from_utf8_unchecked(vec![48, params.area_num + 48]) };
-                let is_tv_str = unsafe { String::from_utf8_unchecked(vec![params.area_num + 48]) };
-                let user_is_vip_str = unsafe { String::from_utf8_unchecked(vec![params.is_vip as u8 + 48]) };
+                    unsafe { String::from_utf8_unchecked(vec![params.area_num + 48]) };
+                let is_tv_str =
+                    unsafe { String::from_utf8_unchecked(vec![params.is_tv as u8 + 48]) };
+                let user_is_vip_str =
+                    unsafe { String::from_utf8_unchecked(vec![params.is_vip as u8 + 48]) };
                 match params.is_app {
                     true => {
                         key.push_str("e");
@@ -354,7 +354,8 @@ impl<'cache_type> CacheType<'cache_type> {
                 // 若不是带会员专享, ep_need_vip == false, 就给non-vip也存上一份
                 if !*ep_need_vip && params.is_vip {
                     let mut key = String::with_capacity(32);
-                    let ep_need_vip_str = unsafe { String::from_utf8_unchecked(vec![*ep_need_vip as u8 + 48]) };
+                    let ep_need_vip_str =
+                        unsafe { String::from_utf8_unchecked(vec![*ep_need_vip as u8 + 48]) };
                     match params.is_app {
                         true => {
                             key.push_str("e");
@@ -438,35 +439,6 @@ impl<'cache_type> CacheType<'cache_type> {
         };
         keys
     }
-    // Not implemented
-    // pub async fn update(self, redis_pool: &Pool) {
-    //     match self {
-    //         CacheType::Playurl(area, params, data) => {
-    //             let ep_id = params.ep_id;
-    //             let cid = params.cid;
-
-    //             let need_vip = if let Some(value) =
-    //                 get_ep_need_vip_background(params.ep_id, redis_pool).await
-    //             {
-    //                 value as u8
-    //             } else {
-    //                 // should not
-    //                 params.is_vip as u8
-    //             };
-    //             let is_tv = (params.is_tv && params.is_app) as u8;
-    //             let is_app: &str = if params.is_app { "01" } else { "07" };
-    //             let area_num = area.num();
-    //             let key = format!("e{ep_id}c{cid}v{need_vip}t{is_tv}{area_num}{is_app}01");
-
-    //             Self::update_redis(&key, &data.to_string(), 0, redis_pool).await
-    //         }
-    //         CacheType::EpArea(_) => todo!(),
-    //         CacheType::EpVipInfo(_) => todo!(),
-    //         CacheType::EpInfo(_) => todo!(),
-    //         CacheType::UserInfo(_) => todo!(),
-    //         CacheType::UserCerInfo(_) => todo!(),
-    //     }
-    // }
 }
 
 #[macro_export]
@@ -546,25 +518,13 @@ macro_rules! build_response {
 /*
 * the following is background task related struct & impl
 */
-// pub enum SendData {
-//     Cache(CacheTask),
-//     Health(HealthReportType),
-// }
 pub enum BackgroundTaskType {
-    HealthTask(HealthTask),
-    CacheTask(CacheTask),
+    Health(HealthTask),
+    Cache(CacheTask),
 }
 pub enum HealthTask {
     HealthCheck,
     HealthReport(HealthReportType),
-}
-pub struct HealthCheck {
-    pub need_check_area: Vec<u8>,
-}
-impl HealthCheck {
-    pub fn add_area(&mut self, area: Area) {
-        self.need_check_area.push(area.num())
-    }
 }
 pub enum CacheTask {
     UserInfoCacheRefresh(String),
@@ -646,14 +606,33 @@ impl std::default::Default for HealthData {
     }
 }
 impl HealthData {
-    pub fn init(area: Area, is_200_ok: bool, upstream_reply: UpstreamReply) -> HealthData {
+    pub fn init(
+        area: Area,
+        is_200_ok: bool,
+        upstream_reply: UpstreamReply,
+        req_id: &str,
+    ) -> HealthData {
         let area_num = area.num();
-        return HealthData {
+        let mut health_data = HealthData {
             area_num,
             is_200_ok,
             upstream_reply,
             ..Default::default()
         };
+        health_data.is_custom = !health_data.is_available();
+        if health_data.is_custom {
+            health_data.custom_message = format!(
+                "详细信息:\n区域代码: {}\n网络正常: {}\n代理信息: {} {}\n请求资源(EP/SID/KEYWORD): {}\n上游返回信息: CODE {}, Message -> {}",
+                health_data.area_num,
+                health_data.is_200_ok,
+                health_data.upstream_reply.proxy_open,
+                health_data.upstream_reply.proxy_url,
+                req_id,
+                health_data.upstream_reply.code,
+                health_data.upstream_reply.message
+            );
+        }
+        health_data
     }
     pub fn init_custom(area: Area, is_200_ok: bool, custom_message: &str) -> HealthData {
         // custom HealthData only for send custom message
@@ -704,7 +683,8 @@ impl HealthData {
                 // link: https://t.me/biliroaming_chat/1231065
                 //       https://t.me/biliroaming_chat/1231113
             }
-            -404 => false,
+            // -404除非EP弄错或者东南亚区域的ep, 否则不可能出现吧... 暂且认为是健康的
+            -404 => true,
             _ => false,
         }
     }
@@ -716,6 +696,14 @@ pub enum HealthReportType {
     Others(HealthData),
 }
 impl HealthReportType {
+    pub fn is_available(&self) -> bool {
+        match self {
+            HealthReportType::Playurl(value) => value.is_available(),
+            HealthReportType::Search(value) => value.is_available(),
+            HealthReportType::ThSeason(value) => value.is_available(),
+            HealthReportType::Others(_) => false,
+        }
+    }
     pub fn incident_attr(&self) -> (String, String) {
         return match self {
             HealthReportType::Playurl(value) => (
@@ -755,23 +743,10 @@ impl HealthReportType {
         };
     }
     pub fn status_color_char(&self) -> String {
-        if match self {
-            HealthReportType::Playurl(value) => value.is_available(),
-            HealthReportType::Search(value) => value.is_available(),
-            HealthReportType::ThSeason(value) => value.is_available(),
-            HealthReportType::Others(_) => true,
-        } {
+        if self.is_available() {
             "🟢".to_string()
         } else {
             "🔴".to_string()
-        }
-    }
-    pub fn is_available(&self) -> bool {
-        match self {
-            HealthReportType::Playurl(value) => value.is_available(),
-            HealthReportType::Search(value) => value.is_available(),
-            HealthReportType::ThSeason(value) => value.is_available(),
-            HealthReportType::Others(_) => false,
         }
     }
     pub fn additional_msg(&self) -> Option<&String> {
@@ -847,7 +822,7 @@ pub struct ReportConfigPushplus {
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ReportConfigCustom {
-    pub method: ReportRequestMethod,
+    pub method: ReportConfigCustomRequestMethod,
     pub url: String,
     pub content: String,
     pub proxy_open: bool,
@@ -855,11 +830,11 @@ pub struct ReportConfigCustom {
     #[serde(skip)]
     url_separate_elements: Vec<String>,
     #[serde(skip)]
-    url_insert_order: Vec<ReportOrderName>,
+    url_insert_order: Vec<ReportConfigCustomOrderName>,
     #[serde(skip)]
     content_separate_elements: Vec<String>,
     #[serde(skip)]
-    content_insert_order: Vec<ReportOrderName>,
+    content_insert_order: Vec<ReportConfigCustomOrderName>,
 }
 
 impl std::default::Default for ReportConfig {
@@ -892,7 +867,7 @@ impl std::default::Default for ReportConfigPushplus {
 impl std::default::Default for ReportConfigCustom {
     fn default() -> Self {
         Self {
-            method: ReportRequestMethod::Post,
+            method: ReportConfigCustomRequestMethod::Post,
             url: r#"https://api.telegram.org/bot{your_token}/sendMessage"#.to_string(),
             content: "chat_id={your_chat_id}&text=大陆 Playurl:              {CnPlayurl}\n香港 Playurl:              {HkPlayurl}\n台湾 Playurl:              {TwPlayurl}\n泰区 Playurl:              {ThPlayurl}\n大陆 Search:              {CnSearch}\n香港 Search:              {HkSearch}\n台湾 Search:              {TwSearch}\n泰区 Search:              {ThSearch}\n泰区 Season:              {ThSeason}\n\n变动: {ChangedAreaName} {ChangedDataType} -> {ChangedHealthType}".to_string(),
             proxy_open: false,
@@ -916,18 +891,18 @@ fn vec_char_to_string(content: &Vec<String>, start: usize, end: usize) -> Result
 impl ReportConfigCustom {
     pub fn init(&mut self) -> Result<(), String> {
         let key2order = HashMap::from([
-            ("CnPlayurl", ReportOrderName::CnPlayurl),
-            ("HkPlayurl", ReportOrderName::HkPlayurl),
-            ("TwPlayurl", ReportOrderName::TwPlayurl),
-            ("ThPlayurl", ReportOrderName::ThPlayurl),
-            ("CnSearch", ReportOrderName::CnSearch),
-            ("HkSearch", ReportOrderName::HkSearch),
-            ("TwSearch", ReportOrderName::TwSearch),
-            ("ThSearch", ReportOrderName::ThSearch),
-            ("ThSeason", ReportOrderName::ThSeason),
-            ("ChangedAreaName", ReportOrderName::ChangedAreaName),
-            ("ChangedDataType", ReportOrderName::ChangedDataType),
-            ("ChangedHealthType", ReportOrderName::ChangedHealthType),
+            ("CnPlayurl", ReportConfigCustomOrderName::CnPlayurl),
+            ("HkPlayurl", ReportConfigCustomOrderName::HkPlayurl),
+            ("TwPlayurl", ReportConfigCustomOrderName::TwPlayurl),
+            ("ThPlayurl", ReportConfigCustomOrderName::ThPlayurl),
+            ("CnSearch", ReportConfigCustomOrderName::CnSearch),
+            ("HkSearch", ReportConfigCustomOrderName::HkSearch),
+            ("TwSearch", ReportConfigCustomOrderName::TwSearch),
+            ("ThSearch", ReportConfigCustomOrderName::ThSearch),
+            ("ThSeason", ReportConfigCustomOrderName::ThSeason),
+            ("ChangedAreaName", ReportConfigCustomOrderName::ChangedAreaName),
+            ("ChangedDataType", ReportConfigCustomOrderName::ChangedDataType),
+            ("ChangedHealthType", ReportConfigCustomOrderName::ChangedHealthType),
         ]);
 
         {
@@ -1026,51 +1001,51 @@ impl ReportConfigCustom {
     ) -> Result<String, ()> {
         let health_values = HashMap::from([
             (
-                ReportOrderName::CnPlayurl,
+                ReportConfigCustomOrderName::CnPlayurl,
                 report_health_data.health_cn_playurl.clone(),
             ),
             (
-                ReportOrderName::HkPlayurl,
+                ReportConfigCustomOrderName::HkPlayurl,
                 report_health_data.health_hk_playurl.clone(),
             ),
             (
-                ReportOrderName::TwPlayurl,
+                ReportConfigCustomOrderName::TwPlayurl,
                 report_health_data.health_tw_playurl.clone(),
             ),
             (
-                ReportOrderName::ThPlayurl,
+                ReportConfigCustomOrderName::ThPlayurl,
                 report_health_data.health_th_playurl.clone(),
             ),
             (
-                ReportOrderName::CnSearch,
+                ReportConfigCustomOrderName::CnSearch,
                 report_health_data.health_cn_search.clone(),
             ),
             (
-                ReportOrderName::HkSearch,
+                ReportConfigCustomOrderName::HkSearch,
                 report_health_data.health_hk_search.clone(),
             ),
             (
-                ReportOrderName::TwSearch,
+                ReportConfigCustomOrderName::TwSearch,
                 report_health_data.health_tw_search.clone(),
             ),
             (
-                ReportOrderName::ThSearch,
+                ReportConfigCustomOrderName::ThSearch,
                 report_health_data.health_th_search.clone(),
             ),
             (
-                ReportOrderName::ThSeason,
+                ReportConfigCustomOrderName::ThSeason,
                 report_health_data.health_th_season.clone(),
             ),
             (
-                ReportOrderName::ChangedAreaName,
+                ReportConfigCustomOrderName::ChangedAreaName,
                 changed_area_name.to_owned(),
             ),
             (
-                ReportOrderName::ChangedDataType,
+                ReportConfigCustomOrderName::ChangedDataType,
                 changed_data_type.to_owned(),
             ),
             (
-                ReportOrderName::ChangedHealthType,
+                ReportConfigCustomOrderName::ChangedHealthType,
                 changed_health_type.to_owned(),
             ),
         ]);
@@ -1116,58 +1091,58 @@ impl ReportConfigCustom {
         changed_health_type: &str,
     ) -> Result<String, ()> {
         match self.method {
-            ReportRequestMethod::Get => {
+            ReportConfigCustomRequestMethod::Get => {
                 println!("[Error] GET has no context");
                 return Err(());
             }
-            ReportRequestMethod::Post => {
+            ReportConfigCustomRequestMethod::Post => {
                 let health_values = HashMap::from([
                     (
-                        ReportOrderName::CnPlayurl,
+                        ReportConfigCustomOrderName::CnPlayurl,
                         report_health_data.health_cn_playurl.clone(),
                     ),
                     (
-                        ReportOrderName::HkPlayurl,
+                        ReportConfigCustomOrderName::HkPlayurl,
                         report_health_data.health_hk_playurl.clone(),
                     ),
                     (
-                        ReportOrderName::TwPlayurl,
+                        ReportConfigCustomOrderName::TwPlayurl,
                         report_health_data.health_tw_playurl.clone(),
                     ),
                     (
-                        ReportOrderName::ThPlayurl,
+                        ReportConfigCustomOrderName::ThPlayurl,
                         report_health_data.health_th_playurl.clone(),
                     ),
                     (
-                        ReportOrderName::CnSearch,
+                        ReportConfigCustomOrderName::CnSearch,
                         report_health_data.health_cn_search.clone(),
                     ),
                     (
-                        ReportOrderName::HkSearch,
+                        ReportConfigCustomOrderName::HkSearch,
                         report_health_data.health_hk_search.clone(),
                     ),
                     (
-                        ReportOrderName::TwSearch,
+                        ReportConfigCustomOrderName::TwSearch,
                         report_health_data.health_tw_search.clone(),
                     ),
                     (
-                        ReportOrderName::ThSearch,
+                        ReportConfigCustomOrderName::ThSearch,
                         report_health_data.health_th_search.clone(),
                     ),
                     (
-                        ReportOrderName::ThSeason,
+                        ReportConfigCustomOrderName::ThSeason,
                         report_health_data.health_th_season.clone(),
                     ),
                     (
-                        ReportOrderName::ChangedAreaName,
+                        ReportConfigCustomOrderName::ChangedAreaName,
                         changed_area_name.to_owned(),
                     ),
                     (
-                        ReportOrderName::ChangedDataType,
+                        ReportConfigCustomOrderName::ChangedDataType,
                         changed_data_type.to_owned(),
                     ),
                     (
-                        ReportOrderName::ChangedHealthType,
+                        ReportConfigCustomOrderName::ChangedHealthType,
                         changed_health_type.to_owned(),
                     ),
                 ]);
@@ -1193,7 +1168,7 @@ impl ReportConfigCustom {
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug)]
-enum ReportOrderName {
+enum ReportConfigCustomOrderName {
     CnPlayurl,
     HkPlayurl,
     TwPlayurl,
@@ -1209,7 +1184,7 @@ enum ReportOrderName {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum ReportRequestMethod {
+pub enum ReportConfigCustomRequestMethod {
     Get,
     Post,
 }
@@ -1244,7 +1219,7 @@ impl ReportHealthData {
         match health_report_type {
             HealthReportType::Others(value) => {
                 format!(
-                    "服务器温馨提醒您: {}\n详细信息:\n区域代码: {}\n网络正常: {}\n代理信息: {}-{}\n上游返回信息: [{}],{}",
+                    "服务器温馨提醒您: \n\n{}\n\n详细信息:\n区域代码: {}\n网络正常: {}\n代理信息: {} {}\n上游返回信息: CODE {}, Message -> {}",
                     value.custom_message,
                     value.area_num,
                     value.is_200_ok,
@@ -1263,7 +1238,7 @@ impl ReportHealthData {
                     ""
                 };
                 format!(
-                    "服务器网络状态有变动!\n大陆 Playurl:              {}\n香港 Playurl:              {}\n台湾 Playurl:              {}\n泰区 Playurl:              {}\n大陆 Search:              {}\n香港 Search:              {}\n台湾 Search:              {}\n泰区 Search:              {}\n泰区 Season:              {}\n\n变动: {} {} -> {}\n\n补充信息: \n{}",
+                    "服务器网络状态有变动!\n\n大陆 Playurl:              {}\n香港 Playurl:              {}\n台湾 Playurl:              {}\n泰区 Playurl:              {}\n大陆 Search:              {}\n香港 Search:              {}\n台湾 Search:              {}\n泰区 Search:              {}\n泰区 Season:              {}\n\n变动: {} {} -> {}\n\n{}",
                     self.health_cn_playurl,
                     self.health_hk_playurl,
                     self.health_tw_playurl,
@@ -1285,7 +1260,7 @@ impl ReportHealthData {
         match health_report_type {
             HealthReportType::Others(value) => {
                 format!(
-                    "服务器温馨提醒您: {}<br>详细信息:<br>区域代码: {}<br>网络正常: {}<br>代理信息: {}-{}<br>上游返回信息: [{}],{}",
+                    "服务器温馨提醒您: {}<br>详细信息:<br>区域代码: {}<br>网络正常: {}<br>代理信息: {} {}<br>上游返回信息: CODE {}, Message -> {}",
                     value.custom_message.replace("\n", "<br>"),
                     value.area_num,
                     value.is_200_ok,
@@ -1304,7 +1279,7 @@ impl ReportHealthData {
                     String::new()
                 };
                 format!(
-                    "服务器网络状态有变动!<br>大陆 Playurl: {}<br>香港 Playurl: {}<br>台湾 Playurl: {}<br>泰区 Playurl: {}<br>大陆 Search: {}<br>香港 Search: {}<br>台湾 Search: {}<br>泰区 Search: {}<br>泰区 Season: {}<br>变动: {} {} -> {}<br>补充信息: <br>{}",
+                    "服务器网络状态有变动!<br>大陆 Playurl: {}<br>香港 Playurl: {}<br>台湾 Playurl: {}<br>泰区 Playurl: {}<br>大陆 Search: {}<br>香港 Search: {}<br>台湾 Search: {}<br>泰区 Search: {}<br>泰区 Season: {}<br>变动: {} {} -> {}<br>{}",
                     self.health_cn_playurl,
                     self.health_hk_playurl,
                     self.health_tw_playurl,
@@ -1418,6 +1393,15 @@ impl Area {
             Area::Th => 4,
         }
     }
+
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            Area::Cn => "cn",
+            Area::Hk => "hk",
+            Area::Tw => "tw",
+            Area::Th => "th",
+        }
+    }
 }
 
 /*
@@ -1469,19 +1453,6 @@ impl UserInfo {
             false
         }
     }
-}
-
-pub enum UserCerStatus {
-    Black(String),
-    White,
-    Normal,
-}
-pub struct UserInfoDetail {
-    pub ip: String,
-    pub uid: u64,
-    pub access_key: String,
-    pub ua: String,
-    pub auth: UserCerinfo,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -1606,12 +1577,7 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl>
         if self.area_num == 4 {
             self.is_th = true;
         }
-        match area {
-            Area::Cn => self.area = "cn",
-            Area::Hk => self.area = "hk",
-            Area::Tw => self.area = "tw",
-            Area::Th => self.area = "th",
-        }
+        self.area = area.to_str();
     }
     pub fn appkey_to_sec(&mut self) -> Result<(), ()> {
         if self.is_th {
@@ -1722,18 +1688,6 @@ impl<'search_params: 'search_params_impl, 'search_params_impl> Default
     }
 }
 impl<'search_params: 'search_params_impl, 'search_params_impl> SearchParams<'search_params_impl> {
-    fn ep_area_to_area_num(&mut self) {
-        match self.area {
-            "cn" => self.area_num = 1,
-            "hk" => self.area_num = 2,
-            "tw" => self.area_num = 3,
-            "th" => self.area_num = 4,
-            _ => {
-                self.area = "hk";
-                self.area_num = 2;
-            }
-        }
-    }
     pub fn appkey_to_sec(&mut self) -> Result<(), ()> {
         if self.is_th {
             self.appkey = "7d089525d3611b1c";
@@ -1769,47 +1723,10 @@ impl<'search_params: 'search_params_impl, 'search_params_impl> SearchParams<'sea
         };
         Ok(())
     }
-    pub fn init_params(&mut self) {
-        self.ep_area_to_area_num();
+    pub fn init_params(&mut self, area: Area) {
+        self.area = area.to_str();
+        self.area_num = area.num();
         self.appkey_to_sec().unwrap();
-    }
-}
-
-/*
-* the following is anime info related struct & impl
-*/
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SeasonInfo {
-    pub title: String,
-    pub newest_ep: u64,
-    pub ep_id_map: HashMap<u64, u64>,
-}
-impl SeasonInfo {
-    pub fn init(
-        title: String,
-        newest_ep: u64,
-        ep_id_vec: Vec<(u64, u64)>,
-    ) -> Result<SeasonInfo, ()> {
-        // let newest_ep = if let newest_ep_u64 = newest_ep.parse::<u64>().unwrap() {
-        //     newest_ep_u64
-        // } else {
-        //     return Err(())
-        // };
-        let season_info: SeasonInfo = SeasonInfo {
-            title,
-            newest_ep,
-            ep_id_map: ep_id_vec.into_iter().collect(),
-        };
-        Ok(season_info)
-    }
-    pub fn serialize(&self) -> String {
-        return serde_json::to_string(&self).unwrap();
-    }
-    pub fn deserialize(season_info: &str) -> SeasonInfo {
-        return serde_json::from_str(season_info).unwrap();
-    }
-    pub fn get_newest_ep(&self) -> String {
-        return self.newest_ep.to_string();
     }
 }
 
@@ -1831,16 +1748,10 @@ impl std::default::Default for EpInfo {
     }
 }
 
-pub enum EpAreaCacheType {
-    NoEpData, //key
-    NoCurrentAreaData,
-    OnlyHasCurrentAreaData(bool),
-    Available(Area),
-}
-
 /*
 * the following is log related struct & impl
 */
+// for web panel log, not intend to support currently
 pub struct LogPlayUrl {
     pub ts: i64,
     pub ip: String,
@@ -1907,9 +1818,7 @@ pub enum EType {
 impl EType {
     pub fn to_string(self) -> String {
         match self {
-            EType::ServerGeneral => {
-                String::from("{{\"code\":-500,\"message\":\"服务器内部错误\"}}")
-            }
+            EType::ServerGeneral => String::from("{\"code\":-500,\"message\":\"服务器内部错误\"}"),
             EType::ServerNetworkError(value) => {
                 format!("{{\"code\":-500,\"message\":\"服务器网络错误: {value}\"}}")
             }
@@ -1917,14 +1826,14 @@ impl EType {
                 format!("{{\"code\":-500,\"message\":\"服务器内部错误: {value}\"}}")
             }
             EType::ServerOnlyVIPError => {
-                String::from("{{\"code\":-10403,\"message\":\"服务器不欢迎您: 大会员专享限制\"}}")
+                String::from("{\"code\":-10403,\"message\":\"服务器不欢迎您: 大会员专享限制\"}")
             }
             EType::ServerFatalError => String::from(
-                "{{\"code\":-412,\"message\":\"服务器被草到风控了... 暂时换个服务器吧...\"}}",
+                "{\"code\":-412,\"message\":\"服务器被草到风控了... 暂时换个服务器吧...\"}",
             ),
             // ErrorType::ReqFreqError(_) => todo!(),
-            EType::ReqSignError => String::from("{{\"code\":-3,\"message\":\"API校验密匙错误\"}}"),
-            EType::ReqUAError => String::from("{{\"code\":-412,\"message\":\"请求被拦截\"}}"),
+            EType::ReqSignError => String::from("{\"code\":-3,\"message\":\"API校验密匙错误\"}"),
+            EType::ReqUAError => String::from("{\"code\":-412,\"message\":\"请求被拦截\"}"),
             EType::UserBlacklistedError(timestamp) => {
                 let dt = Utc
                     .timestamp(
@@ -1940,15 +1849,15 @@ impl EType {
                 format!("{{\"code\":-10403,\"message\":\"服务器不欢迎您: 黑名单限制{tips}\"}}")
             }
             EType::UserWhitelistedError => {
-                String::from("{{\"code\":-10403,\"message\":\"服务器不欢迎您: 白名单限制\"}}")
+                String::from("{\"code\":-10403,\"message\":\"服务器不欢迎您: 白名单限制\"}")
             }
             EType::UserNonVIPError => {
-                String::from("{{\"code\":-10403,\"message\":\"大会员专享限制\"}}")
+                String::from("{\"code\":-10403,\"message\":\"大会员专享限制\"}")
             }
             EType::UserNotLoginedError => {
-                String::from("{{\"code\":-101,\"message\":\"账号未登录\",\"ttl\":1}}")
+                String::from("{\"code\":-101,\"message\":\"账号未登录\",\"ttl\":1}")
             }
-            EType::InvalidReq => String::from("{{\"code\":-412,\"message\":\"请求被拦截\"}}"),
+            EType::InvalidReq => String::from("{\"code\":-412,\"message\":\"请求被拦截\"}"),
             EType::OtherError(err_code, err_msg) => {
                 format!("{{\"code\":{err_code},\"message\":\"其他错误: {err_msg}\"}}")
             }
