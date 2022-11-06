@@ -9,9 +9,8 @@ use super::health::report_health;
 use super::request::{async_getwebpage, async_postwebpage};
 use super::tools::{check_playurl_need_vip, remove_parameters_playurl};
 use super::types::{
-    Area, BiliRuntime, EType, EpInfo, HealthData, HealthReportType, PlayurlParams,
-    PlayurlParamsStatic, ReqType, SearchParams, UpstreamReply, UserCerinfo, UserInfo,
-    UserResignInfo,
+    Area, BiliRuntime, EType, EpInfo, HealthData, HealthReportType, PlayurlParams, ReqType,
+    SearchParams, UpstreamReply, UserCerinfo, UserInfo, UserResignInfo,
 };
 use chrono::prelude::*;
 use log::{debug, error};
@@ -199,7 +198,7 @@ pub async fn get_upstream_blacklist_info(
     let uid = user_info.uid;
     if uid == 0 {
         // 仅当出问题才会有uid=0
-        return Err(EType::ServerGeneral)
+        return Err(EType::ServerGeneral);
     }
     //let user_cerinfo_str = String::new();
     let user_agent = format!("biliroaming-rust-server/{}", env!("CARGO_PKG_VERSION"));
@@ -349,7 +348,9 @@ pub async fn get_upstream_bili_playurl(
             ("ts", &ts_string),
         ];
     }
-    if !params.ep_id.is_empty() {
+    if params.ep_id.is_empty() {
+        return Err(EType::InvalidReq);
+    } else {
         query_vec.push(("ep_id", params.ep_id));
     }
     if !params.cid.is_empty() {
@@ -391,7 +392,7 @@ pub async fn get_upstream_bili_playurl(
                         proxy_url: String::from(proxy_url),
                         ..Default::default()
                     },
-                    params.ep_id
+                    params.ep_id,
                 )),
                 bili_runtime,
             )
@@ -446,7 +447,7 @@ pub async fn get_upstream_bili_playurl(
                 proxy_open,
                 proxy_url: String::from(proxy_url),
             },
-            params.ep_id
+            params.ep_id,
         )),
         bili_runtime,
     )
@@ -509,24 +510,27 @@ pub async fn get_upstream_bili_playurl(
 }
 
 pub async fn get_upstream_bili_playurl_background(
-    params: &PlayurlParamsStatic,
+    params: &PlayurlParams<'_>,
     bili_runtime: &BiliRuntime<'_>,
-) -> Result<String, String> {
+) -> Result<String, EType> {
+    // let bilisender_cl = Arc::clone(bilisender);
+    // generate api info & proxy_info, for later adding proxy balance
     let config = bili_runtime.config;
     let req_type = ReqType::Playurl(Area::new(params.area_num), params.is_app);
     let api = req_type.get_api(config);
     let (proxy_open, proxy_url) = req_type.get_proxy(config);
+    let playurl_type = params.get_playurl_type();
+    // generate req params
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let ts_string = ts.to_string();
     let mut query_vec: Vec<(&str, &str)>;
-    let playurl_type = params.get_playurl_type();
     if params.is_tv {
         query_vec = vec![
             ("access_key", &params.access_key[..]),
-            ("appkey", &params.appkey),
-            ("build", &params.build),
-            ("device", &params.device),
+            ("appkey", params.appkey),
+            ("build", params.build),
+            ("device", params.device),
             ("fnval", "130"),
             ("fnver", "0"),
             ("fourk", "1"),
@@ -538,9 +542,9 @@ pub async fn get_upstream_bili_playurl_background(
     } else {
         query_vec = vec![
             ("access_key", &params.access_key[..]),
-            ("appkey", &params.appkey),
-            ("build", &params.build),
-            ("device", &params.device),
+            ("appkey", params.appkey),
+            ("build", params.build),
+            ("device", params.device),
             ("fnval", "4048"),
             ("fnver", "0"),
             ("fourk", "1"),
@@ -549,23 +553,14 @@ pub async fn get_upstream_bili_playurl_background(
             ("ts", &ts_string),
         ];
     }
-
-    // match ep_id {
-    //     Some(value) => query_vec.push(("ep_id", value)),
-    //     None => (),
-    // }
-    // match cid {
-    //     Some(value) => query_vec.push(("cid", value)),
-    //     None => (),
-    // }
-    // match area_num {
-    //     4 => {
-    //         // appkey = "7d089525d3611b1c";
-    //         // appsec = appkey_to_sec(&appkey).unwrap();
-    //         // query_vec.push(("s_locale", "zh_SG"));
-    //     }
-    //     _ => (),
-    // }
+    if params.ep_id.is_empty() {
+        return Err(EType::OtherError(-10403, "无EP_ID"));
+    } else {
+        query_vec.push(("ep_id", params.ep_id));
+    }
+    if !params.cid.is_empty() {
+        query_vec.push(("cid", params.cid));
+    }
     if params.is_th {
         query_vec.push(("s_locale", "zh_SG"));
     }
@@ -577,17 +572,22 @@ pub async fn get_upstream_bili_playurl_background(
         "{unsigned_url}&sign={:x}",
         md5::compute(format!("{unsigned_url}{}", params.appsec))
     );
+    // finish generating req params
     let body_data = match async_getwebpage(
         &format!("{api}?{signed_url}"),
         proxy_open,
         proxy_url,
-        &params.user_agent,
+        params.user_agent,
         "",
     )
     .await
     {
         Ok(data) => data,
-        Err(_) => {
+        Err(value) => {
+            error!(
+                "[GET PLAYURL BACKGROUND][U] AREA {} | EP {} | PROXY_OPEN {} | PROXY_URL {} -> 获取播放链接失败: 网络问题",
+                params.area.to_ascii_uppercase(), params.ep_id, proxy_open, proxy_url
+            );
             report_health(
                 HealthReportType::Playurl(HealthData::init(
                     Area::new(params.area_num),
@@ -597,15 +597,12 @@ pub async fn get_upstream_bili_playurl_background(
                         proxy_url: String::from(proxy_url),
                         ..Default::default()
                     },
-                    &params.ep_id
+                    params.ep_id,
                 )),
                 bili_runtime,
             )
             .await;
-            return Err(format!(
-                "[GET PLAYURL BACKGROUND][U] AREA {} | EP {} | PROXY_OPEN {} | PROXY_URL {} -> 获取播放链接失败: 网络问题",
-                params.area.to_ascii_uppercase(), params.ep_id, proxy_open, proxy_url
-            ));
+            return Err(value);
         }
     };
     let mut body_data_json: serde_json::Value = match serde_json::from_str(&body_data) {
@@ -621,20 +618,58 @@ pub async fn get_upstream_bili_playurl_background(
                         ..Default::default()
                     },
                     is_custom: true,
-                    custom_message: format!("[DEBUG] 实际返回信息: \n{body_data}"),
+                    custom_message: format!(
+                        "[GET PLAYURL BACKGROUND] [DEBUG] 请求链: APPKEY {} | APPSEC {} | TS {} | FINAL {}?{}\n实际返回信息: \n{}",
+                        params.appkey, params.appsec, ts, api, signed_url, body_data
+                    ),
                 }),
                 bili_runtime,
             )
             .await;
-            return Err(format!(
-                "[GET PLAYURL BACKGROUND][U] AREA {} | EP {} | PROXY_OPEN {} | PROXY_URL {} -> 获取播放链接失败: 解析JSON错误",
+            error!(
+                "[GET PLAYURL BACKGROUND][U] AREA {} | EP {} | PROXY_OPEN {} | PROXY_URL {} -> 获取播放链接失败: 网络问题",
                 params.area.to_ascii_uppercase(), params.ep_id, proxy_open, proxy_url
-            ));
+            );
+            return Err(EType::ServerGeneral);
         }
     };
+    let code = body_data_json["code"].as_i64().unwrap().clone();
     remove_parameters_playurl(&playurl_type, &mut body_data_json).unwrap_or_default();
 
-    Ok(body_data)
+    // update_area_cache(&body_data_json, params, bili_runtime).await;
+    // report health
+    let message = body_data_json["message"]
+        .as_str()
+        .unwrap_or("Error on parsing Json Response")
+        .to_string();
+    let upstream_reply = UpstreamReply {
+        code,
+        message,
+        proxy_open,
+        proxy_url: String::from(proxy_url),
+    };
+    if upstream_reply.is_available() {
+        let final_data = body_data_json.to_string();
+        update_cached_playurl(params, &final_data, bili_runtime).await;
+        debug!(
+            "[GET PLAYURL BACKGROUND][U] AREA {} | EP {} -> 获取成功",
+            params.area.to_ascii_uppercase(),
+            params.ep_id
+        );
+        Ok(final_data)
+    } else {
+        report_health(
+            HealthReportType::Playurl(HealthData::init(
+                Area::new(params.area_num),
+                true,
+                upstream_reply,
+                params.ep_id,
+            )),
+            bili_runtime,
+        )
+        .await;
+        Err(EType::OtherError(code, "上游错误, 刷新失败"))
+    }
 }
 
 pub async fn get_upstream_bili_search(
@@ -744,7 +779,7 @@ pub async fn get_upstream_bili_search(
                         proxy_open,
                         proxy_url: String::from(proxy_url),
                     },
-                    params.keyword
+                    params.keyword,
                 )),
                 bili_runtime,
             )
@@ -775,7 +810,7 @@ pub async fn get_upstream_bili_search(
                         proxy_url: String::from(proxy_url),
                         ..Default::default()
                     },
-                    params.keyword
+                    params.keyword,
                 )),
                 bili_runtime,
             )
@@ -1042,7 +1077,7 @@ pub async fn get_upstream_bili_season(
                         proxy_url: String::from(proxy_url),
                         ..Default::default()
                     },
-                    params.season_id
+                    params.season_id,
                 )),
                 bili_runtime,
             )
@@ -1063,7 +1098,7 @@ pub async fn get_upstream_bili_season(
                         proxy_url: String::from(proxy_url),
                         ..Default::default()
                     },
-                    params.season_id
+                    params.season_id,
                 )),
                 bili_runtime,
             )

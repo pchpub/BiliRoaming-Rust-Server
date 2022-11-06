@@ -25,6 +25,7 @@ pub async fn update_cached_playurl_background(
         params.area.to_ascii_uppercase(),
         params.ep_id
     );
+    // 虽然看起来很114514, 懒得改了, 能用就行
     let background_task_data =
         BackgroundTaskType::Cache(CacheTask::PlayurlCacheRefresh(PlayurlParamsStatic {
             access_key: params.access_key.to_string(),
@@ -228,13 +229,13 @@ pub async fn background_task_run(
                 }
             }
             CacheTask::PlayurlCacheRefresh(params) => {
-                match get_upstream_bili_playurl_background(&params, bili_runtime).await {
+                match get_upstream_bili_playurl_background(&params.as_ref(), bili_runtime).await {
                     Ok(body_data) => {
                         update_cached_playurl(&params.as_ref(), &body_data, bili_runtime).await;
                         Ok(())
                     }
                     Err(value) => Err(format!(
-                        "[BACKGROUND TASK] | Playurl cache refresh failed, ErrMsg: {value}"
+                        "[BACKGROUND TASK] | Playurl cache refresh failed, ErrMsg: {}", value.to_string()
                     )),
                 }
             }

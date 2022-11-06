@@ -553,37 +553,37 @@ impl std::default::Default for UpstreamReply {
         }
     }
 }
-// impl UpstreamReply {
-//     pub fn is_available(&self) -> bool {
-//         // for playurl health check only
-//         let code = self.code;
-//         match code {
-//             0 => true,
-//             -10403 => {
-//                 if self.message == "大会员专享限制"
-//                     || self.message == "抱歉您所使用的平台不可观看！"
-//                 {
-//                     true
-//                 } else {
-//                     false
-//                 }
-//             }
-//             10015002 => {
-//                 if self.message == "访问权限不足" {
-//                     true
-//                 } else {
-//                     false
-//                 }
-//             }
-//             // 万恶的米奇妙妙屋,不用家宽就 -10500
-//             // link: https://t.me/biliroaming_chat/1231065
-//             //       https://t.me/biliroaming_chat/1231113
-//             -10500 => true,
-//             -404 => false,
-//             _ => false,
-//         }
-//     }
-// }
+impl UpstreamReply {
+    pub fn is_available(&self) -> bool {
+        // for playurl health check only
+        let code = self.code;
+        match code {
+            0 => true,
+            -10403 => {
+                if self.message == "大会员专享限制"
+                    || self.message == "抱歉您所使用的平台不可观看！"
+                {
+                    true
+                } else {
+                    false
+                }
+            }
+            10015002 => {
+                if self.message == "访问权限不足" {
+                    true
+                } else {
+                    false
+                }
+            }
+            // 万恶的米奇妙妙屋,不用家宽就 -10500
+            // link: https://t.me/biliroaming_chat/1231065
+            //       https://t.me/biliroaming_chat/1231113
+            -10500 => true,
+            -404 => false,
+            _ => false,
+        }
+    }
+}
 pub struct HealthData {
     pub area_num: u8,
     // network available
