@@ -1,14 +1,14 @@
 use super::request::{async_getwebpage, async_postwebpage, redis_get};
-use super::types::{ReportHealthData, ReportConfig};
-use super::types::{SendHealthData};
+use super::types::HealthReportType;
+use super::types::{ReportConfig, ReportHealthData};
 use deadpool_redis::Pool;
 use urlencoding::encode;
 
 pub async fn send_report(
     redis_pool: &Pool,
     report_config: &ReportConfig,
-    health_data: &SendHealthData,
-) -> Result<(), ()> {
+    health_report_type: &HealthReportType,
+) -> Result<(), String> {
     // println!("[DEBUG] TEST PUSH, {:#?}", report_method);
     let report_health_data = generate_health_report_data(redis_pool).await;
     match report_config {
@@ -20,12 +20,12 @@ pub async fn send_report(
             let content = format!(
                 "chat_id={}&text={}",
                 report_config_tg_bot.tg_chat_id,
-                report_health_data.generate_msg(report_config, health_data)
+                report_health_data.generate_msg(report_config, health_report_type)
             );
             match async_postwebpage(
                 &url,
                 &content,
-                &report_config_tg_bot.tg_proxy_api_open,
+                report_config_tg_bot.tg_proxy_api_open,
                 &report_config_tg_bot.tg_proxy_url,
                 "BiliRoaming-Rust-Server",
             )
@@ -35,79 +35,66 @@ pub async fn send_report(
                     return Ok(());
                 }
                 Err(_) => {
-                    return Err(());
+                    return Err(String::new());
                 }
             }
-        },
+        }
         ReportConfig::PushPlus(report_config_push_plus) => {
             let url = format!(
                 "https://www.pushplus.plus/send/{}?topic={}&title={}&content={}&template=html",
                 report_config_push_plus.pushplus_secret.clone(),
                 report_config_push_plus.pushplus_group_id.clone(),
                 encode(&report_config_push_plus.pushplus_push_title),
-                encode(&report_health_data.generate_msg(report_config, health_data))
+                encode(&report_health_data.generate_msg(report_config, health_report_type))
             );
             // must encode params before getwebpage
-            match async_getwebpage(&url, &false, "", "BiliRoaming-Rust-Server", "").await {
+            match async_getwebpage(&url, false, "", "BiliRoaming-Rust-Server", "").await {
                 Ok(_) => {
                     return Ok(());
                 }
                 Err(_) => {
-                    return Err(());
+                    return Err(String::new());
                 }
             }
-        },
+        }
         ReportConfig::Custom(report_config_custom) => {
+            let (area_name, data_type) = health_report_type.incident_attr();
+            let color_char = health_report_type.status_color_char();
             match report_config_custom.method {
-                super::types::Method::Get => {
+                super::types::ReportConfigCustomRequestMethod::Get => {
                     let url = report_config_custom
-                        .build_url(
-                            &report_health_data,
-                            &health_data.area_name(),
-                            &health_data.data_type.to_string(),
-                            &health_data.health_type.to_color_char(),
-                        )
+                        .build_url(&report_health_data, &area_name, &data_type, &color_char)
                         .unwrap();
-                    match async_getwebpage(&url, &false, "", "BiliRoaming-Rust-Server", "").await {
+                    match async_getwebpage(&url, false, "", "BiliRoaming-Rust-Server", "").await {
                         Ok(_) => {
                             return Ok(());
                         }
                         Err(_) => {
-                            return Err(());
+                            return Err(String::new());
                         }
                     }
                 }
-                super::types::Method::Post => {
+                super::types::ReportConfigCustomRequestMethod::Post => {
                     let url = report_config_custom
-                        .build_url(
-                            &report_health_data,
-                            &health_data.area_name(),
-                            &health_data.data_type.to_string(),
-                            &health_data.health_type.to_color_char(),
-                        )
+                        .build_url(&report_health_data, &area_name, &data_type, &color_char)
                         .unwrap();
                     let content = report_config_custom
-                        .build_content(
-                            &report_health_data,
-                            &health_data.area_name(),
-                            &health_data.data_type.to_string(),
-                            &health_data.health_type.to_color_char(),
-                        )
+                        .build_url(&report_health_data, &area_name, &data_type, &color_char)
                         .unwrap();
                     // println!("[Debug] content:{}", content);
-                    match async_postwebpage(&url, &content, &false, "", "BiliRoaming-Rust-Server")
+                    match async_postwebpage(&url, &content, false, "", "BiliRoaming-Rust-Server")
                         .await
                     {
                         Ok(_) => {
                             return Ok(());
                         }
                         Err(_) => {
-                            return Err(());
+                            return Err(String::new());
                         }
                     }
                 }
             }
-        },
+        }
     }
 }
 
