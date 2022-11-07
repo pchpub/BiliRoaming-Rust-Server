@@ -26,7 +26,7 @@ pub fn check_playurl_need_vip(
                 }
                 // return Ok(false);
                 // try to get vip status from "vip_status" while "need_vip" was not found
-                match data["code"].as_i64().unwrap_or(2) {
+                match data["vip_status"].as_i64().unwrap_or(2) {
                     1 => {
                         return Ok(true);
                     }
