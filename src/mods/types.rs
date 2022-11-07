@@ -1600,8 +1600,8 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl>
             "27eb53fc9058f8c3" => "c2ed53a74eeefe3cf99fbd01d8c9c375", // ios
             "57263273bc6b67f6" => "a0488e488d1567960d3a765e8d129f90", // Android
             "7d336ec01856996b" => "a1ce6983bc89e20a36c37f40c4f1a0dd", // AndroidB
-            "85eb6835b0a1034e" => "2ad42749773c441109bdc0191257a664", // unknown
-            "84956560bc028eb7" => "94aba54af9065f71de72f5508f1cd42e", // unknown
+            "85eb6835b0a1034e" => "2ad42749773c441109bdc0191257a664", // unknown // 不能用于获取UserInfo, 会404
+            "84956560bc028eb7" => "94aba54af9065f71de72f5508f1cd42e", // unknown // 不能用于获取UserInfo, 会404
             "8e16697a1b4f8121" => "f5dd03b752426f2e623d7badb28d190a", // AndroidI
             "aae92bc66f3edfab" => "af125a0d5279fd576c1b4418a3e8276d", // PC	投稿工具
             "ae57252b0c09105d" => "c75875c596a69eb55bd119e74b07cfe3", // AndroidI
@@ -1612,6 +1612,7 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl>
             //_ => Ok("560c52ccd288fed045859ed18bffd973"),
             _ => return Err(()),
         };
+        // if self.appsec =
         Ok(())
     }
     pub fn init_params(&mut self, area: Area) {
