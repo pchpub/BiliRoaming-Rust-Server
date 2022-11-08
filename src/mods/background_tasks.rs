@@ -158,7 +158,7 @@ pub async fn background_task_run(
                             Some(health_data) => {
                                 let err_num = health_data.parse::<u16>().unwrap_or(max_num_of_err);
                                 bili_runtime.redis_set(&redis_key, "0", 0).await;
-                                if err_num != 0 {
+                                if err_num >= max_num_of_err {
                                     send_report(&redis_pool, &report_config, &value)
                                         .await
                                         .unwrap_or_default();
@@ -235,7 +235,8 @@ pub async fn background_task_run(
                         Ok(())
                     }
                     Err(value) => Err(format!(
-                        "[BACKGROUND TASK] | Playurl cache refresh failed, ErrMsg: {}", value.to_string()
+                        "[BACKGROUND TASK] | Playurl cache refresh failed, ErrMsg: {}",
+                        value.to_string()
                     )),
                 }
             }

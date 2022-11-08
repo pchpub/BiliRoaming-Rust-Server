@@ -117,8 +117,39 @@ pub async fn get_upstream_bili_account_info(
             update_user_info_cache(&output_struct, bili_runtime).await;
             Ok(output_struct)
         }
+        -404 => {
+            // 有几个unknown的appkey会导致 {"code":-404,"message":"啥都木有","ttl":1}, 直接返回invalidreq得了
+            match appkey {
+                "84956560bc028eb7" | "85eb6835b0a1034e" => {
+                    // 还是迂回更新其用户信息试一下
+                    update_cached_user_info_background(access_key.to_string(), bili_runtime).await;
+                    Err(EType::OtherError(-10403, "不兼容的APPKEY, 请升级油猴脚本或其他你正在用的客户端!"))
+                },
+                _ => {
+                    error!("[GET USER_INFO][U] AK {} -> Get UserInfo failed. Invalid APPKEY -> APPKEY {} | TS {} | APPSEC {}. Upstream Reply -> {}",
+                        access_key, appkey, ts_min, appsec, output_json
+                    );
+                    let health_report_type = HealthReportType::Others(HealthData {
+                        area_num: 0,
+                        is_200_ok: true,
+                        upstream_reply: UpstreamReply {
+                            code,
+                            message: output_json["message"].as_str().unwrap_or("null").to_owned(),
+                            proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
+                            proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
+                        },
+                        is_custom: true,
+                        custom_message: format!(
+                            "[GET USER_INFO][U] 疑似不能用于获取用户信息的APPKEY {appkey} - APPSEC {appsec}"
+                        ),
+                    });
+                    report_health(health_report_type, bili_runtime).await;
+                    Err(EType::InvalidReq)
+                }
+            }
+        }
         -400 => {
-            error!("[GET USER_INFO][U] AK {} | Get UserInfo failed -400. REQ Params -> APPKEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
+            error!("[GET USER_INFO][U] AK {} | Get UserInfo failed -400. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {:?}. Upstream Reply -> {}",
                 access_key, appkey, ts_min, appsec, sign, output_json
             );
             Err(EType::OtherError(-400, "可能你用的不是手机"))
@@ -131,7 +162,7 @@ pub async fn get_upstream_bili_account_info(
             Err(EType::UserNotLoginedError)
         }
         -3 => {
-            error!("[GET USER_INFO][U] AK {} | Get UserInfo failed -3. REQ Params -> APPKEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
+            error!("[GET USER_INFO][U] AK {} | Get UserInfo failed -3. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {:?}. Upstream Reply -> {}",
                 access_key, appkey, ts_min, appsec, sign, output_json
             );
             Err(EType::ReqSignError)
@@ -159,7 +190,7 @@ pub async fn get_upstream_bili_account_info(
             Err(EType::ServerFatalError)
         }
         _ => {
-            error!("[GET USER_INFO][U] AK {} -> Get UserInfo failed. REQ Params -> APPKEY {} | TS {} | APP_SEC {} | SIGN {:?}. Upstream Reply -> {}",
+            error!("[GET USER_INFO][U] AK {} -> Get UserInfo failed. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {:?}. Upstream Reply -> {}",
                 access_key, appkey, ts_min, appsec, sign, output_json
             );
             let health_report_type = HealthReportType::Others(HealthData {
@@ -834,15 +865,15 @@ pub async fn get_upstream_bili_subtitle(
     ));
     let mut query_vec = query.to_pairs();
     query_vec.sort_by_key(|v| v.0);
-    // 硬编码app_sec
-    let app_sec = params.appsec;
+    // 硬编码APPSEC
+    let appsec = params.appsec;
     let proxy_open = bili_runtime.config.th_proxy_subtitle_open;
     let proxy_url = &bili_runtime.config.th_proxy_subtitle_url;
     let unsigned_url = qstring::QString::new(query_vec);
     let unsigned_url = format!("{unsigned_url}");
     let signed_url = format!(
         "{unsigned_url}&sign={:x}",
-        md5::compute(format!("{unsigned_url}{app_sec}"))
+        md5::compute(format!("{unsigned_url}{appsec}"))
     );
     let api = "https://app.biliintl.com/intl/gateway/v2/app/subtitle";
     match async_getwebpage(
