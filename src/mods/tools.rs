@@ -2,7 +2,7 @@ use log::error;
 
 use super::{
     request::{download, getwebpage},
-    types::PlayurlType,
+    types::{BiliRuntime, CacheType, PlayurlType},
 };
 use std::env;
 use std::path::PathBuf;
@@ -36,7 +36,10 @@ pub fn check_vip_status_from_playurl(
                     }
                     value => {
                         error!("[VIP STATUS] 发现无法处理的 vip_status: {value}");
-                        error!("[VIP STATUS] 相关信息 data: {}",serde_json::to_string(data).unwrap_or_default());
+                        error!(
+                            "[VIP STATUS] 相关信息 data: {}",
+                            serde_json::to_string(data).unwrap_or_default()
+                        );
                         return Err(());
                     }
                 }
@@ -66,7 +69,10 @@ pub fn check_vip_status_from_playurl(
                     }
                     value => {
                         error!("[VIP STATUS] 发现无法处理的 vip_status: {value}");
-                        error!("[VIP STATUS] 相关信息 data: {}",serde_json::to_string(data).unwrap_or_default());
+                        error!(
+                            "[VIP STATUS] 相关信息 data: {}",
+                            serde_json::to_string(data).unwrap_or_default()
+                        );
                         return Err(());
                     }
                 }
@@ -141,27 +147,57 @@ pub fn remove_parameters_playurl(
     }
 }
 
-
 // TODO: 大会员获取非大会员专享视频时, 且缓存为非大会员时: 去除大会员专享清晰度(不去可能会被叔叔发律师函, 存在较大风险)
+// 对非大会员不太友好
 // 课好满(晚上继续咕咕咕)
-pub fn remove_viponly_clarity(
-    playurl_type: &PlayurlType,
-    _data: &mut serde_json::Value,
-) -> Result<(), ()> {
+// 要考试, 咕咕咕
+#[inline]
+pub async fn remove_viponly_clarity<'a>(
+    playurl_type: &'a PlayurlType,
+    data: String,
+    _cached_data_expire_time: u64,
+    _cache_type: CacheType<'_>,
+    _bili_runtime: &BiliRuntime<'_>,
+) -> String {
+    let mut new_return_data = String::with_capacity(data.len() + 32);
     match playurl_type {
         PlayurlType::Thailand => {
-            Err(())
-        },
+            // 东南亚区直接返回, 影响不大
+            data
+        }
         PlayurlType::ChinaApp => {
-            Err(())
-        },
+            // 判断是否有带会员独享清晰度
+            if data.contains("todo!()") {
+                // 处理
+                // todo!()
+                new_return_data.push_str(&data);
+                // bili_runtime
+                //     .update_cache(&cache_type, &new_return_data, cached_data_expire_time)
+                //     .await;
+                new_return_data
+            } else {
+                data
+            }
+        }
         PlayurlType::ChinaWeb => {
-            Err(())
-        },
+            // 判断是否有带会员独享清晰度
+            if data.contains("todo!()") {
+                // 处理
+                // todo!()
+                new_return_data.push_str(&data);
+                // bili_runtime
+                //     .update_cache(&cache_type, &new_return_data, cached_data_expire_time)
+                //     .await;
+                new_return_data
+            } else {
+                data
+            }
+        }
         PlayurlType::ChinaTv => {
-            Err(())
-        },
-    } 
+            // 处理失败就原样返回
+            data
+        }
+    }
 }
 
 pub fn update_server<T: std::fmt::Display>(is_auto_close: bool) {

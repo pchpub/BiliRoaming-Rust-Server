@@ -1,5 +1,6 @@
 use super::background_tasks::{update_cached_area_background, update_cached_playurl_background};
 use super::ep_info::get_ep_need_vip;
+use super::tools::remove_viponly_clarity;
 use super::types::*;
 use chrono::prelude::*;
 use log::debug;
@@ -335,13 +336,14 @@ pub async fn get_cached_playurl(
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let cache_type = CacheType::Playurl(params, params.is_vip);
+    let cached_data_expire_time;
     let need_fresh: bool;
     let return_data;
     let cached_data = bili_runtime.get_cache(&cache_type).await;
 
     match cached_data {
         Some(value) => {
-            let cached_data_expire_time = &value[..13].parse::<u64>().unwrap();
+            cached_data_expire_time = value[..13].parse::<u64>().unwrap();
             debug!(
                 "[GET PLAYURL][C] AREA {} | EP {} -> is_app: {} is_tv: {} is_vip {} expire_time {} CacheKey: {} 获取缓存成功 ",
                 params.area.to_ascii_uppercase(),
@@ -355,7 +357,7 @@ pub async fn get_cached_playurl(
             if cached_data_expire_time - 1200000 > ts {
                 need_fresh = false;
                 return_data = value[13..].to_string();
-            } else if cached_data_expire_time < &ts {
+            } else if cached_data_expire_time < ts {
                 return Err(());
             } else {
                 need_fresh = true;
@@ -367,7 +369,13 @@ pub async fn get_cached_playurl(
     if need_fresh {
         update_cached_playurl_background(params, bili_runtime).await;
     }
-    Ok(return_data)
+    if params.is_vip {
+        Ok(return_data)
+    }
+    else {
+        let return_data = remove_viponly_clarity(&params.get_playurl_type(), return_data, cached_data_expire_time, cache_type, bili_runtime).await;
+        Ok(return_data)
+    }
 }
 
 pub async fn update_cached_playurl(
