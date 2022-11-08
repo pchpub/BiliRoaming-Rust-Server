@@ -1,4 +1,6 @@
 use crate::mods::background_tasks::update_cached_ep_vip_status_background;
+use crate::mods::ep_info::get_ep_need_vip;
+use crate::mods::tools::check_vip_status_from_playurl;
 
 use super::background_tasks::update_cached_user_info_background;
 use super::cache::{
@@ -7,7 +9,7 @@ use super::cache::{
 };
 use super::health::report_health;
 use super::request::{async_getwebpage, async_postwebpage};
-use super::tools::{check_playurl_need_vip, remove_parameters_playurl};
+use super::tools::{remove_parameters_playurl};
 use super::types::{
     Area, BiliRuntime, EType, EpInfo, HealthData, HealthReportType, PlayurlParams, ReqType,
     SearchParams, UpstreamReply, UserCerinfo, UserInfo, UserResignInfo,
@@ -486,23 +488,36 @@ pub async fn get_upstream_bili_playurl(
     // check user's vip status
     if !params.is_vip {
         // TODO: add vip only feature here
-        if let Ok(value) = check_playurl_need_vip(playurl_type, &body_data_json) {
+        if let Ok(value) = check_vip_status_from_playurl(playurl_type, &body_data_json) {
             if value {
                 update_cached_user_info_background(params.access_key.to_string(), bili_runtime)
                     .await;
-                update_cached_ep_vip_status_background(
-                    true,
-                    vec![EpInfo {
-                        ep_id: params.ep_id.parse::<u64>().unwrap_or(233),
-                        ..Default::default()
-                    }],
-                    bili_runtime,
-                )
-                .await;
-                error!(
-                    "[GET PLAYURL][U] UID {} | AK {} | AREA {} | EP {} -> 非大会员用户获取了大会员独享视频, 可能大会员状态变动或限免",
-                    user_info.uid, user_info.access_key, params.area.to_ascii_uppercase(), params.ep_id
-                );
+                match get_ep_need_vip(params.ep_id, bili_runtime).await {
+                    Some(ep_need_vip) => {
+                        if ep_need_vip == 1 {
+                            update_cached_ep_vip_status_background(
+                                true,
+                                vec![EpInfo {
+                                    ep_id: params.ep_id.parse::<u64>().unwrap_or(233),
+                                    ..Default::default()
+                                }],
+                                bili_runtime,
+                            )
+                            .await;
+                        }
+                        error!(
+                            "[GET PLAYURL][U] UID {} | AK {} | AREA {} | EP {} -> 非大会员用户获取了大会员独享视频, 可能大会员状态变动或限免, 并且尝试更新ep_need_vip成功",
+                            user_info.uid, user_info.access_key, params.area.to_ascii_uppercase(), params.ep_id
+                        );
+                    },
+                    None => {
+                        error!(
+                            "[GET PLAYURL][U] UID {} | AK {} | AREA {} | EP {} -> 非大会员用户获取了大会员独享视频, 可能大会员状态变动或限免, 并且尝试更新ep_need_vip失败",
+                            user_info.uid, user_info.access_key, params.area.to_ascii_uppercase(), params.ep_id
+                        );
+                    }
+                }
+                
                 report_health(
                     HealthReportType::Playurl(HealthData {
                         area_num: params.area_num,

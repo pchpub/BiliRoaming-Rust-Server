@@ -1,3 +1,5 @@
+use log::error;
+
 use super::{
     request::{download, getwebpage},
     types::PlayurlType,
@@ -6,7 +8,7 @@ use std::env;
 use std::path::PathBuf;
 use std::thread;
 
-pub fn check_playurl_need_vip(
+pub fn check_vip_status_from_playurl(
     playurl_type: PlayurlType,
     data: &serde_json::Value,
 ) -> Result<bool, ()> {
@@ -24,8 +26,7 @@ pub fn check_playurl_need_vip(
                         return Ok(true);
                     }
                 }
-                // return Ok(false);
-                // try to get vip status from "vip_status" while "need_vip" was not found
+
                 match data["vip_status"].as_i64().unwrap_or(2) {
                     1 => {
                         return Ok(true);
@@ -34,11 +35,8 @@ pub fn check_playurl_need_vip(
                         return Ok(false);
                     }
                     value => {
-                        println!(
-                            "[Debug] New vip_status Found: {} data: {}",
-                            value,
-                            serde_json::to_string_pretty(data).unwrap_or_default()
-                        );
+                        error!("[VIP STATUS] 发现无法处理的 vip_status: {value}");
+                        error!("[VIP STATUS] 相关信息 data: {}",serde_json::to_string(data).unwrap_or_default());
                         return Err(());
                     }
                 }
@@ -58,12 +56,25 @@ pub fn check_playurl_need_vip(
                         return Ok(true);
                     }
                 }
-                return Ok(false);
+
+                match data["result"]["vip_status"].as_i64().unwrap_or(2) {
+                    1 => {
+                        return Ok(true);
+                    }
+                    0 => {
+                        return Ok(false);
+                    }
+                    value => {
+                        error!("[VIP STATUS] 发现无法处理的 vip_status: {value}");
+                        error!("[VIP STATUS] 相关信息 data: {}",serde_json::to_string(data).unwrap_or_default());
+                        return Err(());
+                    }
+                }
             } else {
                 return Err(());
             }
         }
-        PlayurlType::ChinaTv => Err(()),
+        PlayurlType::ChinaTv => Err(()), //过年回家的时候抓包看看（宿舍没电视机）
     }
 }
 
@@ -128,6 +139,29 @@ pub fn remove_parameters_playurl(
             return Ok(());
         }
     }
+}
+
+
+// TODO: 大会员获取非大会员专享视频时, 且缓存为非大会员时: 去除大会员专享清晰度(不去可能会被叔叔发律师函, 存在较大风险)
+// 课好满(晚上继续咕咕咕)
+pub fn remove_viponly_clarity(
+    playurl_type: &PlayurlType,
+    _data: &mut serde_json::Value,
+) -> Result<(), ()> {
+    match playurl_type {
+        PlayurlType::Thailand => {
+            Err(())
+        },
+        PlayurlType::ChinaApp => {
+            Err(())
+        },
+        PlayurlType::ChinaWeb => {
+            Err(())
+        },
+        PlayurlType::ChinaTv => {
+            Err(())
+        },
+    } 
 }
 
 pub fn update_server<T: std::fmt::Display>(is_auto_close: bool) {
