@@ -39,14 +39,6 @@ pub struct BiliConfig {
     pub tw_web_playurl_api: String,
     pub hk_web_playurl_api: String,
     pub th_web_playurl_api: String,
-    // pub cn_app_playurl_backup_api: String,
-    // pub tw_app_playurl_backup_api: String,
-    // pub hk_app_playurl_backup_api: String,
-    // pub th_app_playurl_backup_api: String,
-    // pub cn_web_playurl_backup_api: String,
-    // pub tw_web_playurl_backup_api: String,
-    // pub hk_web_playurl_backup_api: String,
-    // pub th_web_playurl_backup_api: String,
     pub cn_app_search_api: String,
     pub tw_app_search_api: String,
     pub hk_app_search_api: String,
@@ -67,30 +59,6 @@ pub struct BiliConfig {
     pub hk_proxy_playurl_open: bool,
     pub tw_proxy_playurl_open: bool,
     pub th_proxy_playurl_open: bool,
-    // #[serde(default = "default_false")]
-    // pub cn_proxy_playurl_backup_policy: bool, //~~打算砍掉~~ 好，去掉一个屎山
-    // #[serde(default = "default_false")]
-    // pub hk_proxy_playurl_backup_policy: bool,
-    // #[serde(default = "default_false")]
-    // pub tw_proxy_playurl_backup_policy: bool,
-    // #[serde(default = "default_false")]
-    // pub th_proxy_playurl_backup_policy: bool,
-    // #[serde(default = "default_string")]
-    // pub cn_proxy_playurl_backup_url: String,
-    // #[serde(default = "default_string")]
-    // pub hk_proxy_playurl_backup_url: String,
-    // #[serde(default = "default_string")]
-    // pub tw_proxy_playurl_backup_url: String,
-    // #[serde(default = "default_string")]
-    // pub th_proxy_playurl_backup_url: String,
-    // #[serde(default = "default_false")]
-    // pub cn_proxy_playurl_backup_open: bool,
-    // #[serde(default = "default_false")]
-    // pub hk_proxy_playurl_backup_open: bool,
-    // #[serde(default = "default_false")]
-    // pub tw_proxy_playurl_backup_open: bool,
-    // #[serde(default = "default_false")]
-    // pub th_proxy_playurl_backup_open: bool,
     pub cn_proxy_search_url: String,
     pub hk_proxy_search_url: String,
     pub tw_proxy_search_url: String,
@@ -115,10 +83,10 @@ pub struct BiliConfig {
     pub resign_pub: HashMap<String, bool>,
     #[serde(default = "default_hashmap_false")]
     pub resign_open: HashMap<String, bool>,
-    #[serde(default = "default_hashmap_string")]
-    pub resign_from_local: HashMap<String, String>, //限制白名单共享带会员的uid
-    #[serde(default = "default_true")]
-    pub resign_from_local_open: bool, //启用后白名单将共享带会员
+    // #[serde(default = "default_hashmap_string")]                                 // 与上方 resign 功能重复
+    // pub resign_from_local: HashMap<String, String>, //限制白名单共享带会员的uid    // 注释在 user_info.rs 的 255 行 
+    // #[serde(default = "default_true")]                                           // 
+    // pub resign_from_local_open: bool, //启用后白名单将共享带会员                   //
     #[serde(default = "default_hashmap_false")]
     pub resign_api_policy: HashMap<String, bool>, //启用后assesskey从api获取
     #[serde(default = "default_hashmap_string")]
