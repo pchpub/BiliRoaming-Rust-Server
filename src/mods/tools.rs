@@ -257,3 +257,22 @@ pub fn update_server<T: std::fmt::Display>(is_auto_close: bool) {
         }
     });
 }
+
+pub fn vec_to_string<T: std::fmt::Display>(vec: &Vec<T>,delimiter: &str) -> String {
+    match vec.len() {
+        0 => "".to_owned(),
+        1 => vec[0].to_string(),
+        _ => {
+            let mut processed_string = String::with_capacity(32); //TO CHECK
+            for single_key in vec.iter().zip(0..) {
+                if single_key.1 == 0 {
+                    processed_string.push_str(&single_key.0.to_string());
+                }else{
+                    processed_string.push_str(delimiter);
+                    processed_string.push_str(&single_key.0.to_string());
+                }
+            }
+            processed_string
+        }
+    }
+}

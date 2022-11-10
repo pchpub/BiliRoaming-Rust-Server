@@ -1,6 +1,7 @@
+use crate::mods::tools::vec_to_string;
+
 use super::background_tasks::{update_cached_area_background, update_cached_playurl_background};
 use super::ep_info::get_ep_need_vip;
-use super::tools::remove_viponly_clarity;
 use super::types::*;
 use chrono::prelude::*;
 use log::debug;
@@ -352,7 +353,7 @@ pub async fn get_cached_playurl(
                 params.is_tv,
                 params.is_vip,
                 cached_data_expire_time,
-                &cache_type.gen_key().join("|")
+                vec_to_string(&cache_type.gen_key(),"|")
             );
             if cached_data_expire_time - 1200000 > ts {
                 need_fresh = false;
@@ -369,13 +370,7 @@ pub async fn get_cached_playurl(
     if need_fresh {
         update_cached_playurl_background(params, bili_runtime).await;
     }
-    if params.is_vip {
-        Ok(return_data)
-    }
-    else {
-        let return_data = remove_viponly_clarity(&params.get_playurl_type(), return_data, cached_data_expire_time, cache_type, bili_runtime).await;
-        Ok(return_data)
-    }
+    Ok(return_data)
 }
 
 pub async fn update_cached_playurl(
@@ -433,7 +428,7 @@ pub async fn update_cached_playurl(
         params.is_tv,
         params.is_vip,
         expire_time,
-        &cache_type.gen_key().join("|")
+        vec_to_string(&cache_type.gen_key(),"|")
     );
 }
 
@@ -563,7 +558,7 @@ pub async fn get_cached_th_season(
             debug!(
                 "[GET TH_SEASON][C] AREA TH | SID {} -> CacheKey: {} 获取缓存成功 ",
                 season_id,
-                &CacheType::ThSeason(season_id).gen_key().join("|")
+                vec_to_string(&CacheType::ThSeason(season_id).gen_key(),"|")
             );
             let redis_get_data_expire_time = &value[..13].parse::<u64>().unwrap();
             if redis_get_data_expire_time > &ts {
@@ -592,7 +587,7 @@ pub async fn update_th_season_cache(season_id: &str, data: &str, bili_runtime: &
     debug!(
         "[GET TH_SEASON][C] AREA TH | SID {} -> CacheKey: {} 写入缓存成功",
         season_id,
-        &CacheType::ThSeason(season_id).gen_key().join("|")
+        vec_to_string(&CacheType::ThSeason(season_id).gen_key(),"|")
     );
 }
 
@@ -614,7 +609,7 @@ pub async fn get_cached_th_subtitle(
             debug!(
                 "[GET TH_SUBTITLE][C] AREA TH | EP {} -> CacheKey: {} 获取缓存成功",
                 params.ep_id,
-                &CacheType::ThSeason(params.ep_id).gen_key().join("|")
+                vec_to_string(&CacheType::ThSeason(params.ep_id).gen_key(),"|")
             );
             if &value[..13].parse::<u64>().unwrap() < &(ts * 1000) {
                 Err(true)
@@ -641,6 +636,6 @@ pub async fn update_th_subtitle_cache(
     debug!(
         "[GET TH_SUBTITLE][C] AREA TH | EP {} -> CacheKey: {} 写入缓存成功",
         params.ep_id,
-        &CacheType::ThSeason(params.ep_id).gen_key().join("|")
+        vec_to_string(&CacheType::ThSeason(params.ep_id).gen_key(),"|")
     );
 }

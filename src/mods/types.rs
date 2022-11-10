@@ -4,7 +4,7 @@ use chrono::{FixedOffset, TimeZone, Utc};
 use deadpool_redis::Pool;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, hash::Hash, sync::Arc};
+use std::{collections::HashMap, hash::Hash, sync::Arc, fmt::Display};
 use urlencoding::encode;
 
 /*
@@ -188,21 +188,37 @@ impl<'bili_runtime> BiliRuntime<'bili_runtime> {
     }
     // TODO: Easier Config
     pub async fn get_cache(&self, cache_type: &CacheType<'_>) -> Option<String> {
-        let keys = cache_type.gen_key();
-        for key in keys {
-            if let Some(value) = redis_get(self.redis_pool, &key).await {
-                return Some(value);
-            }
+        let key = &cache_type.gen_key()[0];
+        if let Some(value) = redis_get(self.redis_pool, key.gen_raw_key()).await {
+            return Some(value);
         }
         None
     }
     pub async fn update_cache(&self, cache_type: &CacheType<'_>, value: &str, expire_time: u64) {
         let keys = cache_type.gen_key();
-        for key in keys {
-            redis_set(self.redis_pool, &key, value, expire_time)
-                .await
-                .unwrap()
+        let _new_value: &str;
+        match cache_type {
+            CacheType::Playurl(_, _) => {//TODO: change data
+                for key in keys {
+                    redis_set(self.redis_pool, key.gen_raw_key(), value, expire_time)
+                        .await
+                        .unwrap()
+                }
+            },
+            _ => {
+                for key in keys {
+                    redis_set(self.redis_pool, key.gen_raw_key(), value, expire_time)
+                        .await
+                        .unwrap()
+                }
+            },
         }
+
+        // for key in keys {
+        //     redis_set(self.redis_pool, &key, value, expire_time)
+        //         .await
+        //         .unwrap()
+        // }
     }
     pub async fn redis_get(&self, key: &str) -> Option<String> {
         redis_get(self.redis_pool, key).await
@@ -303,7 +319,7 @@ impl ReqType {
 }
 
 pub enum CacheType<'cache_type> {
-    Playurl(&'cache_type PlayurlParams<'cache_type>, bool),
+    Playurl(&'cache_type PlayurlParams<'cache_type>, bool), // bool: ep_need_vip
     ThSeason(&'cache_type str),
     ThSubtitle(&'cache_type str),
     EpArea(&'cache_type str),
@@ -313,8 +329,8 @@ pub enum CacheType<'cache_type> {
 }
 impl<'cache_type> CacheType<'cache_type> {
     #[inline]
-    pub fn gen_key(&self) -> Vec<String> {
-        let mut keys = vec![];
+    pub fn gen_key(&self) -> Vec<CacheKey> {
+        let mut keys = Vec::with_capacity(2);
         match self {
             CacheType::Playurl(params, ep_need_vip) => {
                 let mut key = String::with_capacity(32);
@@ -350,7 +366,7 @@ impl<'cache_type> CacheType<'cache_type> {
                         key += "0701";
                     }
                 };
-                keys.push(key);
+                keys.push(CacheKey::CommonKey(key));
                 // 若不是带会员专享, ep_need_vip == false, 就给non-vip也存上一份
                 if !*ep_need_vip && params.is_vip {
                     let mut key = String::with_capacity(32);
@@ -381,7 +397,7 @@ impl<'cache_type> CacheType<'cache_type> {
                             key += "0701";
                         }
                     };
-                    keys.push(key);
+                    keys.push(CacheKey::SpecialKey(key));
                 }
             }
             CacheType::ThSeason(ep_id) => {
@@ -389,55 +405,82 @@ impl<'cache_type> CacheType<'cache_type> {
                 key.push_str("e");
                 key.push_str(ep_id);
                 key += "41201";
-                keys.push(key);
+                keys.push(CacheKey::CommonKey(key));
             }
             CacheType::ThSubtitle(season_id) => {
                 let mut key = String::with_capacity(16);
                 key.push_str("s");
                 key.push_str(season_id);
                 key += "41001";
-                keys.push(key);
+                keys.push(CacheKey::CommonKey(key));
             }
             CacheType::EpArea(ep_id) => {
                 let mut key = String::with_capacity(16);
                 key.push_str("e");
                 key.push_str(ep_id);
                 key += "1401";
-                keys.push(key);
+                keys.push(CacheKey::CommonKey(key));
             }
             CacheType::EpVipInfo(ep_id) => {
                 let mut key = String::with_capacity(64);
                 key.push_str("e");
                 key.push_str(ep_id);
                 key += "150101";
-                keys.push(key);
+                keys.push(CacheKey::CommonKey(key));
             }
             CacheType::UserInfo(access_key, uid) => {
                 let mut key = String::with_capacity(64);
                 key.push_str("a");
                 key.push_str(access_key);
                 key += "20501";
-                keys.push(key);
+                keys.push(CacheKey::CommonKey(key));
                 let mut key = String::with_capacity(32);
                 key.push_str("u");
                 key.push_str(&uid.to_string());
                 key += "20501";
-                keys.push(key);
+                keys.push(CacheKey::CommonKey(key));
             }
             CacheType::UserCerInfo(access_key, uid) => {
                 let mut key = String::with_capacity(64);
                 key.push_str("a");
                 key.push_str(access_key);
                 key += "20602";
-                keys.push(key);
+                keys.push(CacheKey::CommonKey(key));
                 let mut key = String::with_capacity(32);
                 key.push_str("u");
                 key.push_str(&uid.to_string());
                 key += "20602";
-                keys.push(key);
+                keys.push(CacheKey::CommonKey(key));
             }
         };
         keys
+    }
+}
+
+pub enum CacheKey { // 只能改gen_key了, 返回playurl cache的时候改返回值的话对性能消耗估计挺大的
+    CommonKey(String),
+    SpecialKey(String), // 需要后续处理的key
+}
+
+impl CacheKey {
+    pub fn gen_raw_key(&self) -> &str {
+        match self {
+            CacheKey::CommonKey(key) => &key,
+            CacheKey::SpecialKey(key) => &key,
+        }
+    }
+}
+
+impl Display for CacheKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CacheKey::CommonKey(key) => {
+                write!(f, "{}", key)
+            },
+            CacheKey::SpecialKey(key) => {
+                write!(f, "{}", key)
+            },
+        }
     }
 }
 
