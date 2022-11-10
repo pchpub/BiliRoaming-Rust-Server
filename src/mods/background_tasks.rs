@@ -40,6 +40,7 @@ pub async fn update_cached_playurl_background(
             is_tv: params.is_tv,
             is_th: params.is_th,
             is_vip: params.is_vip,
+            ep_need_vip: params.ep_need_vip,
             area: params.area.to_string(),
             area_num: params.area_num,
             user_agent: params.user_agent.to_string(),
@@ -229,9 +230,9 @@ pub async fn background_task_run(
                 }
             }
             CacheTask::PlayurlCacheRefresh(params) => {
-                match get_upstream_bili_playurl_background(&params.as_ref(), bili_runtime).await {
+                match get_upstream_bili_playurl_background(&mut params.as_ref(), bili_runtime).await {
                     Ok(body_data) => {
-                        update_cached_playurl(&params.as_ref(), &body_data, bili_runtime).await;
+                        update_cached_playurl(&mut params.as_ref(), &body_data, bili_runtime).await;
                         Ok(())
                     }
                     Err(value) => Err(format!(

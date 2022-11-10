@@ -1,4 +1,8 @@
-use super::request::{redis_get, redis_set};
+use super::{
+    ep_info::get_ep_need_vip,
+    request::{redis_get, redis_set},
+    tools::remove_viponly_clarity,
+};
 use async_channel::{Sender, TrySendError};
 use chrono::{FixedOffset, TimeZone, Utc};
 use deadpool_redis::Pool;
@@ -188,21 +192,43 @@ impl<'bili_runtime> BiliRuntime<'bili_runtime> {
     }
     // TODO: Easier Config
     pub async fn get_cache(&self, cache_type: &CacheType<'_>) -> Option<String> {
-        let keys = cache_type.gen_key();
-        for key in keys {
-            if let Some(value) = redis_get(self.redis_pool, &key).await {
-                return Some(value);
-            }
+        let key = &cache_type.gen_key()[0];
+        if let Some(value) = redis_get(self.redis_pool, key).await {
+            return Some(value);
         }
         None
     }
     pub async fn update_cache(&self, cache_type: &CacheType<'_>, value: &str, expire_time: u64) {
         let keys = cache_type.gen_key();
-        for key in keys {
-            redis_set(self.redis_pool, &key, value, expire_time)
-                .await
-                .unwrap()
+        // let _new_value: &str;
+        match cache_type {
+            CacheType::Playurl(params) => {
+                // vip用户获取到playurl后刷新缓存, keys[0]就是vip的key, keys[1]就是non-vip的key
+                redis_set(self.redis_pool, &keys[0], value, expire_time).await;
+                // 双保险, 虽然实际上应该只需要`keys.len() > 1`
+                if params.is_vip && !params.ep_need_vip {
+                    let playurl_type = &params.get_playurl_type();
+                    if let Some(value) = remove_viponly_clarity(playurl_type, value).await {
+                        redis_set(self.redis_pool, &keys[1], &value, expire_time)
+                            .await
+                            .unwrap()
+                    }
+                }
+            }
+            _ => {
+                for key in keys {
+                    redis_set(self.redis_pool, &key, value, expire_time)
+                        .await
+                        .unwrap()
+                }
+            }
         }
+
+        // for key in keys {
+        //     redis_set(self.redis_pool, &key, value, expire_time)
+        //         .await
+        //         .unwrap()
+        // }
     }
     pub async fn redis_get(&self, key: &str) -> Option<String> {
         redis_get(self.redis_pool, key).await
@@ -303,7 +329,7 @@ impl ReqType {
 }
 
 pub enum CacheType<'cache_type> {
-    Playurl(&'cache_type PlayurlParams<'cache_type>, bool),
+    Playurl(&'cache_type PlayurlParams<'cache_type>),
     ThSeason(&'cache_type str),
     ThSubtitle(&'cache_type str),
     EpArea(&'cache_type str),
@@ -314,9 +340,9 @@ pub enum CacheType<'cache_type> {
 impl<'cache_type> CacheType<'cache_type> {
     #[inline]
     pub fn gen_key(&self) -> Vec<String> {
-        let mut keys = vec![];
+        let mut keys = Vec::with_capacity(2);
         match self {
-            CacheType::Playurl(params, ep_need_vip) => {
+            CacheType::Playurl(params) => {
                 let mut key = String::with_capacity(32);
                 // not safe, 1 + 48 = 49, num 1's ascii...
                 let area_num_str =
@@ -352,18 +378,17 @@ impl<'cache_type> CacheType<'cache_type> {
                 };
                 keys.push(key);
                 // 若不是带会员专享, ep_need_vip == false, 就给non-vip也存上一份
-                if !*ep_need_vip && params.is_vip {
+                if !params.ep_need_vip && params.is_vip {
                     let mut key = String::with_capacity(32);
-                    let ep_need_vip_str =
-                        unsafe { String::from_utf8_unchecked(vec![*ep_need_vip as u8 + 48]) };
+                    // let ep_need_vip_str =
+                    //     unsafe { String::from_utf8_unchecked(vec![params.ep_need_vip as u8 + 48]) };
                     match params.is_app {
                         true => {
                             key.push_str("e");
                             key.push_str(params.ep_id);
                             key.push_str("c");
                             key.push_str(params.cid);
-                            key.push_str("v");
-                            key.push_str(&ep_need_vip_str);
+                            key.push_str("v0");
                             key.push_str("t");
                             key.push_str(&is_tv_str);
                             key.push_str(&area_num_str);
@@ -374,8 +399,7 @@ impl<'cache_type> CacheType<'cache_type> {
                             key.push_str(params.ep_id);
                             key.push_str("c");
                             key.push_str(params.cid);
-                            key.push_str("v");
-                            key.push_str(&ep_need_vip_str);
+                            key.push_str("v0");
                             key.push_str("t0");
                             key.push_str(&area_num_str);
                             key += "0701";
@@ -440,6 +464,34 @@ impl<'cache_type> CacheType<'cache_type> {
         keys
     }
 }
+
+// pub enum CacheKey {
+//     // 只能改gen_key了, 返回playurl cache的时候改返回值的话对性能消耗估计挺大的
+//     CommonKey(String),
+//     SpecialKey(String), // 需要后续处理的key
+// }
+
+// impl CacheKey {
+//     pub fn gen_raw_key(&self) -> &str {
+//         match self {
+//             key => &key,
+//             CacheKey::SpecialKey(key) => &key,
+//         }
+//     }
+// }
+
+// impl Display for CacheKey {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         match self {
+//             key => {
+//                 write!(f, "{}", key)
+//             }
+//             CacheKey::SpecialKey(key) => {
+//                 write!(f, "{}", key)
+//             }
+//         }
+//     }
+// }
 
 #[macro_export]
 /// `build_result_response` accept Result<String, EType>
@@ -900,9 +952,18 @@ impl ReportConfigCustom {
             ("TwSearch", ReportConfigCustomOrderName::TwSearch),
             ("ThSearch", ReportConfigCustomOrderName::ThSearch),
             ("ThSeason", ReportConfigCustomOrderName::ThSeason),
-            ("ChangedAreaName", ReportConfigCustomOrderName::ChangedAreaName),
-            ("ChangedDataType", ReportConfigCustomOrderName::ChangedDataType),
-            ("ChangedHealthType", ReportConfigCustomOrderName::ChangedHealthType),
+            (
+                "ChangedAreaName",
+                ReportConfigCustomOrderName::ChangedAreaName,
+            ),
+            (
+                "ChangedDataType",
+                ReportConfigCustomOrderName::ChangedDataType,
+            ),
+            (
+                "ChangedHealthType",
+                ReportConfigCustomOrderName::ChangedHealthType,
+            ),
         ]);
 
         {
@@ -1490,6 +1551,7 @@ pub struct PlayurlParamsStatic {
     pub is_tv: bool,
     pub is_th: bool,
     pub is_vip: bool,
+    pub ep_need_vip: bool,
     pub area: String,
     pub area_num: u8,
     pub user_agent: String,
@@ -1520,6 +1582,7 @@ impl PlayurlParamsStatic {
             is_tv: self.is_tv,
             is_th: self.is_th,
             is_vip: self.is_vip,
+            ep_need_vip: self.ep_need_vip,
             area: &self.area,
             area_num: self.area_num,
             user_agent: &self.user_agent,
@@ -1541,6 +1604,7 @@ pub struct PlayurlParams<'playurl_params> {
     pub is_tv: bool,
     pub is_th: bool,
     pub is_vip: bool,
+    pub ep_need_vip: bool,
     pub area: &'playurl_params str,
     pub area_num: u8,
     pub user_agent: &'playurl_params str,
@@ -1563,6 +1627,7 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl> Default
             is_tv: false,
             is_th: false,
             is_vip: false,
+            ep_need_vip: true,
             area: "hk",
             area_num: 2,
             user_agent: "Dalvik/2.1.0 (Linux; U; Android 12; PFEM10 Build/SKQ1.211019.001)",
@@ -1578,6 +1643,20 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl>
             self.is_th = true;
         }
         self.area = area.to_str();
+    }
+    pub async fn init_ep_need_vip(&mut self, bili_runtime: &BiliRuntime<'_>) {
+        self.ep_need_vip = if let Some(value) = get_ep_need_vip(self.ep_id, bili_runtime).await {
+            value == 1
+        } else {
+            if self.is_th {
+                // 此处处理东南亚区会员, 好坏一并缓存罢了
+                // // 不想弄了, 麻烦的一批
+                false
+            } else {
+                // should not
+                self.is_vip
+            }
+        };
     }
     pub fn appkey_to_sec(&mut self) -> Result<(), ()> {
         if self.is_th {
