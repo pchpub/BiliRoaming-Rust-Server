@@ -9,7 +9,7 @@ use super::cache::{
 };
 use super::health::report_health;
 use super::request::{async_getwebpage, async_postwebpage};
-use super::tools::{remove_parameters_playurl};
+use super::tools::remove_parameters_playurl;
 use super::types::{
     Area, BiliRuntime, EType, EpInfo, HealthData, HealthReportType, PlayurlParams, ReqType,
     SearchParams, UpstreamReply, UserCerinfo, UserInfo, UserResignInfo,
@@ -125,8 +125,11 @@ pub async fn get_upstream_bili_account_info(
                 "84956560bc028eb7" | "85eb6835b0a1034e" => {
                     // 还是迂回更新其用户信息试一下
                     update_cached_user_info_background(access_key.to_string(), bili_runtime).await;
-                    Err(EType::OtherError(-10403, "不兼容的APPKEY, 请升级油猴脚本或其他你正在用的客户端!"))
-                },
+                    Err(EType::OtherError(
+                        -10403,
+                        "不兼容的APPKEY, 请升级油猴脚本或其他你正在用的客户端!",
+                    ))
+                }
                 _ => {
                     error!("[GET USER_INFO][U] AK {} -> Get UserInfo failed. Invalid APPKEY -> APPKEY {} | TS {} | APPSEC {}. Upstream Reply -> {}",
                         access_key, appkey, ts_min, appsec, output_json
@@ -509,7 +512,7 @@ pub async fn get_upstream_bili_playurl(
                             "[GET PLAYURL][U] UID {} | AK {} | AREA {} | EP {} -> 非大会员用户获取了大会员独享视频, 可能大会员状态变动或限免, 并且尝试更新ep_need_vip成功",
                             user_info.uid, user_info.access_key, params.area.to_ascii_uppercase(), params.ep_id
                         );
-                    },
+                    }
                     None => {
                         error!(
                             "[GET PLAYURL][U] UID {} | AK {} | AREA {} | EP {} -> 非大会员用户获取了大会员独享视频, 可能大会员状态变动或限免, 并且尝试更新ep_need_vip失败",
@@ -517,7 +520,7 @@ pub async fn get_upstream_bili_playurl(
                         );
                     }
                 }
-                
+
                 report_health(
                     HealthReportType::Playurl(HealthData {
                         area_num: params.area_num,
@@ -534,10 +537,10 @@ pub async fn get_upstream_bili_playurl(
                     bili_runtime,
                 )
                 .await;
-                // return Err(EType::OtherError(
-                //     -10403,
-                //     "检测到可能刚刚买了带会员, 刷新缓存中, 请稍后重试喵",
-                // ));
+                return Err(EType::OtherError(
+                    -10403,
+                    "检测到可能刚刚买了带会员, 刷新缓存中, 请稍后重试喵",
+                ));
             }
         }
         // TODO: add fallback check
@@ -556,7 +559,7 @@ pub async fn get_upstream_bili_playurl(
 }
 
 pub async fn get_upstream_bili_playurl_background(
-    params: &PlayurlParams<'_>,
+    params: &mut PlayurlParams<'_>,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<String, EType> {
     // let bilisender_cl = Arc::clone(bilisender);

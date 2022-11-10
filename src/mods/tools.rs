@@ -1,13 +1,14 @@
-use log::error;
+use log::{debug, error};
 
 use super::{
     request::{download, getwebpage},
-    types::{BiliRuntime, CacheType, PlayurlType},
+    types::PlayurlType,
 };
 use std::env;
 use std::path::PathBuf;
 use std::thread;
 
+#[inline]
 pub fn check_vip_status_from_playurl(
     playurl_type: PlayurlType,
     data: &serde_json::Value,
@@ -154,50 +155,106 @@ pub fn remove_parameters_playurl(
 #[inline]
 pub async fn remove_viponly_clarity<'a>(
     playurl_type: &'a PlayurlType,
-    data: String,
-    _cached_data_expire_time: u64,
-    _cache_type: CacheType<'_>,
-    _bili_runtime: &BiliRuntime<'_>,
-) -> String {
+    data: &'a str,
+) -> Option<String> {
     let mut new_return_data = String::with_capacity(data.len() + 32);
     match playurl_type {
         PlayurlType::Thailand => {
-            // 东南亚区直接返回, 影响不大
-            data
+            // 东南亚区直接返回None, 影响不大
+            return None;
         }
         PlayurlType::ChinaApp => {
             // 判断是否有带会员独享清晰度
-            if data.contains("todo!()") {
+            if data.contains(r#""need_vip":true"#) {
                 // 处理
-                // todo!()
-                new_return_data.push_str(&data);
-                // bili_runtime
-                //     .update_cache(&cache_type, &new_return_data, cached_data_expire_time)
-                //     .await;
-                new_return_data
+                let expire_time = &data[..13];
+                let mut data_json: serde_json::Value = if let Ok(value) = serde_json::from_str(&data[13..])
+                {
+                    value
+                } else {
+                    debug!("[TOOLS] 解析JSON失败: {data}");
+                    return None;
+                };
+                let mut accept_description_to_del: Vec<String> = vec![];
+                // 移除support_formats里的need_vip内容
+                let support_formats = data_json["support_formats"].as_array_mut().unwrap();
+                support_formats.retain(|support_format| {
+                    if support_format.as_object().unwrap().contains_key("need_vip")
+                        && support_format["need_vip"].as_bool().unwrap_or(true)
+                    {
+                        accept_description_to_del
+                            .push(support_format["description"].as_str().unwrap().to_owned());
+                        false
+                    } else {
+                        true
+                    }
+                });
+                // 上一步记录了description
+                let accept_description = data_json["accept_description"].as_array_mut().unwrap();
+                accept_description.retain(|accept_description_item| {
+                    for accept_description_to_del_item in &accept_description_to_del {
+                        if accept_description_item.as_str().unwrap_or("")
+                            == accept_description_to_del_item
+                        {
+                            return false;
+                        }
+                    }
+                    true
+                });
+                new_return_data.push_str(expire_time);
+                new_return_data.push_str(&data_json.to_string());
             } else {
-                data
+                return None;
             }
         }
         PlayurlType::ChinaWeb => {
-            // 判断是否有带会员独享清晰度
-            if data.contains("todo!()") {
-                // 处理
-                // todo!()
-                new_return_data.push_str(&data);
-                // bili_runtime
-                //     .update_cache(&cache_type, &new_return_data, cached_data_expire_time)
-                //     .await;
-                new_return_data
-            } else {
-                data
-            }
+            // 判断是否有带会员独享清晰度, web没有这个need_vip的指示, 只能机械判断
+            // 目前已知的: "高清 1080P+"(改称"1080P 高码率"了)
+            // 番剧没有4K的吧...
+            // let expire_time = &data[..13];
+            // let mut data_json: serde_json::Value = if let Ok(value) = serde_json::from_str(&data[13..]) {
+            //     value
+            // } else {
+            //     debug!("[TOOLS] 解析JSON失败: {data}");
+            //     return None;
+            // };
+            // let data_json = if data_json["code"].as_i64().unwrap_or(-2333) == 0 {
+            //     &mut data_json["result"]
+            // } else {
+            //     debug!("[TOOLS] 解析JSON失败: {data}");
+            //     return None;
+            // };
+            // // 移除support_formats里的need_vip内容
+            // let support_formats = data_json["support_formats"].as_array_mut().unwrap();
+            // support_formats.retain(|support_format| {
+            //     match support_format["description"].as_str().unwrap() {
+            //         "高清 1080P+" | "1080P 高码率" => false,
+            //         _ => match support_format["new_description"].as_str().unwrap_or("") {
+            //             "高清 1080P+" | "1080P 高码率" => false,
+            //             _ => true,
+            //         },
+            //     }
+            // });
+            // debug!("support_formats {}", data_json["support_formats"]);
+            // // 上一步记录了description
+            // let accept_description = data_json["accept_description"].as_array_mut().unwrap();
+            // accept_description.retain(|accept_description_item| {
+            //     match accept_description_item.as_str().unwrap() {
+            //         "高清 1080P+" | "1080P 高码率" => false,
+            //         _ => true,
+            //     }
+            // });
+            // debug!("accept_description {}", data_json["accept_description"]);
+            // new_return_data.push_str(expire_time);
+            // new_return_data.push_str(&data_json.to_string());
+            return None;
         }
         PlayurlType::ChinaTv => {
-            // 处理失败就原样返回
-            data
+            // 没电视, 这直接None算了
+            return None;
         }
-    }
+    };
+    Some(new_return_data)
 }
 
 pub fn update_server<T: std::fmt::Display>(is_auto_close: bool) {
@@ -258,7 +315,7 @@ pub fn update_server<T: std::fmt::Display>(is_auto_close: bool) {
     });
 }
 
-pub fn vec_to_string<T: std::fmt::Display>(vec: &Vec<T>,delimiter: &str) -> String {
+pub fn vec_to_string<T: std::fmt::Display>(vec: &Vec<T>, delimiter: &str) -> String {
     match vec.len() {
         0 => "".to_owned(),
         1 => vec[0].to_string(),
@@ -267,7 +324,7 @@ pub fn vec_to_string<T: std::fmt::Display>(vec: &Vec<T>,delimiter: &str) -> Stri
             for single_key in vec.iter().zip(0..) {
                 if single_key.1 == 0 {
                     processed_string.push_str(&single_key.0.to_string());
-                }else{
+                } else {
                     processed_string.push_str(delimiter);
                     processed_string.push_str(&single_key.0.to_string());
                 }
