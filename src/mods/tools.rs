@@ -175,32 +175,43 @@ pub async fn remove_viponly_clarity<'a>(
                     debug!("[TOOLS] 解析JSON失败: {data}");
                     return None;
                 };
-                let mut accept_description_to_del: Vec<String> = vec![];
+                data_json.as_object_mut().unwrap().remove("vip_type");
+                data_json.as_object_mut().unwrap().remove("vip_status");
+                data_json["has_paid"] = serde_json::Value::Bool(false);
+                let mut quality_to_del: Vec<u64> = vec![];
+                let mut support_format_allowed = serde_json::Value::Null; //获取最高画质那档的信息
+                let mut support_format_allowed_found = false;
                 // 移除support_formats里的need_vip内容
                 let support_formats = data_json["support_formats"].as_array_mut().unwrap();
                 support_formats.retain(|support_format| {
                     if support_format.as_object().unwrap().contains_key("need_vip")
                         && support_format["need_vip"].as_bool().unwrap_or(true)
                     {
-                        accept_description_to_del
-                            .push(support_format["description"].as_str().unwrap().to_owned());
+                        quality_to_del.push(support_format["quality"].as_u64().unwrap_or(0));
                         false
                     } else {
+                        if !support_format_allowed_found {
+                            support_format_allowed = support_format.clone();
+                        }
+                        support_format_allowed_found = true;
                         true
                     }
                 });
-                // 上一步记录了description
-                let accept_description = data_json["accept_description"].as_array_mut().unwrap();
-                accept_description.retain(|accept_description_item| {
-                    for accept_description_to_del_item in &accept_description_to_del {
-                        if accept_description_item.as_str().unwrap_or("")
-                            == accept_description_to_del_item
-                        {
-                            return false;
+
+                if support_format_allowed_found {
+                    data_json["format"] = support_format_allowed["format"].clone();
+                    data_json["quality"] = support_format_allowed["quality"].clone();
+                }
+
+                data_json["dash"]["video"].as_array_mut().unwrap().retain(|video| {
+                        if quality_to_del.contains(&video["id"].as_u64().unwrap_or(0)) {
+                            false
+                        }else{
+                            true
                         }
                     }
-                    true
-                });
+                );
+
                 new_return_data.push_str(expire_time);
                 new_return_data.push_str(&data_json.to_string());
             } else {
