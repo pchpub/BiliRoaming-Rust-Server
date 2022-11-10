@@ -108,51 +108,12 @@ pub fn remove_parameters_playurl(
                 return Err(());
             }
         }
-        _ => Ok(()), // PlayurlType::ChinaApp => {
-                     //     if data["code"].as_i64().unwrap_or(233) == 0 {
-                     //         let items = if let Some(value) = data["support_formats"].as_array_mut() {
-                     //             value
-                     //         } else {
-                     //             return Err(());
-                     //         };
-                     //         for item in items {
-                     //             //item["need_login"] = serde_json::Value::Bool(false);
-                     //             item.as_object_mut().unwrap().remove("need_login");
-                     //             item.as_object_mut().unwrap().remove("need_vip");
-                     //         }
-                     //         return Ok(());
-                     //     } else {
-                     //         return Err(());
-                     //     }
-                     // }
-                     // PlayurlType::ChinaWeb => {
-                     //     if data["code"].as_i64().unwrap_or(233) == 0 {
-                     //         let items = if let Some(value) = data["result"]["support_formats"].as_array_mut() {
-                     //             value
-                     //         } else {
-                     //             return Err(());
-                     //         };
-                     //         for item in items {
-                     //             //item["need_login"] = serde_json::Value::Bool(false);
-                     //             item.as_object_mut().unwrap().remove("need_login");
-                     //             item.as_object_mut().unwrap().remove("need_vip");
-                     //         }
-                     //         return Ok(());
-                     //     } else {
-                     //         return Err(());
-                     //     }
-                     // }
-                     // PlayurlType::ChinaTv => {
-                     //     return Ok(());
-                     // }
+        _ => Ok(()),
     }
 }
 
-// TODO: 大会员获取非大会员专享视频时, 且缓存为非大会员时: 去除大会员专享清晰度(不去可能会被叔叔发律师函, 存在较大风险)
-// 对非大会员不太友好
-// 课好满(晚上继续咕咕咕)
-// 要考试, 咕咕咕
 #[inline]
+/// 大会员获取非大会员专享视频时, 且缓存为非大会员时: 去除大会员专享清晰度
 pub async fn remove_viponly_clarity<'a>(
     playurl_type: &'a PlayurlType,
     data: &'a str,
@@ -242,11 +203,9 @@ pub async fn remove_viponly_clarity<'a>(
                 let mut quality_to_del: Vec<u64> = vec![];
                 let mut support_format_allowed = serde_json::Value::Null; //获取最高画质那档的信息
                 let mut support_format_allowed_found = false;
-                // 移除support_formats里的need_vip内容
+                // 不应当删除support_format里面的内容, 否则网页端显示异常, APP端没影响就保持原样了
                 let support_formats = data_json_result["support_formats"].as_array_mut().unwrap();
                 for support_format in support_formats {
-                    // 由于前面的remove_parameters_playurl直接删除了need_vip, 所以导致出现了问题
-                    // 不应当删除support_format里面的内容
                     if support_format.as_object().unwrap().contains_key("need_vip")
                         && support_format["need_vip"].as_bool().unwrap_or(true)
                     {
