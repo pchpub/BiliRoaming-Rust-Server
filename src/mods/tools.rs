@@ -108,43 +108,43 @@ pub fn remove_parameters_playurl(
                 return Err(());
             }
         }
-        PlayurlType::ChinaApp => {
-            if data["code"].as_i64().unwrap_or(233) == 0 {
-                let items = if let Some(value) = data["support_formats"].as_array_mut() {
-                    value
-                } else {
-                    return Err(());
-                };
-                for item in items {
-                    //item["need_login"] = serde_json::Value::Bool(false);
-                    item.as_object_mut().unwrap().remove("need_login");
-                    item.as_object_mut().unwrap().remove("need_vip");
-                }
-                return Ok(());
-            } else {
-                return Err(());
-            }
-        }
-        PlayurlType::ChinaWeb => {
-            if data["code"].as_i64().unwrap_or(233) == 0 {
-                let items = if let Some(value) = data["result"]["support_formats"].as_array_mut() {
-                    value
-                } else {
-                    return Err(());
-                };
-                for item in items {
-                    //item["need_login"] = serde_json::Value::Bool(false);
-                    item.as_object_mut().unwrap().remove("need_login");
-                    item.as_object_mut().unwrap().remove("need_vip");
-                }
-                return Ok(());
-            } else {
-                return Err(());
-            }
-        }
-        PlayurlType::ChinaTv => {
-            return Ok(());
-        }
+        _ => Ok(()), // PlayurlType::ChinaApp => {
+                     //     if data["code"].as_i64().unwrap_or(233) == 0 {
+                     //         let items = if let Some(value) = data["support_formats"].as_array_mut() {
+                     //             value
+                     //         } else {
+                     //             return Err(());
+                     //         };
+                     //         for item in items {
+                     //             //item["need_login"] = serde_json::Value::Bool(false);
+                     //             item.as_object_mut().unwrap().remove("need_login");
+                     //             item.as_object_mut().unwrap().remove("need_vip");
+                     //         }
+                     //         return Ok(());
+                     //     } else {
+                     //         return Err(());
+                     //     }
+                     // }
+                     // PlayurlType::ChinaWeb => {
+                     //     if data["code"].as_i64().unwrap_or(233) == 0 {
+                     //         let items = if let Some(value) = data["result"]["support_formats"].as_array_mut() {
+                     //             value
+                     //         } else {
+                     //             return Err(());
+                     //         };
+                     //         for item in items {
+                     //             //item["need_login"] = serde_json::Value::Bool(false);
+                     //             item.as_object_mut().unwrap().remove("need_login");
+                     //             item.as_object_mut().unwrap().remove("need_vip");
+                     //         }
+                     //         return Ok(());
+                     //     } else {
+                     //         return Err(());
+                     //     }
+                     // }
+                     // PlayurlType::ChinaTv => {
+                     //     return Ok(());
+                     // }
     }
 }
 
@@ -164,17 +164,16 @@ pub async fn remove_viponly_clarity<'a>(
             return None;
         }
         PlayurlType::ChinaApp => {
-            // 判断是否有带会员独享清晰度
             if data.contains(r#""need_vip":true"#) {
                 // 处理
                 let expire_time = &data[..13];
-                let mut data_json: serde_json::Value = if let Ok(value) = serde_json::from_str(&data[13..])
-                {
-                    value
-                } else {
-                    debug!("[TOOLS] 解析JSON失败: {data}");
-                    return None;
-                };
+                let mut data_json: serde_json::Value =
+                    if let Ok(value) = serde_json::from_str(&data[13..]) {
+                        value
+                    } else {
+                        debug!("[TOOLS] 解析JSON失败: {data}");
+                        return None;
+                    };
                 data_json.as_object_mut().unwrap().remove("vip_type");
                 data_json.as_object_mut().unwrap().remove("vip_status");
                 data_json["has_paid"] = serde_json::Value::Bool(false);
@@ -203,14 +202,16 @@ pub async fn remove_viponly_clarity<'a>(
                     data_json["quality"] = support_format_allowed["quality"].clone();
                 }
 
-                data_json["dash"]["video"].as_array_mut().unwrap().retain(|video| {
+                data_json["dash"]["video"]
+                    .as_array_mut()
+                    .unwrap()
+                    .retain(|video| {
                         if quality_to_del.contains(&video["id"].as_u64().unwrap_or(0)) {
                             false
-                        }else{
+                        } else {
                             true
                         }
-                    }
-                );
+                    });
 
                 new_return_data.push_str(expire_time);
                 new_return_data.push_str(&data_json.to_string());
@@ -219,46 +220,65 @@ pub async fn remove_viponly_clarity<'a>(
             }
         }
         PlayurlType::ChinaWeb => {
-            // 判断是否有带会员独享清晰度, web没有这个need_vip的指示, 只能机械判断
-            // 目前已知的: "高清 1080P+"(改称"1080P 高码率"了)
-            // 番剧没有4K的吧...
-            // let expire_time = &data[..13];
-            // let mut data_json: serde_json::Value = if let Ok(value) = serde_json::from_str(&data[13..]) {
-            //     value
-            // } else {
-            //     debug!("[TOOLS] 解析JSON失败: {data}");
-            //     return None;
-            // };
-            // let data_json = if data_json["code"].as_i64().unwrap_or(-2333) == 0 {
-            //     &mut data_json["result"]
-            // } else {
-            //     debug!("[TOOLS] 解析JSON失败: {data}");
-            //     return None;
-            // };
-            // // 移除support_formats里的need_vip内容
-            // let support_formats = data_json["support_formats"].as_array_mut().unwrap();
-            // support_formats.retain(|support_format| {
-            //     match support_format["description"].as_str().unwrap() {
-            //         "高清 1080P+" | "1080P 高码率" => false,
-            //         _ => match support_format["new_description"].as_str().unwrap_or("") {
-            //             "高清 1080P+" | "1080P 高码率" => false,
-            //             _ => true,
-            //         },
-            //     }
-            // });
-            // debug!("support_formats {}", data_json["support_formats"]);
-            // // 上一步记录了description
-            // let accept_description = data_json["accept_description"].as_array_mut().unwrap();
-            // accept_description.retain(|accept_description_item| {
-            //     match accept_description_item.as_str().unwrap() {
-            //         "高清 1080P+" | "1080P 高码率" => false,
-            //         _ => true,
-            //     }
-            // });
-            // debug!("accept_description {}", data_json["accept_description"]);
-            // new_return_data.push_str(expire_time);
-            // new_return_data.push_str(&data_json.to_string());
-            return None;
+            if data.contains(r#""need_vip":true"#) {
+                let expire_time = &data[..13];
+                let mut data_json: serde_json::Value =
+                    if let Ok(value) = serde_json::from_str(&data[13..]) {
+                        value
+                    } else {
+                        return None;
+                    };
+                let data_json_result = if data_json["code"].as_i64().unwrap_or(-2333) == 0 {
+                    &mut data_json["result"]
+                } else {
+                    return None;
+                };
+                data_json_result.as_object_mut().unwrap().remove("vip_type");
+                data_json_result
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("vip_status");
+                data_json_result["has_paid"] = serde_json::Value::Bool(false);
+                let mut quality_to_del: Vec<u64> = vec![];
+                let mut support_format_allowed = serde_json::Value::Null; //获取最高画质那档的信息
+                let mut support_format_allowed_found = false;
+                // 移除support_formats里的need_vip内容
+                let support_formats = data_json_result["support_formats"].as_array_mut().unwrap();
+                for support_format in support_formats {
+                    // 由于前面的remove_parameters_playurl直接删除了need_vip, 所以导致出现了问题
+                    // 不应当删除support_format里面的内容
+                    if support_format.as_object().unwrap().contains_key("need_vip")
+                        && support_format["need_vip"].as_bool().unwrap_or(true)
+                    {
+                        quality_to_del.push(support_format["quality"].as_u64().unwrap_or(0));
+                    } else {
+                        if !support_format_allowed_found {
+                            support_format_allowed = support_format.clone();
+                        }
+                        support_format_allowed_found = true;
+                    }
+                }
+
+                if support_format_allowed_found {
+                    data_json_result["format"] = support_format_allowed["format"].clone();
+                    data_json_result["quality"] = support_format_allowed["quality"].clone();
+                }
+
+                data_json_result["dash"]["video"]
+                    .as_array_mut()
+                    .unwrap()
+                    .retain(|video| {
+                        if quality_to_del.contains(&video["id"].as_u64().unwrap_or(0)) {
+                            false
+                        } else {
+                            true
+                        }
+                    });
+                new_return_data.push_str(expire_time);
+                new_return_data.push_str(&data_json.to_string());
+            } else {
+                return None;
+            }
         }
         PlayurlType::ChinaTv => {
             // 没电视, 这直接None算了
