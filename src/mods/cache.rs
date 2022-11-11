@@ -251,7 +251,8 @@ pub async fn update_user_info_cache(new_user_info: &UserInfo, bili_runtime: &Bil
         bili_runtime
             .redis_set("av11301", &new_user_info.access_key, expire_time)
             .await;
-        bili_runtime.redis_set("v11101", &value, expire_time).await
+        // 此处保存vip用户的access_key到本地使用, 02版本号, 刷新access_token的方法比较麻烦
+        bili_runtime.redis_set("a11102", &new_user_info.access_key, expire_time).await
     } else {
         bili_runtime
             .redis_set("uv01301", &new_user_info.uid.to_string(), expire_time)
