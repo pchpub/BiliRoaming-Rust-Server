@@ -2,7 +2,8 @@ name: ci
 
 on:
   push:
-    branches: [ "beta" ]
+    branches-ignore: [ "main" ]
+    #branches: [ "beta" ]
     paths-ignore:
       - '**.md'
       - 'LICENSE'
