@@ -17,6 +17,7 @@ pub fn check_vip_status_from_playurl(
         PlayurlType::Thailand => Err(()),
         PlayurlType::ChinaApp => {
             if data["code"].as_i64().unwrap_or(233) == 0 {
+                let mut quality_need_vip: Vec<u64> = Vec::with_capacity(2);
                 let items = if let Some(value) = data["support_formats"].as_array() {
                     value
                 } else {
@@ -24,11 +25,20 @@ pub fn check_vip_status_from_playurl(
                 };
                 for item in items {
                     if item["need_vip"].as_bool().unwrap_or(false) {
-                        return Ok(true);
+                        quality_need_vip.push(item["quality"].as_u64().unwrap_or(0));
                     }
                 }
+                
+                if quality_need_vip.len() != 0 {
+                    for video in data["dash"]["video"].as_array().unwrap() {
+                        if quality_need_vip.contains(&video["id"].as_u64().unwrap_or(0)) {
+                            return Ok(true);
+                        }
+                    }
+                    return Ok(false);
+                }
 
-                match data["vip_status"].as_i64().unwrap_or(2) {
+                match data["vip_status"].as_i64().unwrap_or(2) { // 这种方法会让 试看 的情况出现问题,所以不作为首选方法
                     1 => {
                         return Ok(true);
                     }
