@@ -252,51 +252,44 @@ pub async fn resign_user_info(
         }
     } else {
         // 原来这儿还是.get("4"), 实在看不懂, 这儿应该是area_num, 对应的这个区域是否打开resign吧...
-        if *config
-            .resign_open
-            .get(&params.area_num.to_string())
-            .unwrap_or(&false)
-            && (white
-                || *config
-                    .resign_pub
-                    .get(&params.area_num.to_string())
-                    .unwrap_or(&false))
+        // 此处和泰区基本一样的,resign的accesskey有2个来源，一个是本地，一个是从其他开放了resign accesskey api的rust服务器中获取
+        
+        // accesskey 用途:
+        // resign_open && !resign_pub 为 true 时: 仅白名单用户可获取 accesskey
+        // resign_open && resign_pub 为 true 时: 所有用户可获取 accesskey
+
+        // accesskey 来源:
+        // resign_api_policy 为 true 时: accesskey 从其他rust服务器 (即resign_api) 获取
+        // resign_api_policy 为 false 时: accesskey 从本地获取
+        
+        if *config.resign_open.get(&params.area_num.to_string()).unwrap_or(&false)
+            && (white || *config.resign_pub.get(&params.area_num.to_string()).unwrap_or(&false))
         {
-            if config.resign_from_local_open {
-                if let Some(value) = bili_runtime.redis_get("v11101").await {
-                    let user_info: UserInfo = serde_json::from_str(&value).unwrap_or(UserInfo {
-                        access_key: params.access_key.to_owned(),
-                        uid: 0,
-                        vip_expire_time: if params.is_vip {
-                            Local::now().timestamp_millis() as u64 + 24 * 60 * 60 * 1000
-                        } else {
-                            0
-                        },
-                        expire_time: 0,
-                    });
-                    return Ok(Some((user_info.is_vip(), user_info.access_key)));
-                }
-            };
-            (new_access_key, _) =
-                get_resigned_access_key(&params.area_num, &params.user_agent, bili_runtime)
-                    .await
-                    .unwrap_or((params.access_key.to_string(), 1));
-            let user_info = match get_user_info(
-                params.access_key,
+            (new_access_key, _) = get_resigned_access_key(&1, &params.user_agent, bili_runtime)
+                .await
+                .unwrap_or((params.access_key.to_string(), 1));
+
+            let resign_user_info = match get_user_info(
+                &new_access_key,
                 params.appkey,
                 params.appsec,
                 params.user_agent,
                 false,
                 bili_runtime,
             )
-            .await
-            {
+            .await {
                 Ok(value) => value,
                 Err(value) => {
                     return Err(value);
                 }
             };
-            Ok(Some((user_info.is_vip(), new_access_key)))
+
+            if !params.is_vip && resign_user_info.is_vip() {
+                // 用户不是大会员且resign accesskey是大会员时才需要替换, 否则会因为请求过多导致黑号(已经有个人的测速的key寄了)
+                Ok(Some((resign_user_info.is_vip(), new_access_key))) 
+            }else{
+                Ok(None)
+            }
         } else {
             Ok(None)
         }
