@@ -1,5 +1,5 @@
 use super::cache::{get_cached_blacklist_info, get_cached_user_info};
-use super::request::async_getwebpage;
+use super::request::{async_getwebpage, async_postwebpage};
 use super::types::{BiliRuntime, EType, PlayurlParams, UserInfo, UserResignInfo};
 use super::upstream_res::{get_upstream_bili_account_info, get_upstream_blacklist_info};
 use chrono::prelude::*;
@@ -259,8 +259,8 @@ pub async fn resign_user_info(
         // resign_open && resign_pub 为 true 时: 所有用户可获取 accesskey
 
         // accesskey 来源:
-        // resign_api_policy 为 true 时: accesskey 从其他rust服务器 (即resign_api) 获取
-        // resign_api_policy 为 false 时: accesskey 从本地获取
+        // resign_from_api_open 为 true 时: accesskey 从其他rust服务器 (即resign_api) 获取
+        // resign_from_api_open 为 false 时: accesskey 从本地获取
 
         if *config
             .resign_open
@@ -310,7 +310,7 @@ pub async fn get_resigned_access_key(
 ) -> Option<(String, u64)> {
     let config = bili_runtime.config;
     if *config
-        .resign_api_policy
+        .resign_from_api_open
         .get(&area_num.to_string())
         .unwrap_or(&false)
     {
@@ -372,97 +372,100 @@ pub async fn get_resigned_access_key(
             4 => 4,
             _ => 1,
         };
-        let access_key_for_resign = match bili_runtime.redis_get(&format!("a{area_num}1102")).await
-        {
-            Some(value) => value,
-            None => return None,
-        };
-        Some((access_key_for_resign, 0))
-        // let resign_info_json: UserResignInfo = serde_json::from_str(&resign_info_str).unwrap();
-        // let dt = Local::now();
-        // let ts = dt.timestamp() as u64;
-        // if resign_info_json.expire_time > ts {
-        //     return Some((resign_info_json.access_key, resign_info_json.expire_time));
-        // } else {
-        //     let sub_area_num: u8 = match area_num {
-        //         4 => 4,
-        //         _ => 1,
-        //     };
-        //     get_accesskey_from_token(sub_area_num, user_agent, bili_runtime).await
-        // }
+        if bili_runtime.config.resign_from_existed_key {
+            let access_key_for_resign = match bili_runtime.redis_get(&format!("a{area_num}1102")).await
+            {
+                Some(value) => value,
+                None => return None,
+            };
+            Some((access_key_for_resign, 0))
+        }else{
+            let resign_info_str = match bili_runtime.redis_get(&format!("a{area_num}1101")).await {
+                Some(value) => value,
+                None => return None,
+            };
+            let resign_info_json: UserResignInfo = serde_json::from_str(&resign_info_str).unwrap();
+            let dt = Local::now();
+            let ts = dt.timestamp() as u64;
+            if resign_info_json.expire_time > ts {
+                return Some((resign_info_json.access_key, resign_info_json.expire_time));
+            } else {
+                get_accesskey_from_token(area_num, user_agent, bili_runtime).await
+            }
+        }
     }
 }
 
-// async fn get_accesskey_from_token(
-//     sub_area_num: u8,
-//     user_agent: &str,
-//     bili_runtime: &BiliRuntime<'_>,
-// ) -> Option<(String, u64)> {
-//     let config = bili_runtime.config;
-//     let dt = Local::now();
-//     let ts = dt.timestamp() as u64;
-//     let resign_info = to_resign_info(
-//         &bili_runtime
-//             .redis_get(&format!("a{sub_area_num}1101"))
-//             .await
-//             .unwrap(),
-//     )
-//     .await;
-//     let access_key = resign_info.access_key;
-//     let refresh_token = resign_info.refresh_token;
-//     let (url, content, proxy_open, proxy_url) = match sub_area_num {
-//         4 => (
-//             "https://passport.biliintl.com/x/intl/passport-login/oauth2/refresh_token",
-//             format!("access_token={access_key}&refresh_token={refresh_token}"),
-//             &config.th_proxy_token_open,
-//             &config.th_proxy_token_url,
-//         ),
-//         1 => {
-//             let unsign_request_body = format!(
-//                 "access_token={access_key}&appkey=1d8b6e7d45233436&refresh_token={refresh_token}&ts={ts}"
-//             );
-//             (
-//                 "https://passport.bilibili.com/x/passport-login/oauth2/refresh_token",
-//                 format!(
-//                     "{unsign_request_body}&sign={:x}",
-//                     md5::compute(format!(
-//                         "{unsign_request_body}560c52ccd288fed045859ed18bffd973"
-//                     ))
-//                 ),
-//                 &config.cn_proxy_token_open,
-//                 &config.cn_proxy_token_url,
-//             )
-//         }
-//         _ => return None,
-//     };
-//     let getpost_string =
-//         match async_postwebpage(&url, &content, *proxy_open, proxy_url, user_agent).await {
-//             Ok(value) => value,
-//             Err(_) => return None,
-//         };
-//     let getpost_json: serde_json::Value = serde_json::from_str(&getpost_string).unwrap();
-//     let resign_info = UserResignInfo {
-//         area_num: sub_area_num as i32,
-//         access_key: getpost_json["data"]["token_info"]["access_token"]
-//             .as_str()
-//             .unwrap()
-//             .to_string(),
-//         refresh_token: getpost_json["data"]["token_info"]["refresh_token"]
-//             .as_str()
-//             .unwrap()
-//             .to_string(),
-//         expire_time: getpost_json["data"]["token_info"]["expires_in"]
-//             .as_u64()
-//             .unwrap()
-//             + ts
-//             - 3600,
-//     };
-//     bili_runtime
-//         .redis_set(&format!("a{sub_area_num}1101"), &resign_info.to_json(), 0)
-//         .await;
-//     Some((resign_info.access_key, resign_info.expire_time))
-// }
+async fn get_accesskey_from_token(
+    sub_area_num: u8,
+    user_agent: &str,
+    bili_runtime: &BiliRuntime<'_>,
+) -> Option<(String, u64)> {
+    let config = bili_runtime.config;
+    let dt = Local::now();
+    let ts = dt.timestamp() as u64;
+    let resign_info = to_resign_info(
+        &bili_runtime
+            .redis_get(&format!("a{sub_area_num}1101"))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let access_key = resign_info.access_key;
+    let refresh_token = resign_info.refresh_token;
+    let (url, content, proxy_open, proxy_url) = match sub_area_num {
+        4 => (
+            "https://passport.biliintl.com/x/intl/passport-login/oauth2/refresh_token",
+            format!("access_token={access_key}&refresh_token={refresh_token}"),
+            &config.th_proxy_token_open,
+            &config.th_proxy_token_url,
+        ),
+        1 => {
+            let unsign_request_body = format!(
+                "access_token={access_key}&appkey=1d8b6e7d45233436&refresh_token={refresh_token}&ts={ts}"
+            );
+            (
+                "https://passport.bilibili.com/x/passport-login/oauth2/refresh_token",
+                format!(
+                    "{unsign_request_body}&sign={:x}",
+                    md5::compute(format!(
+                        "{unsign_request_body}560c52ccd288fed045859ed18bffd973"
+                    ))
+                ),
+                &config.cn_proxy_token_open,
+                &config.cn_proxy_token_url,
+            )
+        }
+        _ => return None,
+    };
+    let getpost_string =
+        match async_postwebpage(&url, &content, *proxy_open, proxy_url, user_agent).await {
+            Ok(value) => value,
+            Err(_) => return None,
+        };
+    let getpost_json: serde_json::Value = serde_json::from_str(&getpost_string).unwrap();
+    let resign_info = UserResignInfo {
+        area_num: sub_area_num as i32,
+        access_key: getpost_json["data"]["token_info"]["access_token"]
+            .as_str()
+            .unwrap()
+            .to_string(),
+        refresh_token: getpost_json["data"]["token_info"]["refresh_token"]
+            .as_str()
+            .unwrap()
+            .to_string(),
+        expire_time: getpost_json["data"]["token_info"]["expires_in"]
+            .as_u64()
+            .unwrap()
+            + ts
+            - 3600,
+    };
+    bili_runtime
+        .redis_set(&format!("a{sub_area_num}1101"), &resign_info.to_json(), 0)
+        .await;
+    Some((resign_info.access_key, resign_info.expire_time))
+}
 
-// async fn to_resign_info(resin_info_str: &str) -> UserResignInfo {
-//     serde_json::from_str(resin_info_str).unwrap()
-// }
+async fn to_resign_info(resin_info_str: &str) -> UserResignInfo {
+    serde_json::from_str(resin_info_str).unwrap()
+}
