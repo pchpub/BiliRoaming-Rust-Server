@@ -21,8 +21,8 @@
     + web search 08
     + web subtitle 09
     + web season 10
-    + resign_info 11
-    + api 12
+    + resign_info 11 `get_resigned_access_key` 本地resign, ver2仅保存access_key, ver1留给通过refresh_token刷新
+    + resign_info_use_api 12 `get_resigned_access_key`使用上游API
     + health 13 eg. 0141301 = playurl th health ver.1
       + health_check_used_access_key: a1301
     + ep_area 14

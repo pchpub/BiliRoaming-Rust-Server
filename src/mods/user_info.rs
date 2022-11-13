@@ -253,17 +253,24 @@ pub async fn resign_user_info(
     } else {
         // 原来这儿还是.get("4"), 实在看不懂, 这儿应该是area_num, 对应的这个区域是否打开resign吧...
         // 此处和泰区基本一样的,resign的accesskey有2个来源，一个是本地，一个是从其他开放了resign accesskey api的rust服务器中获取
-        
+
         // accesskey 用途:
         // resign_open && !resign_pub 为 true 时: 仅白名单用户可获取 accesskey
         // resign_open && resign_pub 为 true 时: 所有用户可获取 accesskey
 
         // accesskey 来源:
-        // resign_api_policy 为 true 时: accesskey 从其他rust服务器 (即resign_api) 获取
-        // resign_api_policy 为 false 时: accesskey 从本地获取
-        
-        if *config.resign_open.get(&params.area_num.to_string()).unwrap_or(&false)
-            && (white || *config.resign_pub.get(&params.area_num.to_string()).unwrap_or(&false))
+        // resign_from_api_open 为 true 时: accesskey 从其他rust服务器 (即resign_api) 获取
+        // resign_from_api_open 为 false 时: accesskey 从本地获取
+
+        if *config
+            .resign_open
+            .get(&params.area_num.to_string())
+            .unwrap_or(&false)
+            && (white
+                || *config
+                    .resign_pub
+                    .get(&params.area_num.to_string())
+                    .unwrap_or(&false))
         {
             (new_access_key, _) = get_resigned_access_key(&1, &params.user_agent, bili_runtime)
                 .await
@@ -277,7 +284,8 @@ pub async fn resign_user_info(
                 false,
                 bili_runtime,
             )
-            .await {
+            .await
+            {
                 Ok(value) => value,
                 Err(value) => {
                     return Err(value);
@@ -286,8 +294,8 @@ pub async fn resign_user_info(
 
             if !params.is_vip && resign_user_info.is_vip() {
                 // 用户不是大会员且resign accesskey是大会员时才需要替换, 否则会因为请求过多导致黑号(已经有个人的测速的key寄了)
-                Ok(Some((resign_user_info.is_vip(), new_access_key))) 
-            }else{
+                Ok(Some((resign_user_info.is_vip(), new_access_key)))
+            } else {
                 Ok(None)
             }
         } else {
@@ -302,7 +310,7 @@ pub async fn get_resigned_access_key(
 ) -> Option<(String, u64)> {
     let config = bili_runtime.config;
     if *config
-        .resign_api_policy
+        .resign_from_api_open
         .get(&area_num.to_string())
         .unwrap_or(&false)
     {
@@ -325,7 +333,7 @@ pub async fn get_resigned_access_key(
             &area_num,
             &config.resign_api_sign.get(&area_num_str).unwrap()
         );
-        let data = if let Ok(data) = async_getwebpage(&url, false, "", "", "").await {
+        let data = if let Ok(data) = async_getwebpage(&url, false, "", user_agent, "").await {
             data
         } else {
             error!("[GET RESIGN] 从非官方接口处获取access_key失败");
@@ -364,21 +372,26 @@ pub async fn get_resigned_access_key(
             4 => 4,
             _ => 1,
         };
-        let resign_info_str = match bili_runtime.redis_get(&format!("a{area_num}1101")).await {
-            Some(value) => value,
-            None => return None,
-        };
-        let resign_info_json: UserResignInfo = serde_json::from_str(&resign_info_str).unwrap();
-        let dt = Local::now();
-        let ts = dt.timestamp() as u64;
-        if resign_info_json.expire_time > ts {
-            return Some((resign_info_json.access_key, resign_info_json.expire_time));
-        } else {
-            let sub_area_num: u8 = match area_num {
-                4 => 4,
-                _ => 1,
+        if bili_runtime.config.resign_from_existed_key {
+            let access_key_for_resign = match bili_runtime.redis_get(&format!("a{area_num}1102")).await
+            {
+                Some(value) => value,
+                None => return None,
             };
-            get_accesskey_from_token(sub_area_num, user_agent, bili_runtime).await
+            Some((access_key_for_resign, 0))
+        }else{
+            let resign_info_str = match bili_runtime.redis_get(&format!("a{area_num}1101")).await {
+                Some(value) => value,
+                None => return None,
+            };
+            let resign_info_json: UserResignInfo = serde_json::from_str(&resign_info_str).unwrap();
+            let dt = Local::now();
+            let ts = dt.timestamp() as u64;
+            if resign_info_json.expire_time > ts {
+                return Some((resign_info_json.access_key, resign_info_json.expire_time));
+            } else {
+                get_accesskey_from_token(area_num, user_agent, bili_runtime).await
+            }
         }
     }
 }
@@ -456,31 +469,3 @@ async fn get_accesskey_from_token(
 async fn to_resign_info(resin_info_str: &str) -> UserResignInfo {
     serde_json::from_str(resin_info_str).unwrap()
 }
-
-// // background task
-// pub async fn get_user_info_background(
-//     access_key: &str,
-//     appkey: &str,
-//     appsec: &str,
-//     user_agent: &str,
-//     bili_runtime: &BiliRuntime<'_>,
-// ) -> Result<UserInfo, EType> {
-//     // mixed with blacklist function
-//     match get_cached_user_info(access_key, bili_runtime).await {
-//         Some(value) => Ok(value),
-//         None => {
-//             match get_upstream_bili_account_info(
-//                 access_key,
-//                 appkey,
-//                 appsec,
-//                 user_agent,
-//                 bili_runtime,
-//             )
-//             .await
-//             {
-//                 Ok(value) => Ok(value),
-//                 Err(value) => Err(value),
-//             }
-//         }
-//     }
-// }

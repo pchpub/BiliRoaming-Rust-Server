@@ -1416,7 +1416,7 @@ pub async fn get_upstream_resigned_access_key(
 
     let config = bili_runtime.config;
     if *config
-        .resign_api_policy
+        .resign_from_api_open
         .get(&area_num.to_string())
         .unwrap_or(&false)
     {
