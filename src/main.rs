@@ -4,13 +4,12 @@ use actix_web::http::header::ContentType;
 use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use async_channel::{Receiver, Sender};
 use biliroaming_rust_server::mods::background_tasks::*;
-use biliroaming_rust_server::mods::config::init_config;
+use biliroaming_rust_server::mods::config::{init_config, prepare_before_start};
 use biliroaming_rust_server::mods::handler::{
     errorurl_reg, handle_api_access_key_request, handle_playurl_request, handle_search_request,
     handle_th_season_request, handle_th_subtitle_request,
 };
 use biliroaming_rust_server::mods::rate_limit::BiliUserToken;
-// use biliroaming_rust_server::mods::tools::update_server;
 use biliroaming_rust_server::mods::types::{BackgroundTaskType, BiliConfig, BiliRuntime};
 use deadpool_redis::{Config, Pool, Runtime};
 use futures::join;
@@ -162,34 +161,16 @@ fn main() -> std::io::Result<()> {
     .unwrap();
     // //init server_config => BiliConfig
     //fs::write("config.example.yml", serde_yaml::to_string(&config).unwrap()).unwrap(); //Debug 方便生成示例配置
+    let rt = tokio::runtime::Runtime::new().unwrap();
     let server_config: BiliConfig = SERVER_CONFIG.clone();
     let woker_num = server_config.woker_num;
     let port = server_config.port.clone();
-    // //砍掉自动升级功能
-    // if server_config.auto_update {
-    //     update_server(server_config.auto_close.clone());
-    // }
-    // init async_channel
-    // let (s, r): (Sender<BackgroundTaskType>, Receiver<BackgroundTaskType>) =
-    //     async_channel::bounded(120);
     let bilisender = Arc::clone(&*BILISENDER);
-    // let bilisender_background = Arc::clone(&bilisender);
-    // let bilisender_live = bilisender.clone();
-    // //init redis_pool for background task
-    // let redis_cfg_background = Config::from_url(&server_config.redis);
-    // let redis_pool_background = redis_cfg_background
-    //     .create_pool(Some(Runtime::Tokio1))
-    //     .unwrap();
-
+    {
+        let bili_runtime = BiliRuntime::new(&*SERVER_CONFIG, &*REDIS_POOL, &*BILISENDER);
+        rt.block_on(prepare_before_start(bili_runtime));
+    }
     let web_background = async move {
-        //a thread try to update cache
-        // println!("[Debug] spawn web_background");
-        // if bilisender_live.is_closed() {
-        //     println!("[Error] channel was closed");
-        // }
-        // let server_config_background = server_config_background.clone();
-        // let redis_pool_background = redis_pool_background.clone();
-        // let bilisender_background = bilisender_background.clone();
         let r = &CHANNEL.1;
         loop {
             let receive_data = match r.recv().await {
@@ -254,6 +235,5 @@ fn main() -> std::io::Result<()> {
     .workers(woker_num)
     .keep_alive(None)
     .run();
-    let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async { join!(web_background, web_main).1 })
 }

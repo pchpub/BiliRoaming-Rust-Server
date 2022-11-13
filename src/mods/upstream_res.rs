@@ -1338,7 +1338,7 @@ pub async fn get_upstream_resigned_access_key(
             };
         let getpost_json: serde_json::Value = serde_json::from_str(&getpost_string).unwrap();
         let resign_info = UserResignInfo {
-            area_num: 4,
+            // area_num: 4,
             access_key: getpost_json["data"]["token_info"]["access_token"]
                 .as_str()
                 .unwrap()
@@ -1389,7 +1389,7 @@ pub async fn get_upstream_resigned_access_key(
             };
         let getpost_json: serde_json::Value = serde_json::from_str(&getpost_string).unwrap();
         let resign_info = UserResignInfo {
-            area_num: 1,
+            // area_num: 1,
             access_key: getpost_json["data"]["token_info"]["access_token"]
                 .as_str()
                 .unwrap()
@@ -1461,7 +1461,7 @@ pub async fn get_upstream_resigned_access_key(
             .unwrap()
             .to_string();
         let resign_info = UserResignInfo {
-            area_num: *area_num as i32,
+            // area_num: *area_num as i32,
             access_key: access_key.clone(),
             refresh_token: "".to_string(),
             expire_time: webgetpage_data_json["expire_time"]

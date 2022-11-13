@@ -3,7 +3,7 @@ use std::{
     path::Path,
 };
 
-use super::types::BiliConfig;
+use super::types::{BiliConfig, BiliRuntime};
 pub fn init_config() -> BiliConfig {
     let mut config_type: Option<&str> = None;
     let config_suffix = ["json", "yml"];
@@ -115,3 +115,14 @@ fn load_biliconfig(config_type: Option<&str>) -> Result<BiliConfig, String> {
 //     }
 //     Err(())
 // }
+
+pub async fn prepare_before_start(bili_runtime: BiliRuntime<'_>) {
+    // set resign_info
+    if bili_runtime.config.cn_resign_info.access_key != "".to_owned() {
+        bili_runtime.redis_set("a11101", &bili_runtime.config.cn_resign_info.to_json(), 0).await;
+    }
+
+    if bili_runtime.config.th_resign_info.access_key != "".to_owned() {
+        bili_runtime.redis_set("a41101", &bili_runtime.config.th_resign_info.to_json(), 0).await;
+    }
+}
