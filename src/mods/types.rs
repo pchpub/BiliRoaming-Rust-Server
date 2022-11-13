@@ -117,6 +117,11 @@ pub struct BiliConfig {
     pub report_config: ReportConfig,
     #[serde(default = "default_false")]
     pub area_cache_open: bool,
+    // 以下为不会序列化的配置
+    #[serde(skip_serializing,default)]
+    pub cn_resign_info: UserResignInfo,
+    #[serde(skip_serializing,default)]
+    pub th_resign_info: UserResignInfo,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -1488,7 +1493,7 @@ impl UserInfo {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct UserResignInfo {
-    pub area_num: i32,
+    // pub area_num: i32,
     pub access_key: String,
     pub refresh_token: String,
     pub expire_time: u64,
@@ -1501,6 +1506,12 @@ impl UserResignInfo {
         //     "{{\"area_num\":{},\"access_key\":\"{}\",\"refresh_token\":\"{}\",\"expire_time\":{}}}",
         //     self.area_num, self.access_key, self.refresh_token, self.expire_time
         // )
+    }
+}
+
+impl Default for UserResignInfo {
+    fn default() -> Self {
+        Self { access_key: Default::default(), refresh_token: Default::default(), expire_time: Default::default() }
     }
 }
 
