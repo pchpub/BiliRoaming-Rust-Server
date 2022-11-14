@@ -1401,6 +1401,10 @@ fn default_u64() -> u64 {
     0
 }
 
+fn default_i64() -> i64 {
+    0
+}
+
 pub enum Area {
     Cn,
     Hk,
@@ -1466,6 +1470,8 @@ impl UserCerinfo {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct UserInfo {
+    #[serde(default = "default_i64")]
+    pub code: i64,
     pub access_key: String,
     pub uid: u64,
     pub vip_expire_time: u64,
@@ -1488,6 +1494,12 @@ impl UserInfo {
         } else {
             false
         }
+    }
+}
+
+impl Default for UserInfo {
+    fn default() -> Self {
+        Self { code: 0, access_key: Default::default(), uid: Default::default(), vip_expire_time: Default::default(), expire_time: Default::default() }
     }
 }
 

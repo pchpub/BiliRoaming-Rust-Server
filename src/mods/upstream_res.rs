@@ -102,6 +102,7 @@ pub async fn get_upstream_bili_account_info(
     match code {
         0 => {
             let output_struct = UserInfo {
+                code: 0,
                 access_key: String::from(access_key),
                 uid: output_json["data"]["mid"].as_u64().unwrap(),
                 vip_expire_time: output_json["data"]["vip"]["due_date"].as_u64().unwrap(),
@@ -160,6 +161,12 @@ pub async fn get_upstream_bili_account_info(
             Err(EType::OtherError(-400, "可能你用的不是手机"))
         }
         -101 => {
+            let output_struct = UserInfo {
+                code: code,
+                expire_time: ts + 1 * 60 * 60 * 1000, // 未登录缓存1天,防止高频请求b站服务器
+                ..Default::default()
+            };
+            update_user_info_cache(&output_struct, bili_runtime).await;
             error!(
                 "[GET USER_INFO][U] AK {} | Get UserInfo failed -101. Upstream Reply -> {}",
                 access_key, output_json
