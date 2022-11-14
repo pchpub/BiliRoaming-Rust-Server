@@ -34,15 +34,26 @@ pub async fn get_user_info(
         }
     } else {
         match get_cached_user_info(access_key, bili_runtime).await {
-            Some(value) => {
+            Some(cached_user_info) => {
                 debug!(
                     "[GET USER_INFO] UID {} | AK {} | U.VIP {} -> Got AK {}'s user info from cache",
-                    value.uid,
-                    value.access_key,
-                    value.is_vip(),
+                    cached_user_info.uid,
+                    cached_user_info.access_key,
+                    cached_user_info.is_vip(),
                     access_key
                 );
-                Ok(value)
+                match cached_user_info.code {
+                    0 => Ok(cached_user_info),
+                    -101 => Err(EType::UserNotLoginedError),
+                    -404 => Err(EType::OtherError(
+                        -10403,
+                        "不兼容的APPKEY, 请升级油猴脚本或其他你正在用的客户端!",
+                    )),
+                    -400 => Err(EType::OtherError(-400, "可能你用的不是手机")),
+                    -3 => Err(EType::ReqSignError),
+                    -412 => Err(EType::ServerFatalError),
+                    _ => Err(EType::ServerGeneral),
+                }
             }
             None => match get_upstream_bili_account_info(
                 access_key,
@@ -70,6 +81,7 @@ pub async fn get_user_info(
                         let dt = Local::now();
                         let ts = dt.timestamp_millis() as u64;
                         let user_info = UserInfo {
+                            code: -1,
                             access_key: access_key.to_owned(),
                             uid: 0,
                             vip_expire_time: 0,
