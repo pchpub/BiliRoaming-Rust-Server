@@ -1,6 +1,6 @@
-use actix_governor::KeyExtractor;
+use actix_governor::{KeyExtractor, SimpleKeyExtractionError};
 use actix_web::{dev::ServiceRequest, http::header::ContentType};
-use governor::clock::{Clock, DefaultClock};
+// use governor::clock::{Clock, DefaultClock};
 use qstring::QString;
 use serde::{Deserialize, Serialize};
 
@@ -9,12 +9,7 @@ pub struct BiliUserToken;
 
 impl KeyExtractor for BiliUserToken {
     type Key = String;
-    type KeyExtractionError = &'static str;
-
-    #[cfg(feature = "log")]
-    fn name(&self) -> &'static str {
-        "BiliUserToken"
-    }
+    type KeyExtractionError = SimpleKeyExtractionError<&'static str>;
 
     fn extract(&self, req: &ServiceRequest) -> Result<Self::Key, Self::KeyExtractionError> {
         let key = match QString::from(req.query_string()).get("access_key") {
@@ -30,26 +25,18 @@ impl KeyExtractor for BiliUserToken {
         Ok(key)
     }
 
-    fn response_error_content(
+    fn exceed_rate_limit_response(
         &self,
-        negative: &governor::NotUntil<governor::clock::QuantaInstant>,
-    ) -> (String, ContentType) {
+        negative:&actix_governor::governor::NotUntil<actix_governor::governor::clock::QuantaInstant>,
+        mut response: actix_web::HttpResponseBuilder,
+    ) -> actix_web::HttpResponse {
         let wait_time = negative
-            .wait_time_from(DefaultClock::default().now())
+            .wait_time_from(actix_governor::governor::clock::Clock::now(&actix_governor::governor::clock::DefaultClock::default()))
             .as_secs();
-        let json_response = format!(
-            r#"{{"code":-429,"message":"请求过快,请{wait_time}后重试"}}"#
-        );
-        (json_response, ContentType::json())
-    }
-
-    fn response_error(&self, err: &'static str) -> actix_web::Error {
-        //这个不会用到,不管了
-        actix_web::error::ErrorUnauthorized(err.to_string())
-    }
-
-    #[cfg(feature = "log")]
-    fn key_name(&self, key: &Self::Key) -> Option<String> {
-        None
+        response
+            .content_type(ContentType::json())
+            .body(format!(
+                r#"{{"code":-429,"message":"请求过快,请{wait_time}s后重试"}}"#
+        ))
     }
 }
