@@ -36,7 +36,7 @@ impl KeyExtractor for BiliUserToken {
         response
             .content_type(ContentType::json())
             .body(format!(
-                r#"{{"code":-429,"message":"请求过快,请{wait_time}后重试"}}"#
+                r#"{{"code":-429,"message":"请求过快,请{wait_time}s后重试"}}"#
         ))
     }
 }
