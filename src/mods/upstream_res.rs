@@ -9,7 +9,7 @@ use super::cache::{
 };
 use super::health::report_health;
 use super::request::{async_getwebpage, async_postwebpage};
-use super::tools::remove_parameters_playurl;
+use super::tools::{remove_parameters_playurl, get_mobi_app};
 use super::types::{
     Area, BiliRuntime, EType, EpInfo, HealthData, HealthReportType, PlayurlParams, ReqType,
     SearchParams, UpstreamReply, UserCerinfo, UserInfo, UserResignInfo,
@@ -23,20 +23,21 @@ use std::string::String;
 pub async fn get_upstream_bili_account_info(
     access_key: &str,
     appkey: &str,
-    appsec: &str,
+    _appsec: &str,
     user_agent: &str,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let ts_min = dt.timestamp() as u64;
+    let (appkey, appsec, mobi_app) = get_mobi_app(appkey);
     let sign = md5::compute(format!(
-        "access_key={}&appkey={}&ts={}{}",
-        access_key, appkey, ts_min, appsec
+        "access_key={}&appkey={}&mobi_app={}&ts={}{}",
+        access_key, appkey, mobi_app, ts_min, appsec
     ));
     let url: String = format!(
-        "https://app.bilibili.com/x/v2/account/myinfo?access_key={}&appkey={}&ts={}&sign={:x}",
-        access_key, appkey, ts_min, sign
+        "https://app.bilibili.com/x/v2/account/myinfo?access_key={}&appkey={}&mobi_app={}&ts={}&sign={:x}",
+        access_key, appkey, mobi_app, ts_min, sign
     );
     debug!(
         "[GET USER_INFO][U] AK {} | RAW QUERY -> APPKEY {} TS {} APPSEC {}",
@@ -200,6 +201,17 @@ pub async fn get_upstream_bili_account_info(
             });
             report_health(health_report_type, bili_runtime).await;
             Err(EType::ServerFatalError)
+        }
+        -663 => {
+            error!(
+                "[GET USER_INFO][U] AK {} | Get UserInfo failed -663. Maybe req too often. Upstream Reply -> {}",
+                access_key, output_json
+            );
+            update_cached_user_info_background(access_key.to_string(), bili_runtime).await;
+            Err(EType::OtherError(
+                -412,
+                "服务器内部请求被鼠鼠限频了, 请等待若干秒后重试",
+            ))
         }
         _ => {
             error!("[GET USER_INFO][U] AK {} -> Get UserInfo failed. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {:?}. Upstream Reply -> {}",

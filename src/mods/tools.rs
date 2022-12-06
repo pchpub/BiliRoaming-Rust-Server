@@ -28,7 +28,7 @@ pub fn check_vip_status_from_playurl(
                         quality_need_vip.push(item["quality"].as_u64().unwrap_or(0));
                     }
                 }
-                
+
                 if quality_need_vip.len() != 0 {
                     for video in data["dash"]["video"].as_array().unwrap() {
                         if quality_need_vip.contains(&video["id"].as_u64().unwrap_or(0)) {
@@ -38,7 +38,8 @@ pub fn check_vip_status_from_playurl(
                     return Ok(false);
                 }
 
-                match data["vip_status"].as_i64().unwrap_or(2) { // 这种方法会让 试看 的情况出现问题,所以不作为首选方法
+                match data["vip_status"].as_i64().unwrap_or(2) {
+                    // 这种方法会让 试看 的情况出现问题,所以不作为首选方法
                     1 => {
                         return Ok(true);
                     }
@@ -162,11 +163,12 @@ pub async fn remove_viponly_clarity<'a>(
                 let mut support_format_allowed = serde_json::Value::Null; //获取最高画质那档的信息
                 let mut support_format_allowed_found = false;
                 // 移除support_formats里的need_vip内容
-                let support_formats = if let Some(value) = data_json["support_formats"].as_array_mut(){
-                    value
-                }else{
-                    return None;
-                };
+                let support_formats =
+                    if let Some(value) = data_json["support_formats"].as_array_mut() {
+                        value
+                    } else {
+                        return None;
+                    };
                 support_formats.retain(|support_format| {
                     if support_format.as_object().unwrap().contains_key("need_vip")
                         && support_format["need_vip"].as_bool().unwrap_or(true)
@@ -269,6 +271,24 @@ pub async fn remove_viponly_clarity<'a>(
         }
     };
     Some(new_return_data)
+}
+
+#[inline]
+/// - 部分API似乎开始验证mobi_app这个参数, 否则可能报告 `{"code":-663,"message":"鉴权失败，请联系账号组","ttl":1}`.
+/// - 返回(`appkey`, `appsec`, `mobi_app`).
+pub fn get_mobi_app(appkey: &str) -> (&'static str, &'static str, &'static str) {
+    match appkey {
+        "1d8b6e7d45233436"=> ("1d8b6e7d45233436", "560c52ccd288fed045859ed18bffd973", "android"),
+        "07da50c9a0bf829f"=> ("07da50c9a0bf829f", "25bdede4e1581c836cab73a48790ca6e", "android_b"),
+        "dfca71928277209b"=> ("dfca71928277209b", "b5475a8825547a4fc26c7d518eaaa02e", "android_hd"), // 不确定是不是这个...
+        "bb3101000e232e27"=> ("bb3101000e232e27", "36efcfed79309338ced0380abd824ac1", "android_i"),
+        "178cf125136ca8ea"=> ("178cf125136ca8ea", "34381a26236dd1171185c0beb042e1c6", "android_b"),
+        // "27eb53fc9058f8c3"=> ("27eb53fc9058f8c3", "c2ed53a74eeefe3cf99fbd01d8c9c375", "ios"), // 没有iOS用户吧...
+        "57263273bc6b67f6"=> ("57263273bc6b67f6", "a0488e488d1567960d3a765e8d129f90", "android"),
+        "7d336ec01856996b"=> ("7d336ec01856996b", "a1ce6983bc89e20a36c37f40c4f1a0dd", "android_b"),
+        "ae57252b0c09105d"=> ("ae57252b0c09105d", "c75875c596a69eb55bd119e74b07cfe3", "android_i"),
+        _ => ("1d8b6e7d45233436", "560c52ccd288fed045859ed18bffd973", "android") // 默认值
+    }
 }
 
 pub fn update_server<T: std::fmt::Display>(is_auto_close: bool) {
