@@ -149,12 +149,12 @@ pub async fn get_blacklist_info(
                     Err(EType::UserWhitelistedError)
                 }
             }
-        },
+        }
         super::types::BlackListType::NoOnlineBlacklist => {
             match bili_runtime
-            .config
-            .local_wblist
-            .get(&user_info.uid.to_string())
+                .config
+                .local_wblist
+                .get(&user_info.uid.to_string())
             {
                 Some(value) => {
                     if value.1 {
@@ -178,9 +178,7 @@ pub async fn get_blacklist_info(
                         Ok(false)
                     }
                 }
-                None => {
-                    Ok(false)
-                }
+                None => Ok(false),
             }
         }
         super::types::BlackListType::OnlyOnlineBlackList(_) => {
@@ -419,13 +417,13 @@ pub async fn get_resigned_access_key(
             _ => 1,
         };
         if bili_runtime.config.resign_from_existed_key {
-            let access_key_for_resign = match bili_runtime.redis_get(&format!("a{area_num}1102")).await
-            {
-                Some(value) => value,
-                None => return None,
-            };
+            let access_key_for_resign =
+                match bili_runtime.redis_get(&format!("a{area_num}1102")).await {
+                    Some(value) => value,
+                    None => return None,
+                };
             Some((access_key_for_resign, 0))
-        }else{
+        } else {
             let resign_info_str = match bili_runtime.redis_get(&format!("a{area_num}1101")).await {
                 Some(value) => value,
                 None => return None,

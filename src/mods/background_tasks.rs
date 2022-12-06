@@ -230,7 +230,8 @@ pub async fn background_task_run(
                 }
             }
             CacheTask::PlayurlCacheRefresh(params) => {
-                match get_upstream_bili_playurl_background(&mut params.as_ref(), bili_runtime).await {
+                match get_upstream_bili_playurl_background(&mut params.as_ref(), bili_runtime).await
+                {
                     Ok(body_data) => {
                         update_cached_playurl(&mut params.as_ref(), &body_data, bili_runtime).await;
                         Ok(())

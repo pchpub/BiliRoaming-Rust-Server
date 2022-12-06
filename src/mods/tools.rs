@@ -278,16 +278,52 @@ pub async fn remove_viponly_clarity<'a>(
 /// - 返回(`appkey`, `appsec`, `mobi_app`).
 pub fn get_mobi_app(appkey: &str) -> (&'static str, &'static str, &'static str) {
     match appkey {
-        "1d8b6e7d45233436"=> ("1d8b6e7d45233436", "560c52ccd288fed045859ed18bffd973", "android"),
-        "07da50c9a0bf829f"=> ("07da50c9a0bf829f", "25bdede4e1581c836cab73a48790ca6e", "android_b"),
-        "dfca71928277209b"=> ("dfca71928277209b", "b5475a8825547a4fc26c7d518eaaa02e", "android_hd"), // 不确定是不是这个...
-        "bb3101000e232e27"=> ("bb3101000e232e27", "36efcfed79309338ced0380abd824ac1", "android_i"),
-        "178cf125136ca8ea"=> ("178cf125136ca8ea", "34381a26236dd1171185c0beb042e1c6", "android_b"),
+        "1d8b6e7d45233436" => (
+            "1d8b6e7d45233436",
+            "560c52ccd288fed045859ed18bffd973",
+            "android",
+        ),
+        "07da50c9a0bf829f" => (
+            "07da50c9a0bf829f",
+            "25bdede4e1581c836cab73a48790ca6e",
+            "android_b",
+        ),
+        "dfca71928277209b" => (
+            "dfca71928277209b",
+            "b5475a8825547a4fc26c7d518eaaa02e",
+            "android_hd",
+        ),
+        "bb3101000e232e27" => (
+            "bb3101000e232e27",
+            "36efcfed79309338ced0380abd824ac1",
+            "android_i",
+        ),
+        "178cf125136ca8ea" => (
+            "178cf125136ca8ea",
+            "34381a26236dd1171185c0beb042e1c6",
+            "android_b",
+        ),
         // "27eb53fc9058f8c3"=> ("27eb53fc9058f8c3", "c2ed53a74eeefe3cf99fbd01d8c9c375", "ios"), // 没有iOS用户吧...
-        "57263273bc6b67f6"=> ("57263273bc6b67f6", "a0488e488d1567960d3a765e8d129f90", "android"),
-        "7d336ec01856996b"=> ("7d336ec01856996b", "a1ce6983bc89e20a36c37f40c4f1a0dd", "android_b"),
-        "ae57252b0c09105d"=> ("ae57252b0c09105d", "c75875c596a69eb55bd119e74b07cfe3", "android_i"),
-        _ => ("1d8b6e7d45233436", "560c52ccd288fed045859ed18bffd973", "android") // 默认值
+        "57263273bc6b67f6" => (
+            "57263273bc6b67f6",
+            "a0488e488d1567960d3a765e8d129f90",
+            "android",
+        ),
+        "7d336ec01856996b" => (
+            "7d336ec01856996b",
+            "a1ce6983bc89e20a36c37f40c4f1a0dd",
+            "android_b",
+        ),
+        "ae57252b0c09105d" => (
+            "ae57252b0c09105d",
+            "c75875c596a69eb55bd119e74b07cfe3",
+            "android_i",
+        ),
+        _ => (
+            "1d8b6e7d45233436",
+            "560c52ccd288fed045859ed18bffd973",
+            "android",
+        ), // 默认值
     }
 }
 

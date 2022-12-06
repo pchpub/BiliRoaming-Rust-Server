@@ -90,8 +90,8 @@ pub struct BiliConfig {
     #[serde(default = "default_false")]
     pub resign_from_existed_key: bool, // 仅限 cn (危险功能)
     // #[serde(default = "default_hashmap_string")]                                 // 与上方 resign 功能重复
-    // pub resign_from_local: HashMap<String, String>, //限制白名单共享带会员的uid    // 注释在 user_info.rs 的 255 行 
-    // #[serde(default = "default_true")]                                           // 
+    // pub resign_from_local: HashMap<String, String>, //限制白名单共享带会员的uid    // 注释在 user_info.rs 的 255 行
+    // #[serde(default = "default_true")]                                           //
     // pub resign_from_local_open: bool, //启用后白名单将共享带会员                   //
     #[serde(default = "default_hashmap_false")]
     pub resign_from_api_open: HashMap<String, bool>, //启用后assesskey从api获取
@@ -118,9 +118,9 @@ pub struct BiliConfig {
     #[serde(default = "default_false")]
     pub area_cache_open: bool,
     // 以下为不会序列化的配置
-    #[serde(skip_serializing,default)]
+    #[serde(skip_serializing, default)]
     pub cn_resign_info: UserResignInfo,
-    #[serde(skip_serializing,default)]
+    #[serde(skip_serializing, default)]
     pub th_resign_info: UserResignInfo,
 }
 
@@ -1500,7 +1500,13 @@ impl UserInfo {
 
 impl Default for UserInfo {
     fn default() -> Self {
-        Self { code: 0, access_key: Default::default(), uid: Default::default(), vip_expire_time: Default::default(), expire_time: Default::default() }
+        Self {
+            code: 0,
+            access_key: Default::default(),
+            uid: Default::default(),
+            vip_expire_time: Default::default(),
+            expire_time: Default::default(),
+        }
     }
 }
 
@@ -1524,7 +1530,11 @@ impl UserResignInfo {
 
 impl Default for UserResignInfo {
     fn default() -> Self {
-        Self { access_key: Default::default(), refresh_token: Default::default(), expire_time: Default::default() }
+        Self {
+            access_key: Default::default(),
+            refresh_token: Default::default(),
+            expire_time: Default::default(),
+        }
     }
 }
 
@@ -1918,7 +1928,8 @@ impl EType {
                         },
                         0,
                     )
-                    .unwrap().with_timezone(&FixedOffset::east_opt(8 * 3600).unwrap());
+                    .unwrap()
+                    .with_timezone(&FixedOffset::east_opt(8 * 3600).unwrap());
                 let tips = dt.format(r#"\n%Y年%m月%d日 %H:%M解封, 请耐心等待"#);
                 format!("{{\"code\":-10403,\"message\":\"服务器不欢迎您: 黑名单限制{tips}\"}}")
             }

@@ -9,7 +9,7 @@ use super::cache::{
 };
 use super::health::report_health;
 use super::request::{async_getwebpage, async_postwebpage};
-use super::tools::{remove_parameters_playurl, get_mobi_app};
+use super::tools::{get_mobi_app, remove_parameters_playurl};
 use super::types::{
     Area, BiliRuntime, EType, EpInfo, HealthData, HealthReportType, PlayurlParams, ReqType,
     SearchParams, UpstreamReply, UserCerinfo, UserInfo, UserResignInfo,
@@ -208,6 +208,22 @@ pub async fn get_upstream_bili_account_info(
                 access_key, output_json
             );
             update_cached_user_info_background(access_key.to_string(), bili_runtime).await;
+            let health_report_type = HealthReportType::Others(HealthData {
+                area_num: 0,
+                is_200_ok: true,
+                upstream_reply: UpstreamReply {
+                    code,
+                    message: output_json["message"].as_str().unwrap_or("null").to_owned(),
+                    proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
+                    proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
+                },
+                is_custom: true,
+                custom_message: format!(
+                    "[GET USER_INFO][U] -663错误! \n可能是请求限频, 也可能是appkey不合规. 请及时提issue反馈.\nDevice: {}, APPKEY: {}",
+                    mobi_app, appkey
+                ),
+            });
+            report_health(health_report_type, bili_runtime).await;
             Err(EType::OtherError(
                 -412,
                 "服务器内部请求被鼠鼠限频了, 请等待若干秒后重试",
