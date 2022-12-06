@@ -162,7 +162,7 @@ pub async fn get_upstream_bili_account_info(
         }
         -101 => {
             let output_struct = UserInfo {
-                code: code,
+                code,
                 expire_time: ts + 1 * 60 * 60 * 1000, // 未登录缓存1天,防止高频请求b站服务器
                 ..Default::default()
             };

@@ -129,6 +129,7 @@ pub enum BlackListType {
     OnlyLocalBlackList,
     OnlyOnlineBlackList(OnlineBlackListConfig),
     MixedBlackList(OnlineBlackListConfig),
+    NoOnlineBlacklist,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -1909,7 +1910,7 @@ impl EType {
             EType::ReqUAError => String::from("{\"code\":-412,\"message\":\"请求被拦截\"}"),
             EType::UserBlacklistedError(timestamp) => {
                 let dt = Utc
-                    .timestamp(
+                    .timestamp_opt(
                         if timestamp != 0 {
                             timestamp
                         } else {
@@ -1917,7 +1918,7 @@ impl EType {
                         },
                         0,
                     )
-                    .with_timezone(&FixedOffset::east(8 * 3600));
+                    .unwrap().with_timezone(&FixedOffset::east_opt(8 * 3600).unwrap());
                 let tips = dt.format(r#"\n%Y年%m月%d日 %H:%M解封, 请耐心等待"#);
                 format!("{{\"code\":-10403,\"message\":\"服务器不欢迎您: 黑名单限制{tips}\"}}")
             }

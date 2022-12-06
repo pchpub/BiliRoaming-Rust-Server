@@ -162,7 +162,11 @@ pub async fn remove_viponly_clarity<'a>(
                 let mut support_format_allowed = serde_json::Value::Null; //获取最高画质那档的信息
                 let mut support_format_allowed_found = false;
                 // 移除support_formats里的need_vip内容
-                let support_formats = data_json["support_formats"].as_array_mut().unwrap();
+                let support_formats = if let Some(value) = data_json["support_formats"].as_array_mut(){
+                    value
+                }else{
+                    return None;
+                };
                 support_formats.retain(|support_format| {
                     if support_format.as_object().unwrap().contains_key("need_vip")
                         && support_format["need_vip"].as_bool().unwrap_or(true)

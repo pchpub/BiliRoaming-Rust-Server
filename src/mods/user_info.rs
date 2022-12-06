@@ -105,8 +105,9 @@ pub async fn get_blacklist_info(
 ) -> Result<bool, EType> {
     fn timestamp_to_time(timestamp: &u64) -> String {
         let dt = Utc
-            .timestamp(*timestamp as i64, 0)
-            .with_timezone(&FixedOffset::east(8 * 3600));
+            .timestamp_opt(*timestamp as i64, 0)
+            .unwrap()
+            .with_timezone(&FixedOffset::east_opt(8 * 3600).unwrap());
         dt.format(r#"%Y年%m月%d日 %H:%M解封"#).to_string()
     }
     // let uid = &user_info.uid;
@@ -146,6 +147,39 @@ pub async fn get_blacklist_info(
                         user_info.uid, user_info.access_key
                     );
                     Err(EType::UserWhitelistedError)
+                }
+            }
+        },
+        super::types::BlackListType::NoOnlineBlacklist => {
+            match bili_runtime
+            .config
+            .local_wblist
+            .get(&user_info.uid.to_string())
+            {
+                Some(value) => {
+                    if value.1 {
+                        info!(
+                            "[GET USER_CER_INFO] UID {} | AK {} -> 本地白名单内",
+                            user_info.uid, user_info.access_key
+                        );
+                        return Ok(true);
+                    } else if value.0 {
+                        info!(
+                            "[GET USER_CER_INFO] UID {} | AK {} -> 本地黑名单, 滚",
+                            user_info.uid, user_info.access_key
+                        );
+                        return Err(EType::UserBlacklistedError(0));
+                    }
+                    {
+                        debug!(
+                            "[GET USER_CER_INFO] UID {} | AK {} -> 本地验证通过",
+                            user_info.uid, user_info.access_key
+                        );
+                        Ok(false)
+                    }
+                }
+                None => {
+                    Ok(false)
                 }
             }
         }
