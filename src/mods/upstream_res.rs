@@ -9,7 +9,7 @@ use super::cache::{
 };
 use super::health::report_health;
 use super::request::{async_getwebpage, async_postwebpage};
-use super::tools::{get_mobi_app, remove_parameters_playurl};
+use super::tools::remove_parameters_playurl;
 use super::types::{
     Area, BiliRuntime, EType, EpInfo, HealthData, HealthReportType, PlayurlParams, ReqType,
     SearchParams, UpstreamReply, UserCerinfo, UserInfo, UserResignInfo,
@@ -22,7 +22,7 @@ use std::string::String;
 
 pub async fn get_upstream_bili_account_info(
     access_key: &str,
-    appkey: &str,
+    _appkey: &str,
     _appsec: &str,
     user_agent: &str,
     bili_runtime: &BiliRuntime<'_>,
@@ -32,22 +32,20 @@ pub async fn get_upstream_bili_account_info(
     let ts = dt.timestamp_millis() as u64;
     let ts_min = dt.timestamp() as u64;
     let ts_min_string = ts_min.to_string();
-    let appkey = {
-        if appkey == "7d089525d3611b1c" {
-            "783bbb7264451d82"
-        }else {
-            appkey
-        }
-    };
-    let (appkey, appsec, mobi_app) = get_mobi_app(appkey);
+    // 参考了Github其他项目用例, 该key被默认用于大部分有关credential的地方
+    let appkey = "783bbb7264451d82";
+    let appsec = "2653583c8873dea268ab9386918b1d65";
+    let mobi_app = "android";
+    // let (appkey, appsec, mobi_app) = get_mobi_app(appkey);
     let rand_string_36 = {
         let words: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
         let mut rng = rand::thread_rng();
         (0..36)
-        .map(|_| {
-            let idx = rng.gen_range(0..words.len());
-            words[idx] as char
-        }).collect::<String>()
+            .map(|_| {
+                let idx = rng.gen_range(0..words.len());
+                words[idx] as char
+            })
+            .collect::<String>()
     };
     let mut req_vec = vec![ //以防万一，昨天抓了下包尽可能补全
         ("access_key", access_key),
@@ -70,16 +68,14 @@ pub async fn get_upstream_bili_account_info(
     let sign = md5::compute(req_params.to_string() + appsec);
     let url: String = format!(
         "https://app.bilibili.com/x/v2/account/myinfo?{}&sign={:x}",
-        req_params.to_string(), sign
+        req_params.to_string(),
+        sign
     );
     debug!(
         "[GET USER_INFO][U] AK {} | RAW QUERY -> APPKEY {} TS {} APPSEC {}",
         access_key, appkey, ts_min, appsec
     );
-    debug!(
-        "[GET USER_INFO][U] URL {}",
-        url
-    );
+    debug!("[GET USER_INFO][U] URL {}", url);
     let output = match async_getwebpage(
         &url,
         bili_runtime.config.cn_proxy_accesskey_open,

@@ -1669,7 +1669,7 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl>
         self.appsec = match self.appkey {
             "9d5889cf67e615cd" => "8fd9bb32efea8cef801fd895bef2713d", // Ai4cCreatorAndroid
             "1d8b6e7d45233436" => "560c52ccd288fed045859ed18bffd973", // Android
-            "783bbb7264451d82" => "2653583c8873dea268ab9386918b1d65", // Android Userinfo
+            "783bbb7264451d82" => "2653583c8873dea268ab9386918b1d65", // Android credential related
             "07da50c9a0bf829f" => "25bdede4e1581c836cab73a48790ca6e", // AndroidB
             "8d23902c1688a798" => "710f0212e62bd499b8d3ac6e1db9302a", // AndroidBiliThings
             "dfca71928277209b" => "b5475a8825547a4fc26c7d518eaaa02e", // AndroidHD
@@ -1780,6 +1780,7 @@ impl<'search_params: 'search_params_impl, 'search_params_impl> SearchParams<'sea
         self.appsec = match self.appkey {
             "9d5889cf67e615cd" => "8fd9bb32efea8cef801fd895bef2713d", // Ai4cCreatorAndroid
             "1d8b6e7d45233436" => "560c52ccd288fed045859ed18bffd973", // Android
+            "783bbb7264451d82" => "2653583c8873dea268ab9386918b1d65", // Android credential related
             "07da50c9a0bf829f" => "25bdede4e1581c836cab73a48790ca6e", // AndroidB
             "8d23902c1688a798" => "710f0212e62bd499b8d3ac6e1db9302a", // AndroidBiliThings
             "dfca71928277209b" => "b5475a8825547a4fc26c7d518eaaa02e", // AndroidHD
