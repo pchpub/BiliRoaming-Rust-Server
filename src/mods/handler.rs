@@ -88,13 +88,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
 
     // detect user's appkey
     params.appkey = match query.get("appkey") {
-        Option::Some(key) => {
-            if is_th {
-                "1d8b6e7d45233436"
-            }else{
-                key
-            }
-        },
+        Option::Some(key) => key,
         _ => "1d8b6e7d45233436",
     };
     if let Err(_) = params.appkey_to_sec() {

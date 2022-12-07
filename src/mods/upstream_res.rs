@@ -32,6 +32,13 @@ pub async fn get_upstream_bili_account_info(
     let ts = dt.timestamp_millis() as u64;
     let ts_min = dt.timestamp() as u64;
     let ts_min_string = ts_min.to_string();
+    let appkey = {
+        if appkey == "7d089525d3611b1c" {
+            "783bbb7264451d82"
+        }else {
+            appkey
+        }
+    };
     let (appkey, appsec, mobi_app) = get_mobi_app(appkey);
     let rand_string_36 = {
         let words: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
