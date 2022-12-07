@@ -27,21 +27,51 @@ pub async fn get_upstream_bili_account_info(
     user_agent: &str,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
+    use rand::Rng;
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let ts_min = dt.timestamp() as u64;
+    let ts_min_string = ts_min.to_string();
     let (appkey, appsec, mobi_app) = get_mobi_app(appkey);
-    let sign = md5::compute(format!(
-        "access_key={}&appkey={}&mobi_app={}&ts={}{}",
-        access_key, appkey, mobi_app, ts_min, appsec
-    ));
+    let rand_string_36 = {
+        let words: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        let mut rng = rand::thread_rng();
+        (0..36)
+        .map(|_| {
+            let idx = rng.gen_range(0..words.len());
+            words[idx] as char
+        }).collect::<String>()
+    };
+    let mut req_vec = vec![ //以防万一，昨天抓了下包尽可能补全
+        ("access_key", access_key),
+        ("appkey", appkey),
+        ("build", "6800300"),
+        ("buvid", &rand_string_36),
+        ("c_locale", "zh_CN"),
+        ("channel", "master"),
+        ("disable_rcmd", "0"),
+        ("local_id",&rand_string_36),
+        ("mobi_app",mobi_app),
+        ("platform", "android"),
+        ("s_locale","zh_CN"),
+        ("statistics","%7B%22appId%22%3A1%2C%22platform%22%3A3%2C%22version%22%3A%226.80.0%22%2C%22abtest%22%3A%22%22%7D"),
+        ("ts", &ts_min_string),
+    ];
+    req_vec.sort_by_key(|v| v.0);
+    let req_params = qstring::QString::new(req_vec);
+
+    let sign = md5::compute(req_params.to_string() + appsec);
     let url: String = format!(
-        "https://app.bilibili.com/x/v2/account/myinfo?access_key={}&appkey={}&mobi_app={}&ts={}&sign={:x}",
-        access_key, appkey, mobi_app, ts_min, sign
+        "https://app.bilibili.com/x/v2/account/myinfo?{}&sign={:x}",
+        req_params.to_string(), sign
     );
     debug!(
         "[GET USER_INFO][U] AK {} | RAW QUERY -> APPKEY {} TS {} APPSEC {}",
         access_key, appkey, ts_min, appsec
+    );
+    debug!(
+        "[GET USER_INFO][U] URL {}",
+        url
     );
     let output = match async_getwebpage(
         &url,
