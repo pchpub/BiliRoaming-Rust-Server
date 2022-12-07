@@ -319,11 +319,16 @@ pub fn get_mobi_app(appkey: &str) -> (&'static str, &'static str, &'static str) 
             "c75875c596a69eb55bd119e74b07cfe3",
             "android_i",
         ),
-        _ => (
-            "1d8b6e7d45233436",
-            "560c52ccd288fed045859ed18bffd973",
+        "783bbb7264451d82" => (
+            "783bbb7264451d82",
+            "2653583c8873dea268ab9386918b1d65",
             "android",
-        ), // 默认值
+        ),
+        _ => (
+            "783bbb7264451d82",
+            "2653583c8873dea268ab9386918b1d65",
+            "android",
+        ), // 默认值, 使用app端appkey
     }
 }
 
