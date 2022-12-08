@@ -22,26 +22,60 @@ use std::string::String;
 
 pub async fn get_upstream_bili_account_info(
     access_key: &str,
-    appkey: &str,
-    appsec: &str,
+    _appkey: &str,
+    _appsec: &str,
     user_agent: &str,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
+    use rand::Rng;
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let ts_min = dt.timestamp() as u64;
-    let sign = md5::compute(format!(
-        "access_key={}&appkey={}&ts={}{}",
-        access_key, appkey, ts_min, appsec
-    ));
+    let ts_min_string = ts_min.to_string();
+    // 参考了Github其他项目用例, 该key被默认用于大部分有关credential的地方
+    let appkey = "783bbb7264451d82";
+    let appsec = "2653583c8873dea268ab9386918b1d65";
+    let mobi_app = "android";
+    // let (appkey, appsec, mobi_app) = get_mobi_app(appkey);
+    let rand_string_36 = {
+        let words: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        let mut rng = rand::thread_rng();
+        (0..36)
+            .map(|_| {
+                let idx = rng.gen_range(0..words.len());
+                words[idx] as char
+            })
+            .collect::<String>()
+    };
+    let mut req_vec = vec![ //以防万一，昨天抓了下包尽可能补全
+        ("access_key", access_key),
+        ("appkey", appkey),
+        ("build", "6800300"),
+        ("buvid", &rand_string_36),
+        ("c_locale", "zh_CN"),
+        ("channel", "master"),
+        ("disable_rcmd", "0"),
+        ("local_id",&rand_string_36),
+        ("mobi_app",mobi_app),
+        ("platform", "android"),
+        ("s_locale","zh_CN"),
+        ("statistics","%7B%22appId%22%3A1%2C%22platform%22%3A3%2C%22version%22%3A%226.80.0%22%2C%22abtest%22%3A%22%22%7D"),
+        ("ts", &ts_min_string),
+    ];
+    req_vec.sort_by_key(|v| v.0);
+    let req_params = qstring::QString::new(req_vec);
+
+    let sign = md5::compute(req_params.to_string() + appsec);
     let url: String = format!(
-        "https://app.bilibili.com/x/v2/account/myinfo?access_key={}&appkey={}&ts={}&sign={:x}",
-        access_key, appkey, ts_min, sign
+        "https://app.bilibili.com/x/v2/account/myinfo?{}&sign={:x}",
+        req_params.to_string(),
+        sign
     );
     debug!(
         "[GET USER_INFO][U] AK {} | RAW QUERY -> APPKEY {} TS {} APPSEC {}",
         access_key, appkey, ts_min, appsec
     );
+    debug!("[GET USER_INFO][U] URL {}", url);
     let output = match async_getwebpage(
         &url,
         bili_runtime.config.cn_proxy_accesskey_open,
@@ -200,6 +234,33 @@ pub async fn get_upstream_bili_account_info(
             });
             report_health(health_report_type, bili_runtime).await;
             Err(EType::ServerFatalError)
+        }
+        -663 => {
+            error!(
+                "[GET USER_INFO][U] AK {} | Get UserInfo failed -663. Maybe req too often. Upstream Reply -> {}",
+                access_key, output_json
+            );
+            update_cached_user_info_background(access_key.to_string(), bili_runtime).await;
+            let health_report_type = HealthReportType::Others(HealthData {
+                area_num: 0,
+                is_200_ok: true,
+                upstream_reply: UpstreamReply {
+                    code,
+                    message: output_json["message"].as_str().unwrap_or("null").to_owned(),
+                    proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
+                    proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
+                },
+                is_custom: true,
+                custom_message: format!(
+                    "[GET USER_INFO][U] -663错误! \n可能是请求限频, 也可能是appkey不合规. 请及时提issue反馈.\nDevice: {}, APPKEY: {}",
+                    mobi_app, appkey
+                ),
+            });
+            report_health(health_report_type, bili_runtime).await;
+            Err(EType::OtherError(
+                -412,
+                "服务器内部请求被鼠鼠限频了, 请等待若干秒后重试",
+            ))
         }
         _ => {
             error!("[GET USER_INFO][U] AK {} -> Get UserInfo failed. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {:?}. Upstream Reply -> {}",

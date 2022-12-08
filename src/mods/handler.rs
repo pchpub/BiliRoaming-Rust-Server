@@ -232,7 +232,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
                     );
                     params.area_num = area.num();
                     params.init_params(area);
-                },
+                }
                 None => {
                     debug!(
                         "[GET PLAYURL] IP {client_ip} | UID {} | AREA {} | EP {} -> No Cached Area",
