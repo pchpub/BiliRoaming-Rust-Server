@@ -310,7 +310,10 @@ pub fn get_mobi_app(appkey: &str) -> (&'static str, &'static str, &'static str) 
             "34381a26236dd1171185c0beb042e1c6",
             "android_b",
         ),
-        // "27eb53fc9058f8c3"=> ("27eb53fc9058f8c3", "c2ed53a74eeefe3cf99fbd01d8c9c375", "ios"), // 没有iOS用户吧...
+        "27eb53fc9058f8c3"=>
+            ("27eb53fc9058f8c3", 
+            "c2ed53a74eeefe3cf99fbd01d8c9c375",
+            "ios"),
         "57263273bc6b67f6" => (
             "57263273bc6b67f6",
             "a0488e488d1567960d3a765e8d129f90",
