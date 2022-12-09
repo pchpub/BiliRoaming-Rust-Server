@@ -30,7 +30,14 @@ pub fn check_vip_status_from_playurl(
                 }
 
                 if quality_need_vip.len() != 0 {
-                    for video in data["dash"]["video"].as_array().unwrap() {
+                    for video in {
+                        if let Some(value) = data["dash"]["video"].as_array() {
+                            value
+                        }else{
+                            error!(r#"[VIP STATUS] data["dash"]["video"] not exist DATA: {}"#,data.to_string());
+                            return Err(());
+                        }
+                    } {
                         if quality_need_vip.contains(&video["id"].as_u64().unwrap_or(0)) {
                             return Ok(true);
                         }
@@ -89,21 +96,26 @@ pub fn check_vip_status_from_playurl(
                     }
                 }
 
-                match data["result"]["vip_status"].as_i64().unwrap_or(2) {
-                    1 => {
-                        return Ok(true);
-                    }
-                    0 => {
-                        return Ok(false);
-                    }
-                    value => {
-                        error!("[VIP STATUS] 发现无法处理的 vip_status: {value}");
-                        error!(
-                            "[VIP STATUS] 相关信息 data: {}",
-                            serde_json::to_string(data).unwrap_or_default()
-                        );
-                        return Err(());
-                    }
+                match data["result"]["vip_status"].as_i64() {
+                    Some(vip_status) => {
+                        match vip_status {
+                            1 => {
+                                return Ok(true);
+                            }
+                            0 => {
+                                return Ok(false);
+                            }
+                            value => {
+                                error!("[VIP STATUS] 发现无法处理的 vip_status: {value}");
+                                error!(
+                                    "[VIP STATUS] 相关信息 data: {}",
+                                    serde_json::to_string(data).unwrap_or_default()
+                                );
+                                return Err(());
+                            }
+                        }
+                    },
+                    None => return Err(()),
                 }
             } else {
                 return Err(());

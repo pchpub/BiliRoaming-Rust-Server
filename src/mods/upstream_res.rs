@@ -277,6 +277,7 @@ pub async fn get_upstream_bili_account_info(
             error!("[GET USER_INFO][U] AK {} -> Get UserInfo failed. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {:?}. Upstream Reply -> {}",
                 access_key, appkey, ts_min, appsec, sign, output_json
             );
+            error!("[GET USER_INFO][U] URL {}",url);
             let health_report_type = HealthReportType::Others(HealthData {
                 area_num: 0,
                 is_200_ok: true,
