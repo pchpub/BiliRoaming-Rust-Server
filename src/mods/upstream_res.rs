@@ -24,7 +24,7 @@ pub async fn get_upstream_bili_account_info(
     access_key: &str,
     appkey: &str,
     _appsec: &str,
-    _is_app: bool,
+    is_app: bool,
     // is_th: bool,
     user_agent: &str,
     bili_runtime: &BiliRuntime<'_>,
@@ -38,9 +38,14 @@ pub async fn get_upstream_bili_account_info(
         if appkey == "7d089525d3611b1c" {
             "783bbb7264451d82"
         }else {
-            appkey
+            if is_app {
+                "783bbb7264451d82"
+            }else{
+                "27eb53fc9058f8c3"
+            }
         }
     };
+    
     let (appkey, appsec, mobi_app) = get_mobi_app(appkey);
     let rand_string_36 = {
         let words: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
