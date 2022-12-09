@@ -430,3 +430,9 @@ pub fn vec_to_string<T: std::fmt::Display>(vec: &Vec<T>, delimiter: &str) -> Str
         }
     }
 }
+
+pub fn build_random_useragent() -> String {
+    use fake_useragent::UserAgents;
+    let user_agents = UserAgents::new();
+    user_agents.random().to_owned()
+}

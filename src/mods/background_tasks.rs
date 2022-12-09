@@ -1,3 +1,5 @@
+use crate::mods::tools::build_random_useragent;
+
 use super::cache::update_cached_playurl;
 use super::ep_info::update_ep_vip_status_cache;
 use super::health::*;
@@ -219,12 +221,11 @@ pub async fn background_task_run(
             CacheTask::UserInfoCacheRefresh(access_key) => {
                 let appkey = "1d8b6e7d45233436";
                 let appsec = "560c52ccd288fed045859ed18bffd973";
-                let user_agent =
-                    "Dalvik/2.1.0 (Linux; U; Android 11; 21091116AC Build/RP1A.200720.011)";
+                let user_agent = build_random_useragent();
                 match get_user_info(&access_key, appkey, appsec, &PlayurlParams {
                     is_app: true,
                     is_th: false,
-                    user_agent,
+                    user_agent: &user_agent,
                     ..Default::default()
                 }, true, &bili_runtime).await {
                     Ok(new_user_info) => match get_blacklist_info(&new_user_info, bili_runtime).await {
@@ -282,8 +283,8 @@ pub async fn background_task_run(
                 // // 没弹幕/评论区还不如去看RC-RAWS
                 let bili_user_status_api: &str =
                     "https://api.bilibili.com/pgc/view/web/season/user/status";
-                let user_agent =
-                    "Dalvik/2.1.0 (Linux; U; Android 11; 21091116AC Build/RP1A.200720.011)";
+                let user_agent = build_random_useragent();
+                    // "Dalvik/2.1.0 (Linux; U; Android 11; 21091116AC Build/RP1A.200720.011)";
                 let area_to_check = [
                     (
                         format!("{bili_user_status_api}?access_key={access_key}&ep_id={ep_id}"),
@@ -306,7 +307,7 @@ pub async fn background_task_run(
                 for item in area_to_check {
                     area_num += 1;
                     let (url, proxy_open, proxy_url) = item;
-                    match async_getwebpage(&url, proxy_open, proxy_url, user_agent, "").await {
+                    match async_getwebpage(&url, proxy_open, proxy_url, &user_agent, "").await {
                             Ok(value) => {
                                 let json_result = serde_json::from_str(&value)
                                     .unwrap_or(json!({"code": -2333, "message": ""}));
