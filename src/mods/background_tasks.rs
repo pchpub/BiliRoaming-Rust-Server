@@ -221,7 +221,12 @@ pub async fn background_task_run(
                 let appsec = "560c52ccd288fed045859ed18bffd973";
                 let user_agent =
                     "Dalvik/2.1.0 (Linux; U; Android 11; 21091116AC Build/RP1A.200720.011)";
-                match get_user_info(&access_key, appkey, appsec, user_agent, true, &bili_runtime).await {
+                match get_user_info(&access_key, appkey, appsec, &PlayurlParams {
+                    is_app: true,
+                    is_th: false,
+                    user_agent,
+                    ..Default::default()
+                }, true, &bili_runtime).await {
                     Ok(new_user_info) => match get_blacklist_info(&new_user_info, bili_runtime).await {
                         Ok(_) => Ok(()),
                         Err(value) => Err(format!("[BACKGROUND TASK] UID {} | Refreshing blacklist info failed, ErrMsg: {}", new_user_info.uid, value.to_string())),

@@ -1614,6 +1614,24 @@ pub struct PlayurlParams<'playurl_params> {
     pub user_agent: &'playurl_params str,
 }
 
+pub trait HasIsappIsthUseragent {
+    fn is_app(&self) -> bool;
+    fn is_th(&self) -> bool;
+    fn user_agent(&self) -> &str;
+}
+
+impl HasIsappIsthUseragent for PlayurlParams<'_> {
+    fn is_app(&self) -> bool {
+        self.is_app
+    }
+    fn is_th(&self) -> bool {
+        self.is_th
+    }
+    fn user_agent(&self) -> &str {
+        self.user_agent
+    }
+}
+
 impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl> Default
     for PlayurlParams<'playurl_params_impl>
 {
@@ -1746,6 +1764,21 @@ pub struct SearchParams<'search_params> {
     pub user_agent: &'search_params str,
     pub cookie: &'search_params str,
 }
+
+impl HasIsappIsthUseragent for SearchParams<'_> {
+    fn is_app(&self) -> bool {
+        self.is_app
+    }
+
+    fn is_th(&self) -> bool {
+        self.is_th
+    }
+
+    fn user_agent(&self) -> &str {
+        self.user_agent
+    }
+}
+
 impl<'search_params: 'search_params_impl, 'search_params_impl> Default
     for SearchParams<'search_params_impl>
 {

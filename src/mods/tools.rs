@@ -38,22 +38,29 @@ pub fn check_vip_status_from_playurl(
                     return Ok(false);
                 }
 
-                match data["vip_status"].as_i64().unwrap_or(2) {
-                    // 这种方法会让 试看 的情况出现问题,所以不作为首选方法
-                    1 => {
-                        return Ok(true);
-                    }
-                    0 => {
-                        return Ok(false);
-                    }
-                    value => {
-                        error!("[VIP STATUS] 发现无法处理的 vip_status: {value}");
-                        error!(
-                            "[VIP STATUS] 相关信息 data: {}",
-                            serde_json::to_string(data).unwrap_or_default()
-                        );
+                match data["vip_status"].as_i64() {
+                    Some(vip_status) => {
+                        match vip_status {
+                            // 这种方法会让 试看 的情况出现问题,所以不作为首选方法
+                            1 => {
+                                return Ok(true);
+                            }
+                            0 => {
+                                return Ok(false);
+                            }
+                            value => {
+                                error!("[VIP STATUS] 发现无法处理的 vip_status: {value}");
+                                error!(
+                                    "[VIP STATUS] 相关信息 data: {}",
+                                    serde_json::to_string(data).unwrap_or_default()
+                                );
+                                return Err(());
+                            }
+                        }
+                    },
+                    None => {
                         return Err(());
-                    }
+                    },
                 }
             } else {
                 return Err(());

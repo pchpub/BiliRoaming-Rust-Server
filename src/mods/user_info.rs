@@ -1,23 +1,36 @@
 use super::cache::{get_cached_blacklist_info, get_cached_user_info};
 use super::request::{async_getwebpage, async_postwebpage};
-use super::types::{BiliRuntime, EType, PlayurlParams, UserInfo, UserResignInfo};
+use super::types::{BiliRuntime, EType, PlayurlParams, UserInfo, UserResignInfo, HasIsappIsthUseragent};
 use super::upstream_res::{get_upstream_bili_account_info, get_upstream_blacklist_info};
 use chrono::prelude::*;
 use log::{debug, error, info};
 
 // general
 #[inline]
-pub async fn get_user_info(
+pub async fn get_user_info<T: HasIsappIsthUseragent>(
     access_key: &str,
     appkey: &str,
     appsec: &str,
-    user_agent: &str,
+    params: &T,
     force_update: bool,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
+    // detect web request
+    let is_app = {
+        if params.is_th() {
+            if params.user_agent().contains("Chrome") {
+                false
+            }else{
+                true
+            }
+        }else{
+            params.is_app()
+        }
+    };
+
     // mixed with blacklist function
     if force_update {
-        match get_upstream_bili_account_info(access_key, appkey, appsec, user_agent, bili_runtime)
+        match get_upstream_bili_account_info(access_key, appkey, appsec, is_app, params.user_agent(), bili_runtime)
             .await
         {
             Ok(value) => {
@@ -59,7 +72,8 @@ pub async fn get_user_info(
                 access_key,
                 appkey,
                 appsec,
-                user_agent,
+                is_app,
+                params.user_agent(),
                 bili_runtime,
             )
             .await
@@ -324,7 +338,7 @@ pub async fn resign_user_info(
                 &new_access_key,
                 params.appkey,
                 params.appsec,
-                params.user_agent,
+                params,
                 false,
                 bili_runtime,
             )

@@ -173,7 +173,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
         params.access_key,
         params.appkey,
         params.appsec,
-        params.user_agent,
+        &params,
         false,
         &bili_runtime,
     )
@@ -419,7 +419,7 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
             params.access_key,
             params.appkey,
             params.appsec,
-            params.user_agent,
+            &params,
             false,
             &bili_runtime,
         )
