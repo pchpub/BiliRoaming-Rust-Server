@@ -252,8 +252,8 @@ pub async fn get_upstream_bili_account_info(
                 },
                 is_custom: true,
                 custom_message: format!(
-                    "[GET USER_INFO][U] -663错误! \n可能是请求限频, 也可能是appkey不合规. 请及时提issue反馈.\nDevice: {}, APPKEY: {}",
-                    mobi_app, appkey
+                    "[GET USER_INFO][U] -663错误! \n可能被鼠鼠限制请求频率了, 正在研究处理方法...\nDevice: {}, APPKEY: {}, AK: {}, TS: {}",
+                    mobi_app, appkey, access_key, ts
                 ),
             });
             report_health(health_report_type, bili_runtime).await;
@@ -261,6 +261,14 @@ pub async fn get_upstream_bili_account_info(
                 -412,
                 "服务器内部请求被鼠鼠限频了, 请等待若干秒后重试",
             ))
+        }
+        // 使用过期的access_key访问, 返回{"code":61000,"message":"使用登录状态访问了，并且登录状态无效，客服端可以／需要删除登录状态","ttl":1}
+        61000 => {
+            error!(
+                "[GET USER_INFO][U] AK {} | Get UserInfo failed 61000. Maybe AK out of date. Upstream Reply -> {}",
+                access_key, output_json
+            );
+            Err(EType::UserNotLoginedError)
         }
         _ => {
             error!("[GET USER_INFO][U] AK {} -> Get UserInfo failed. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {:?}. Upstream Reply -> {}",
