@@ -227,7 +227,7 @@ pub async fn get_upstream_bili_account_info(
                 "[GET USER_INFO][U] AK {} | Get UserInfo failed 61000. Maybe AK out of date. Upstream Reply -> {}",
                 access_key, output_json
             );
-            Err(EType::UserNotLoginedError)
+            Err(EType::UserLoginInvalid)
         }
         -3 => {
             error!("[GET USER_INFO][U] AK {} | Get UserInfo failed -3. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {:?}. Upstream Reply -> {}",
