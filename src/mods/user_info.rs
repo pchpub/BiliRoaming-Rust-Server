@@ -65,6 +65,8 @@ pub async fn get_user_info<T: HasIsappIsthUseragent>(
                     -400 => Err(EType::OtherError(-400, "可能你用的不是手机")),
                     -3 => Err(EType::ReqSignError),
                     -412 => Err(EType::ServerFatalError),
+                    61000 => Err(EType::UserLoginInvalid),
+                    -663 => Err(EType::UserLoginInvalid),
                     _ => Err(EType::ServerGeneral),
                 }
             }

@@ -1930,6 +1930,7 @@ pub enum EType {
     UserWhitelistedError,      //服务器仅允许白名单内用户使用
     UserNonVIPError,           //大会员错误
     UserNotLoginedError,       //用户未登录错误
+    UserLoginInvalid,          //用户登录无效
     InvalidReq,
     OtherError(i64, &'static str), //其他自定义错误
     OtherUpstreamError(i64, String),
@@ -1984,6 +1985,9 @@ impl EType {
             EType::OtherUpstreamError(err_code, err_msg) => {
                 format!("{{\"code\":{err_code},\"message\":\"其他上游错误: {err_msg}\"}}")
             }
+            EType::UserLoginInvalid => {
+                format!("{{\"code\":-61000,\"message\":\"无效的用户态\"}}")
+            },
         }
     }
 }

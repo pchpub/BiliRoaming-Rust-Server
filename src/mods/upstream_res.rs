@@ -22,7 +22,7 @@ use std::string::String;
 
 pub async fn get_upstream_bili_account_info(
     access_key: &str,
-    appkey: &str,
+    _appkey: &str,
     _appsec: &str,
     is_app: bool,
     // is_th: bool,
@@ -34,15 +34,13 @@ pub async fn get_upstream_bili_account_info(
     let ts = dt.timestamp_millis() as u64;
     let ts_min = dt.timestamp() as u64;
     let ts_min_string = ts_min.to_string();
-    let appkey = {
-        if appkey == "7d089525d3611b1c" {
+    let appkey = { 
+        // Android请求用Android端的appkey, 网页用的ios的appkey (https://github.com/SocialSisterYi/bilibili-API-collect/issues/393#issuecomment-1288749103)
+        // 不知道有没有必要这样搞
+        if is_app {
             "783bbb7264451d82"
-        }else {
-            if is_app {
-                "783bbb7264451d82"
-            }else{
-                "27eb53fc9058f8c3"
-            }
+        }else{
+            "27eb53fc9058f8c3"
         }
     };
     
@@ -208,12 +206,25 @@ pub async fn get_upstream_bili_account_info(
         -101 => {
             let output_struct = UserInfo {
                 code,
-                expire_time: ts + 1 * 60 * 60 * 1000, // 未登录缓存1天,防止高频请求b站服务器
+                expire_time: ts + 1 * 60 * 60 * 1000, // 未登录缓存1h,防止高频请求b站服务器
                 ..Default::default()
             };
             update_user_info_cache(&output_struct, bili_runtime).await;
             error!(
                 "[GET USER_INFO][U] AK {} | Get UserInfo failed -101. Upstream Reply -> {}",
+                access_key, output_json
+            );
+            Err(EType::UserNotLoginedError)
+        },
+        61000 => { // 那先看成未登录
+            let output_struct = UserInfo {
+                code,
+                expire_time: ts + 10 * 60 * 1000, // 看起来不是请求过快, 并且后续应该无法使用这个accesskey获取到用户信息了,所以先暂时缓存10m
+                ..Default::default()
+            };
+            update_user_info_cache(&output_struct, bili_runtime).await;
+            error!(
+                "[GET USER_INFO][U] AK {} | Get UserInfo failed 61000. Maybe AK out of date. Upstream Reply -> {}",
                 access_key, output_json
             );
             Err(EType::UserNotLoginedError)
@@ -272,14 +283,6 @@ pub async fn get_upstream_bili_account_info(
                 -412,
                 "服务器内部请求被鼠鼠限频了, 请等待若干秒后重试",
             ))
-        }
-        // 使用过期的access_key访问, 返回{"code":61000,"message":"使用登录状态访问了，并且登录状态无效，客服端可以／需要删除登录状态","ttl":1}
-        61000 => {
-            error!(
-                "[GET USER_INFO][U] AK {} | Get UserInfo failed 61000. Maybe AK out of date. Upstream Reply -> {}",
-                access_key, output_json
-            );
-            Err(EType::UserNotLoginedError)
         }
         _ => {
             error!("[GET USER_INFO][U] AK {} -> Get UserInfo failed. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {:?}. Upstream Reply -> {}",
