@@ -19,6 +19,7 @@ pub fn getwebpage(
     proxy_url: String,
     user_agent: String,
     cookie: String,
+    headers: Option<List>,
 ) -> Result<String, bool> {
     let mut data = Vec::new();
     let mut handle = Easy::new();
@@ -26,10 +27,13 @@ pub fn getwebpage(
     handle.follow_location(true).unwrap();
     handle.ssl_verify_peer(false).unwrap();
     handle.post(false).unwrap();
+    match headers {
+        Some(value) => handle.http_headers(value).unwrap(),
+        None => (),
+    }
     handle.useragent(&user_agent).unwrap();
-    handle.connect_timeout(Duration::new(20, 0)).unwrap();
     handle.cookie(&cookie).unwrap();
-
+    handle.connect_timeout(Duration::new(20, 0)).unwrap();
     if proxy_open {
         if proxy_url.contains("://") {
             handle.proxy(&proxy_url).unwrap();
@@ -75,13 +79,14 @@ pub async fn async_getwebpage(
     proxy_url: &str,
     user_agent: &str,
     cookie: &str,
+    headers: Option<List>,
 ) -> Result<String, EType> {
     let url = url.to_owned();
     let proxy_open = proxy_open.to_owned();
     let proxy_url = proxy_url.to_owned();
     let user_agent = user_agent.to_owned();
     let cookie = cookie.to_owned();
-    match spawn_blocking(move || getwebpage(url, proxy_open, proxy_url, user_agent, cookie)).await {
+    match spawn_blocking(move || getwebpage(url, proxy_open, proxy_url, user_agent, cookie, headers)).await {
         Ok(value) => match value {
             Ok(value) => return Ok(value),
             Err(is_network_problem) => {

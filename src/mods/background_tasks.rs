@@ -307,7 +307,7 @@ pub async fn background_task_run(
                 for item in area_to_check {
                     area_num += 1;
                     let (url, proxy_open, proxy_url) = item;
-                    match async_getwebpage(&url, proxy_open, proxy_url, &user_agent, "").await {
+                    match async_getwebpage(&url, proxy_open, proxy_url, &user_agent, "", None).await {
                             Ok(value) => {
                                 let json_result = serde_json::from_str(&value)
                                     .unwrap_or(json!({"code": -2333, "message": ""}));

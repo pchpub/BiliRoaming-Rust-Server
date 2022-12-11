@@ -393,7 +393,7 @@ pub async fn get_resigned_access_key(
             &area_num,
             &config.resign_api_sign.get(&area_num_str).unwrap()
         );
-        let data = if let Ok(data) = async_getwebpage(&url, false, "", user_agent, "").await {
+        let data = if let Ok(data) = async_getwebpage(&url, false, "", user_agent, "", None).await {
             data
         } else {
             error!("[GET RESIGN] 从非官方接口处获取access_key失败");

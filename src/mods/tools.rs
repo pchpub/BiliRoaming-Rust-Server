@@ -366,6 +366,7 @@ pub fn update_server<T: std::fmt::Display>(is_auto_close: bool) {
                 "".to_string(),
                 "BiliRoaming-Rust-Server".to_string(),
                 "".to_owned(),
+                None,
             ) {
                 value
             } else {

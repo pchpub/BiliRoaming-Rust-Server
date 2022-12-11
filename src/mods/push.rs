@@ -48,7 +48,7 @@ pub async fn send_report(
                 encode(&report_health_data.generate_msg(report_config, health_report_type))
             );
             // must encode params before getwebpage
-            match async_getwebpage(&url, false, "", "BiliRoaming-Rust-Server", "").await {
+            match async_getwebpage(&url, false, "", "BiliRoaming-Rust-Server", "", None).await {
                 Ok(_) => {
                     return Ok(());
                 }
@@ -65,7 +65,7 @@ pub async fn send_report(
                     let url = report_config_custom
                         .build_url(&report_health_data, &area_name, &data_type, &color_char)
                         .unwrap();
-                    match async_getwebpage(&url, false, "", "BiliRoaming-Rust-Server", "").await {
+                    match async_getwebpage(&url, false, "", "BiliRoaming-Rust-Server", "", None).await {
                         Ok(_) => {
                             return Ok(());
                         }

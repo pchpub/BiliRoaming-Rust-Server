@@ -105,7 +105,7 @@ pub async fn check_proxy_health(
                 }
             }
         };
-    if let Some(value) = match async_getwebpage(&url, proxy_open, &proxy_url, user_agent, "").await
+    if let Some(value) = match async_getwebpage(&url, proxy_open, &proxy_url, user_agent, "", None).await
     {
         Ok(value) => {
             let json_result =
@@ -173,7 +173,7 @@ pub async fn get_server_ip_area(
         (856, 4), // 856 => 老挝
     ];
     let country_code_map: HashMap<u16, u8> = country_code_vec.into_iter().collect();
-    match async_getwebpage(area_api, *proxy_open, proxy_url, user_agent, "").await {
+    match async_getwebpage(area_api, *proxy_open, proxy_url, user_agent, "", None).await {
         Ok(value) => {
             let json_result =
                 serde_json::from_str(&value).unwrap_or(json!({"code": -2333, "message": ""}));

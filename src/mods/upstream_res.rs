@@ -15,6 +15,7 @@ use super::types::{
     SearchParams, UpstreamReply, UserCerinfo, UserInfo, UserResignInfo,
 };
 use chrono::prelude::*;
+use curl::easy::List;
 use log::{debug, error};
 use md5;
 use qstring::QString;
@@ -72,6 +73,9 @@ pub async fn get_upstream_bili_account_info(
     req_vec.sort_by_key(|v| v.0);
     let req_params = qstring::QString::new(req_vec);
 
+    let mut headers = List::new();
+    headers.append("x-bili-aurora-zone: sh001").unwrap();
+
     let sign = md5::compute(req_params.to_string() + appsec);
     let url: String = format!(
         "https://app.bilibili.com/x/v2/account/myinfo?{}&sign={:x}",
@@ -91,6 +95,7 @@ pub async fn get_upstream_bili_account_info(
         &bili_runtime.config.cn_proxy_accesskey_url,
         user_agent,
         "",
+        Some(headers),
     )
     .await
     {
@@ -335,7 +340,7 @@ pub async fn get_upstream_blacklist_info(
         _ => return Err(EType::ServerGeneral),
     };
     let getwebpage_data =
-        match async_getwebpage(&format!("{api}{uid}"), false, "", &user_agent, "").await {
+        match async_getwebpage(&format!("{api}{uid}"), false, "", &user_agent, "", None).await {
             Ok(data) => data,
             Err(_) => {
                 error!("[GET USER_CER_INFO][U] 服务器网络问题");
@@ -501,6 +506,7 @@ pub async fn get_upstream_bili_playurl(
         proxy_url,
         params.user_agent,
         "",
+        None,
     )
     .await
     {
@@ -719,6 +725,7 @@ pub async fn get_upstream_bili_playurl_background(
         proxy_url,
         params.user_agent,
         "",
+        None,
     )
     .await
     {
@@ -902,6 +909,7 @@ pub async fn get_upstream_bili_search(
         proxy_url,
         params.user_agent,
         params.cookie,
+        None,
     )
     .await
     {
@@ -991,6 +999,7 @@ pub async fn get_upstream_bili_subtitle(
         proxy_url,
         params.user_agent,
         "",
+        None,
     )
     .await
     {
@@ -1045,6 +1054,7 @@ pub async fn get_upstream_bili_season(
         proxy_url,
         params.user_agent,
         "",
+        None,
     )
     .await
     {
@@ -1127,6 +1137,7 @@ pub async fn get_upstream_bili_season(
                             "",
                             &user_agent,
                             "",
+                            None,
                         )
                         .await
                         {
@@ -1318,13 +1329,14 @@ pub async fn get_upstream_bili_ep_info(
         proxy_url,
         user_agent,
         "",
+        None,
     )
     .await
     {
         Ok(value) => match parse_data(value, ep_id) {
             Ok(value) => Ok(value),
             Err(upstream_code_hidden) => {
-                match async_getwebpage(&bili_season_api, proxy_open, proxy_url, user_agent, "")
+                match async_getwebpage(&bili_season_api, proxy_open, proxy_url, user_agent, "", None)
                     .await
                 {
                     Ok(value) => match parse_data(value, ep_id) {
@@ -1370,7 +1382,7 @@ pub async fn get_upstream_bili_ep_info(
         },
         Err(_) => {
             // hidden_bili_season_api failed then try bili_season_api
-            match async_getwebpage(&bili_season_api, proxy_open, proxy_url, user_agent, "").await {
+            match async_getwebpage(&bili_season_api, proxy_open, proxy_url, user_agent, "", None).await {
                 Ok(value) => match parse_data(value, ep_id) {
                     Ok(value) => Ok(value),
                     Err(upstream_code) => {
@@ -1530,7 +1542,7 @@ pub async fn get_upstream_resigned_access_key(
             &area_num,
             &config.resign_api_sign.get(&area_num_str).unwrap()
         );
-        let webgetpage_data = if let Ok(data) = async_getwebpage(&url, false, "", "", "").await {
+        let webgetpage_data = if let Ok(data) = async_getwebpage(&url, false, "", "", "", None).await {
             data
         } else {
             println!("[Error] 从非官方接口处获取accesskey失败");
