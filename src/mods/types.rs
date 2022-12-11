@@ -312,6 +312,7 @@ pub enum CacheType<'cache_type> {
     EpVipInfo(&'cache_type str),
     UserInfo(&'cache_type str, u64),
     UserCerInfo(&'cache_type str, u64),
+    // UserUniqueInfo(&'cache_type str, u64)
 }
 impl<'cache_type> CacheType<'cache_type> {
     #[inline]
@@ -436,6 +437,18 @@ impl<'cache_type> CacheType<'cache_type> {
                 key += "20602";
                 keys.push(key);
             }
+            // CacheType::UserUniqueInfo(access_key, uid) => {
+            //     let mut key = String::with_capacity(64);
+            //     key.push_str("a");
+            //     key.push_str(access_key);
+            //     key += "2001";
+            //     keys.push(key);
+            //     let mut key = String::with_capacity(32);
+            //     key.push_str("u");
+            //     key.push_str(&uid.to_string());
+            //     key += "2001";
+            //     keys.push(key);
+            // },
         };
         keys
     }
@@ -568,6 +581,7 @@ pub enum CacheTask {
 pub struct UpstreamReply {
     pub code: i64,
     pub message: String,
+    pub upstream_header: String,
     pub proxy_open: bool,
     pub proxy_url: String,
 }
@@ -576,6 +590,7 @@ impl std::default::Default for UpstreamReply {
         Self {
             code: -2333,
             message: String::from("default null"),
+            upstream_header: String::from("default null"),
             proxy_open: false,
             proxy_url: String::new(),
         }
@@ -650,14 +665,15 @@ impl HealthData {
         health_data.is_custom = !health_data.is_available();
         if health_data.is_custom {
             health_data.custom_message = format!(
-                "详细信息:\n区域代码: {}\n网络正常: {}\n代理信息: {} {}\n请求资源(EP/SID/KEYWORD): {}\n上游返回信息: CODE {}, Message -> {}",
+                "详细信息:\n区域代码: {}\n网络正常: {}\n代理信息: {} {}\n请求资源(EP/SID/KEYWORD): {}\n上游返回信息: CODE {}, Message -> {}\n上游返回Headers: \n{}",
                 health_data.area_num,
                 health_data.is_200_ok,
                 health_data.upstream_reply.proxy_open,
                 health_data.upstream_reply.proxy_url,
                 req_id,
                 health_data.upstream_reply.code,
-                health_data.upstream_reply.message
+                health_data.upstream_reply.message,
+                health_data.upstream_reply.upstream_header,
             );
         }
         health_data
@@ -1256,14 +1272,15 @@ impl ReportHealthData {
         match health_report_type {
             HealthReportType::Others(value) => {
                 format!(
-                    "服务器温馨提醒您: \n\n{}\n\n详细信息:\n区域代码: {}\n网络正常: {}\n代理信息: {} {}\n上游返回信息: CODE {}, Message -> {}",
+                    "服务器温馨提醒您: \n\n{}\n\n详细信息:\n区域代码: {}\n网络正常: {}\n代理信息: {} {}\n上游返回信息: CODE {}, Message -> {}\n上游返回Headers: \n{}",
                     value.custom_message,
                     value.area_num,
                     value.is_200_ok,
                     value.upstream_reply.proxy_open,
                     value.upstream_reply.proxy_url,
                     value.upstream_reply.code,
-                    value.upstream_reply.message
+                    value.upstream_reply.message,
+                    value.upstream_reply.upstream_header,
                 )
             }
             _ => {
@@ -1297,14 +1314,15 @@ impl ReportHealthData {
         match health_report_type {
             HealthReportType::Others(value) => {
                 format!(
-                    "服务器温馨提醒您: {}<br>详细信息:<br>区域代码: {}<br>网络正常: {}<br>代理信息: {} {}<br>上游返回信息: CODE {}, Message -> {}",
+                    "服务器温馨提醒您: {}<br>详细信息:<br>区域代码: {}<br>网络正常: {}<br>代理信息: {} {}<br>上游返回信息: CODE {}, Message -> {}<br>上游返回Headers: <br>{}",
                     value.custom_message.replace("\n", "<br>"),
                     value.area_num,
                     value.is_200_ok,
                     value.upstream_reply.proxy_open,
                     value.upstream_reply.proxy_url,
                     value.upstream_reply.code,
-                    value.upstream_reply.message
+                    value.upstream_reply.message,
+                    value.upstream_reply.upstream_header.replace("\n", "<br>"),
                 )
             }
             _ => {
@@ -1404,6 +1422,66 @@ fn default_u64() -> u64 {
 
 fn default_i64() -> i64 {
     0
+}
+
+pub struct UpstreamRawResp {
+    pub resp_header: Vec<u8>, //keep raw code
+    pub resp_content: String,
+}
+
+impl UpstreamRawResp {
+    pub fn new(resp_content: String, resp_header: Vec<u8>) -> UpstreamRawResp {
+        UpstreamRawResp {
+            resp_header,
+            resp_content,
+        }
+    }
+    pub fn init_headers(&self) -> HashMap<String, String> {
+        let mut resp_header: HashMap<String, String> = HashMap::new();
+        let resp_header_raw_string =
+            unsafe { String::from_utf8_unchecked(self.resp_header.clone()) };
+        let mut resp_header_raw_string_vec: Vec<&str> = resp_header_raw_string.split("‡").collect();
+        resp_header_raw_string_vec.pop(); //去掉最后一个
+        for header_item in resp_header_raw_string_vec {
+            let header_item: Vec<&str> = header_item.split(": ").collect();
+            if header_item.len() == 2 {
+                resp_header.insert(header_item[0].to_string(), header_item[1].to_string());
+            }
+        }
+        resp_header
+    }
+    pub fn json(&self) -> Option<serde_json::Value> {
+        if let Ok(json_content) = serde_json::from_str(&self.resp_content) {
+            Some(json_content)
+        } else {
+            None
+        }
+    }
+    // pub fn read_header(&self, header: &str) -> Option<String> {
+    //     let headers_hashmap = self.init_headers();
+    //     headers_hashmap.get(header).unwrap()
+    // }
+    pub fn read_headers(&self) -> String {
+        let mut headers: Vec<String> = Vec::new();
+        let headers_hashmap = self.init_headers();
+        for (key, value) in &headers_hashmap {
+            headers.push(key.to_owned());
+            unsafe {
+                headers.push(String::from_utf8_unchecked(vec![58u8, 32]));
+            }
+            headers.push(value.to_owned());
+            unsafe {
+                headers.push(String::from_utf8_unchecked(vec![13u8, 10]));
+            }
+        }
+        headers.join("")
+    }
+}
+
+impl std::fmt::Display for UpstreamRawResp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.resp_content)
+    }
 }
 
 pub enum Area {
@@ -1985,9 +2063,9 @@ impl EType {
             EType::OtherUpstreamError(err_code, err_msg) => {
                 format!("{{\"code\":{err_code},\"message\":\"其他上游错误: {err_msg}\"}}")
             }
-            EType::UserLoginInvalid => {
-                format!("{{\"code\":-61000,\"message\":\"无效的用户态\"}}")
-            },
+            EType::UserLoginInvalid => String::from(
+                "{{\"code\":-61000,\"message\":\"无效的用户态, 请尝试重新登陆Bilibili\"}}",
+            ),
         }
     }
 }

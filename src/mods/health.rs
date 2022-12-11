@@ -105,27 +105,29 @@ pub async fn check_proxy_health(
                 }
             }
         };
-    if let Some(value) = match async_getwebpage(&url, proxy_open, &proxy_url, user_agent, "", None).await
-    {
-        Ok(value) => {
-            let json_result =
-                serde_json::from_str(&value).unwrap_or(json!({"code": -2333, "message": ""}));
-            let code = json_result["code"].as_i64().unwrap_or(-2333);
-            match code {
-                0 => {
-                    let result = json_result.get("result").unwrap();
-                    if result["area_limit"].as_i64().unwrap() != 0 {
-                        Some(format!("Zone {area_num} -> Detect Proxy Area Not Suitable"))
-                    } else {
-                        None
+    if let Some(value) =
+        match async_getwebpage(&url, proxy_open, &proxy_url, user_agent, "", None).await {
+            Ok(value) => {
+                let json_result = value
+                    .json()
+                    .unwrap_or(json!({"code": -2333, "message": ""}));
+                let code = json_result["code"].as_i64().unwrap_or(-2333);
+                match code {
+                    0 => {
+                        let result = json_result.get("result").unwrap();
+                        if result["area_limit"].as_i64().unwrap() != 0 {
+                            Some(format!("Zone {area_num} -> Detect Proxy Area Not Suitable"))
+                        } else {
+                            None
+                        }
                     }
+                    -2333 => Some(format!("Zone {area_num} -> Parse Json Error: {value}")),
+                    _ => Some(format!("Zone {area_num} -> Unknown Error {code}: {value}")),
                 }
-                -2333 => Some(format!("Zone {area_num} -> Parse Json Error: {value}")),
-                _ => Some(format!("Zone {area_num} -> Unknown Error {code}: {value}")),
             }
+            Err(_) => Some(format!("Zone {area_num} -> Detect Unavailable Proxy")),
         }
-        Err(_) => Some(format!("Zone {area_num} -> Detect Unavailable Proxy")),
-    } {
+    {
         debug!(
             "[CHECK_PROXY_HEALTH] AREA {} | Result -> {value}",
             Area::new(area_num).to_str().to_ascii_uppercase()
@@ -175,8 +177,9 @@ pub async fn get_server_ip_area(
     let country_code_map: HashMap<u16, u8> = country_code_vec.into_iter().collect();
     match async_getwebpage(area_api, *proxy_open, proxy_url, user_agent, "", None).await {
         Ok(value) => {
-            let json_result =
-                serde_json::from_str(&value).unwrap_or(json!({"code": -2333, "message": ""}));
+            let json_result = value
+                .json()
+                .unwrap_or(json!({"code": -2333, "message": ""}));
             let code = json_result["code"]
                 .as_str()
                 .unwrap_or("233")

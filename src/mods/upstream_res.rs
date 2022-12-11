@@ -35,25 +35,26 @@ pub async fn get_upstream_bili_account_info(
     let ts = dt.timestamp_millis() as u64;
     let ts_min = dt.timestamp() as u64;
     let ts_min_string = ts_min.to_string();
-    let appkey = { 
+    let appkey = {
         // Android请求用Android端的appkey, 网页用的ios的appkey (https://github.com/SocialSisterYi/bilibili-API-collect/issues/393#issuecomment-1288749103)
         // 不知道有没有必要这样搞
         // if is_app {
         "783bbb7264451d82" // 先这样试试
-        // }else{
+        // } else {
         //     "27eb53fc9058f8c3"
         // }
     };
-    
+
     let (appkey, appsec, mobi_app) = get_mobi_app(appkey);
     let rand_string_36 = {
         let words: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
         let mut rng = rand::thread_rng();
         (0..36)
-        .map(|_| {
-            let idx = rng.gen_range(0..words.len());
-            words[idx] as char
-        }).collect::<String>()
+            .map(|_| {
+                let idx = rng.gen_range(0..words.len());
+                words[idx] as char
+            })
+            .collect::<String>()
     };
     let mut req_vec = vec![ //以防万一，昨天抓了下包尽可能补全
         ("access_key", access_key),
@@ -81,17 +82,15 @@ pub async fn get_upstream_bili_account_info(
     let sign = md5::compute(req_params.to_string() + appsec);
     let url: String = format!(
         "https://app.bilibili.com/x/v2/account/myinfo?{}&sign={:x}",
-        req_params.to_string(), sign
+        req_params.to_string(),
+        sign
     );
     debug!(
         "[GET USER_INFO][U] AK {} | RAW QUERY -> APPKEY {} TS {} APPSEC {}",
         access_key, appkey, ts_min, appsec
     );
-    debug!(
-        "[GET USER_INFO][U] URL {}",
-        url
-    );
-    let output = match async_getwebpage(
+    debug!("[GET USER_INFO][U] URL {}", url);
+    let upstream_raw_resp = match async_getwebpage(
         &url,
         bili_runtime.config.cn_proxy_accesskey_open,
         &bili_runtime.config.cn_proxy_accesskey_url,
@@ -125,43 +124,55 @@ pub async fn get_upstream_bili_account_info(
 
     debug!(
         "[GET USER_INFO][U] AK {} | Upstream Reply: {}",
-        access_key, output
+        access_key, upstream_raw_resp
     );
-    let output_json: serde_json::Value = serde_json::from_str(&output).unwrap();
-    let code = if let Some(value) = output_json["code"].as_i64() {
+    let upstream_raw_resp_json = upstream_raw_resp.json().unwrap();
+    let code = if let Some(value) = upstream_raw_resp_json["code"].as_i64() {
         value
     } else {
         debug!(
             "[GET USER_INFO][U] AK {} | Parsing Upstream reply failed, Upstream Reply -> {}",
-            access_key, output
+            access_key, upstream_raw_resp
         );
         let health_report_type = HealthReportType::Others(HealthData {
             area_num: 0,
             is_200_ok: true,
             upstream_reply: UpstreamReply {
+                upstream_header: upstream_raw_resp.read_headers(),
                 proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
                 proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
                 ..Default::default()
             },
             is_custom: true,
-            custom_message: format!("致命错误! 解析用户信息失败!\n上游返回: {output_json}"),
+            custom_message: format!(
+                "致命错误! 解析用户信息失败!\n上游返回: {upstream_raw_resp_json}"
+            ),
         });
         report_health(health_report_type, bili_runtime).await;
-        return Err(EType::ServerGeneral);
+        return Err(EType::ServerReqError("解析用户信息失败"));
     };
     match code {
         0 => {
             let output_struct = UserInfo {
                 code: 0,
                 access_key: String::from(access_key),
-                uid: output_json["data"]["mid"].as_u64().unwrap(),
-                vip_expire_time: output_json["data"]["vip"]["due_date"].as_u64().unwrap(),
+                uid: upstream_raw_resp_json["data"]["mid"].as_u64().unwrap(),
+                vip_expire_time: upstream_raw_resp_json["data"]["vip"]["due_date"]
+                    .as_u64()
+                    .unwrap(),
                 expire_time: {
-                    if ts < output_json["data"]["vip"]["due_date"].as_u64().unwrap()
-                        && output_json["data"]["vip"]["due_date"].as_u64().unwrap()
+                    if ts
+                        < upstream_raw_resp_json["data"]["vip"]["due_date"]
+                            .as_u64()
+                            .unwrap()
+                        && upstream_raw_resp_json["data"]["vip"]["due_date"]
+                            .as_u64()
+                            .unwrap()
                             < ts + 25 * 24 * 60 * 60 * 1000
                     {
-                        output_json["data"]["vip"]["due_date"].as_u64().unwrap()
+                        upstream_raw_resp_json["data"]["vip"]["due_date"]
+                            .as_u64()
+                            .unwrap()
                     } else {
                         ts + 25 * 24 * 60 * 60 * 1000
                     }
@@ -171,7 +182,6 @@ pub async fn get_upstream_bili_account_info(
             Ok(output_struct)
         }
         -404 => {
-            // 有几个unknown的appkey会导致 {"code":-404,"message":"啥都木有","ttl":1}, 直接返回invalidreq得了
             match appkey {
                 "84956560bc028eb7" | "85eb6835b0a1034e" => {
                     // 还是迂回更新其用户信息试一下
@@ -183,14 +193,15 @@ pub async fn get_upstream_bili_account_info(
                 }
                 _ => {
                     error!("[GET USER_INFO][U] AK {} -> Get UserInfo failed. Invalid APPKEY -> APPKEY {} | TS {} | APPSEC {}. Upstream Reply -> {}",
-                        access_key, appkey, ts_min, appsec, output_json
+                        access_key, appkey, ts_min, appsec, upstream_raw_resp_json
                     );
                     let health_report_type = HealthReportType::Others(HealthData {
                         area_num: 0,
                         is_200_ok: true,
                         upstream_reply: UpstreamReply {
                             code,
-                            message: output_json["message"].as_str().unwrap_or("null").to_owned(),
+                            message: upstream_raw_resp_json["message"].as_str().unwrap_or("null").to_owned(),
+                            upstream_header: upstream_raw_resp.read_headers(),
                             proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
                             proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
                         },
@@ -206,7 +217,7 @@ pub async fn get_upstream_bili_account_info(
         }
         -400 => {
             error!("[GET USER_INFO][U] AK {} | Get UserInfo failed -400. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {:?}. Upstream Reply -> {}",
-                access_key, appkey, ts_min, appsec, sign, output_json
+                access_key, appkey, ts_min, appsec, sign, upstream_raw_resp_json
             );
             Err(EType::OtherError(-400, "可能你用的不是手机"))
         }
@@ -219,11 +230,12 @@ pub async fn get_upstream_bili_account_info(
             update_user_info_cache(&output_struct, bili_runtime).await;
             error!(
                 "[GET USER_INFO][U] AK {} | Get UserInfo failed -101. Upstream Reply -> {}",
-                access_key, output_json
+                access_key, upstream_raw_resp_json
             );
             Err(EType::UserNotLoginedError)
-        },
-        61000 => { // 那先看成未登录
+        }
+        61000 => {
+            // 那先看成未登录
             let output_struct = UserInfo {
                 code,
                 expire_time: ts + 10 * 60 * 1000, // 看起来不是请求过快, 并且后续应该无法使用这个accesskey获取到用户信息了,所以先暂时缓存10m
@@ -232,33 +244,37 @@ pub async fn get_upstream_bili_account_info(
             update_user_info_cache(&output_struct, bili_runtime).await;
             error!(
                 "[GET USER_INFO][U] AK {} | Get UserInfo failed 61000. Maybe AK out of date. Upstream Reply -> {}",
-                access_key, output_json
+                access_key, upstream_raw_resp_json
             );
             Err(EType::UserLoginInvalid)
         }
         -3 => {
             error!("[GET USER_INFO][U] AK {} | Get UserInfo failed -3. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {:?}. Upstream Reply -> {}",
-                access_key, appkey, ts_min, appsec, sign, output_json
+                access_key, appkey, ts_min, appsec, sign, upstream_raw_resp_json
             );
             Err(EType::ReqSignError)
         }
         -412 => {
             error!(
                 "[GET USER_INFO][U] AK {} | Get UserInfo failed -412. Upstream Reply -> {}",
-                access_key, output_json
+                access_key, upstream_raw_resp_json
             );
             let health_report_type = HealthReportType::Others(HealthData {
                 area_num: 0,
                 is_200_ok: true,
                 upstream_reply: UpstreamReply {
                     code: -412,
-                    message: output_json["message"].as_str().unwrap_or("null").to_owned(),
+                    message: upstream_raw_resp_json["message"]
+                        .as_str()
+                        .unwrap_or("null")
+                        .to_owned(),
+                    upstream_header: upstream_raw_resp.read_headers(),
                     proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
                     proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
                 },
                 is_custom: true,
                 custom_message: format!(
-                    "[GET USER_INFO][U] 致命错误! 机子-412喵! \n上游返回: {output_json}"
+                    "[GET USER_INFO][U] 致命错误! 机子-412喵! \n上游返回: {upstream_raw_resp_json}"
                 ),
             });
             report_health(health_report_type, bili_runtime).await;
@@ -266,8 +282,8 @@ pub async fn get_upstream_bili_account_info(
         }
         -663 => {
             error!(
-                "[GET USER_INFO][U] AK {} | Get UserInfo failed -663. Maybe req too often. Upstream Reply -> {}",
-                access_key, output_json
+                "[GET USER_INFO][U] AK {} | Get UserInfo failed -663. Upstream Reply -> {}",
+                access_key, upstream_raw_resp_json
             );
             update_cached_user_info_background(access_key.to_string(), bili_runtime).await;
             let health_report_type = HealthReportType::Others(HealthData {
@@ -275,45 +291,46 @@ pub async fn get_upstream_bili_account_info(
                 is_200_ok: true,
                 upstream_reply: UpstreamReply {
                     code,
-                    message: output_json["message"].as_str().unwrap_or("null").to_owned(),
+                    message: upstream_raw_resp_json["message"].as_str().unwrap_or("null").to_owned(),
+                    upstream_header: upstream_raw_resp.read_headers(),
                     proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
                     proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
                 },
                 is_custom: true,
                 custom_message: format!(
-                    "[GET USER_INFO][U] -663错误! \n可能被鼠鼠限制请求频率了, 正在研究处理方法...\nDevice: {}, APPKEY: {}, AK: {}, TS: {}",
+                    "[GET USER_INFO][U] -663错误! 理论上已修复, 仍出现此错误请提issue\nDevice: {}, APPKEY: {}, AK: {}, TS: {}",
                     mobi_app, appkey, access_key, ts
                 ),
             });
             report_health(health_report_type, bili_runtime).await;
-            Err(EType::OtherError(
-                -412,
-                "服务器内部请求被鼠鼠限频了, 请等待若干秒后重试",
+            Err(EType::ServerReqError(
+                "-663错误, 您的账号似乎被鼠鼠风控了, 请稍后重试",
             ))
         }
         _ => {
             error!("[GET USER_INFO][U] AK {} -> Get UserInfo failed. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {:?}. Upstream Reply -> {}",
-                access_key, appkey, ts_min, appsec, sign, output_json
+                access_key, appkey, ts_min, appsec, sign, upstream_raw_resp_json
             );
-            error!("[GET USER_INFO][U] URL {}",url);
+            error!("[GET USER_INFO][U] URL {}", url);
             let health_report_type = HealthReportType::Others(HealthData {
                 area_num: 0,
                 is_200_ok: true,
                 upstream_reply: UpstreamReply {
                     code,
-                    message: output_json["message"].as_str().unwrap_or("null").to_owned(),
+                    message: upstream_raw_resp_json["message"].as_str().unwrap_or("null").to_owned(),
+                    upstream_header: upstream_raw_resp.read_headers(),
                     proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
                     proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
                 },
                 is_custom: true,
                 custom_message: format!(
-                    "[GET USER_INFO][U] 致命错误! 未知的错误码! \n上游返回: {output_json}"
+                    "[GET USER_INFO][U] 致命错误! 未知的错误码! \n上游返回: {upstream_raw_resp_json}"
                 ),
             });
             report_health(health_report_type, bili_runtime).await;
             Err(EType::OtherUpstreamError(
                 code,
-                output_json["message"]
+                upstream_raw_resp_json["message"]
                     .as_str()
                     .unwrap_or("NULL")
                     .to_string(),
@@ -341,7 +358,7 @@ pub async fn get_upstream_blacklist_info(
         super::types::BlackListType::MixedBlackList(value) => &value.api,
         _ => return Err(EType::ServerGeneral),
     };
-    let getwebpage_data =
+    let upstream_raw_resp =
         match async_getwebpage(&format!("{api}{uid}"), false, "", &user_agent, "", None).await {
             Ok(data) => data,
             Err(_) => {
@@ -361,9 +378,9 @@ pub async fn get_upstream_blacklist_info(
                 return Err(EType::ServerNetworkError("鉴权失败了喵"));
             }
         };
-    let getwebpage_json: serde_json::Value = match serde_json::from_str(&getwebpage_data) {
-        Ok(value) => value,
-        Err(_) => {
+    let upstream_raw_resp_json: serde_json::Value = match upstream_raw_resp.json() {
+        Some(value) => value,
+        None => {
             // let return_data = UserCerinfo {
             //     uid: uid.clone(),
             //     black: true,
@@ -372,7 +389,10 @@ pub async fn get_upstream_blacklist_info(
             //     status_expire_time: 0,
             // };
             error!("[GET USER_CER_INFO][U] 上游返回好像不是JSON... 是不是没接入公共黑名单?");
-            debug!("[GET USER_CER_INFO][U] 解析上游返回数据错误: {getwebpage_data}");
+            debug!(
+                "[GET USER_CER_INFO][U] 解析上游返回数据错误: {}",
+                upstream_raw_resp.resp_content
+            );
             let health_report_type = HealthReportType::Others(HealthData {
                 area_num: 0,
                 is_200_ok: true,
@@ -381,7 +401,7 @@ pub async fn get_upstream_blacklist_info(
                 },
                 is_custom: true,
                 custom_message: format!(
-                    "[GET USER_CER_INFO][U] 致命错误! 解析Json数据失败: {getwebpage_data}"
+                    "[GET USER_CER_INFO][U] 致命错误! 解析上游返回数据失败: 非JSON. \n上游返回值: {}", upstream_raw_resp.resp_content
                 ),
             });
             report_health(health_report_type, bili_runtime).await;
@@ -390,18 +410,18 @@ pub async fn get_upstream_blacklist_info(
             ));
         }
     };
-    let code = getwebpage_json["code"].as_i64().unwrap_or(233);
+    let code = upstream_raw_resp_json["code"].as_i64().unwrap_or(233);
     if code == 0 {
         let return_data = UserCerinfo {
-            uid: getwebpage_json["data"]["uid"].as_u64().unwrap(),
-            black: getwebpage_json["data"]["is_blacklist"]
+            uid: upstream_raw_resp_json["data"]["uid"].as_u64().unwrap(),
+            black: upstream_raw_resp_json["data"]["is_blacklist"]
                 .as_bool()
                 .unwrap_or(false),
-            white: getwebpage_json["data"]["is_whitelist"]
+            white: upstream_raw_resp_json["data"]["is_whitelist"]
                 .as_bool()
                 .unwrap_or(false),
             status_expire_time: {
-                match getwebpage_json["data"]["ban_until"].as_u64() {
+                match upstream_raw_resp_json["data"]["ban_until"].as_u64() {
                     Some(ban_until) => {
                         if ban_until > ts && ban_until < ts + 1 * 24 * 60 * 60 {
                             ban_until
@@ -412,13 +432,18 @@ pub async fn get_upstream_blacklist_info(
                     None => ts + 1 * 24 * 60 * 60,
                 }
             },
-            ban_until: getwebpage_json["data"]["ban_until"].as_u64().unwrap_or(0),
+            ban_until: upstream_raw_resp_json["data"]["ban_until"]
+                .as_u64()
+                .unwrap_or(0),
         };
         // debug!("[GET USER_CER_INFO][U] UID {} | Upstream UID {}", uid, return_data.uid);
         update_blacklist_info_cache(user_info, &return_data, bili_runtime).await;
         return Ok(return_data);
     } else {
-        error!("[GET USER_CER_INFO][U] UID {uid} -> 鉴权失败: 上游返回 {getwebpage_data}");
+        error!(
+            "[GET USER_CER_INFO][U] UID {uid} -> 鉴权失败: 上游返回 {}",
+            upstream_raw_resp.resp_content
+        );
         let health_report_type = HealthReportType::Others(HealthData {
             area_num: 0,
             is_200_ok: true,
@@ -427,7 +452,10 @@ pub async fn get_upstream_blacklist_info(
                 ..Default::default()
             },
             is_custom: true,
-            custom_message: format!("[GET USER_CER_INFO][U] 致命错误! 上游返回: {getwebpage_data}"),
+            custom_message: format!(
+                "[GET USER_CER_INFO][U] 致命错误! 黑名单服务器上游返回: {}",
+                upstream_raw_resp.resp_content
+            ),
         });
         report_health(health_report_type, bili_runtime).await;
         return Err(EType::ServerReqError(
@@ -502,7 +530,7 @@ pub async fn get_upstream_bili_playurl(
         md5::compute(format!("{unsigned_url}{}", params.appsec))
     );
     // finish generating req params
-    let body_data = match async_getwebpage(
+    let upstream_raw_resp = match async_getwebpage(
         &format!("{api}?{signed_url}"),
         proxy_open,
         proxy_url,
@@ -535,40 +563,41 @@ pub async fn get_upstream_bili_playurl(
             return Err(value);
         }
     };
-    let mut body_data_json: serde_json::Value = match serde_json::from_str(&body_data) {
-        Ok(value) => value,
-        Err(_) => {
+    let mut upstream_raw_resp_json: serde_json::Value = match upstream_raw_resp.json() {
+        Some(value) => value,
+        None => {
             report_health(
                 HealthReportType::Playurl(HealthData {
                     area_num: params.area_num,
                     is_200_ok: true,
                     upstream_reply: UpstreamReply {
+                        upstream_header: upstream_raw_resp.read_headers(),
                         proxy_open,
                         proxy_url: String::from(proxy_url),
                         ..Default::default()
                     },
                     is_custom: true,
                     custom_message: format!(
-                        "[DEBUG] 请求链: APPKEY {} | APPSEC {} | TS {} | FINAL {}?{}\n实际返回信息: \n{}",
-                        params.appkey, params.appsec, ts, api, signed_url, body_data
+                        "[GET PLAYURL][U] APPKEY {} | APPSEC {} | TS {} | FINAL {}?{} -> 非JSON返回值, 上游实际返回信息: {}",
+                        params.appkey, params.appsec, ts, api, signed_url, upstream_raw_resp.resp_content
                     ),
                 }),
                 bili_runtime,
             )
             .await;
             error!(
-                "[GET PLAYURL][U] AREA {} | EP {} | PROXY_OPEN {} | PROXY_URL {} -> 获取播放链接失败: 网络问题",
-                params.area.to_ascii_uppercase(), params.ep_id, proxy_open, proxy_url
+                "[GET PLAYURL][U] APPKEY {} | APPSEC {} | TS {} | FINAL {}?{} -> 非JSON返回值, 上游实际返回信息: {}",
+                params.appkey, params.appsec, ts, api, signed_url, upstream_raw_resp.resp_content
             );
             return Err(EType::ServerGeneral);
         }
     };
-    let code = body_data_json["code"].as_i64().unwrap().clone();
-    remove_parameters_playurl(&playurl_type, &mut body_data_json).unwrap_or_default();
+    let code = upstream_raw_resp_json["code"].as_i64().unwrap().clone();
+    remove_parameters_playurl(&playurl_type, &mut upstream_raw_resp_json).unwrap_or_default();
 
-    update_area_cache(&body_data_json, params, bili_runtime).await;
+    update_area_cache(&upstream_raw_resp_json, params, bili_runtime).await;
     // report health
-    let message = body_data_json["message"]
+    let message = upstream_raw_resp_json["message"]
         .as_str()
         .unwrap_or("Error on parsing Json Response")
         .to_string();
@@ -579,8 +608,10 @@ pub async fn get_upstream_bili_playurl(
             UpstreamReply {
                 code,
                 message,
+                upstream_header: upstream_raw_resp.read_headers(),
                 proxy_open,
                 proxy_url: String::from(proxy_url),
+                ..Default::default()
             },
             params.ep_id,
         )),
@@ -590,7 +621,7 @@ pub async fn get_upstream_bili_playurl(
     // check user's vip status
     if !params.is_vip {
         // TODO: add vip only feature here
-        if let Ok(value) = check_vip_status_from_playurl(playurl_type, &body_data_json) {
+        if let Ok(value) = check_vip_status_from_playurl(playurl_type, &upstream_raw_resp_json) {
             if value {
                 update_cached_user_info_background(params.access_key.to_string(), bili_runtime)
                     .await;
@@ -645,7 +676,7 @@ pub async fn get_upstream_bili_playurl(
         // TODO: add fallback check
     }
     // update playurl cache
-    let final_data = body_data_json.to_string();
+    let final_data = upstream_raw_resp_json.to_string();
     update_cached_playurl(params, &final_data, bili_runtime).await;
     debug!(
         "[GET PLAYURL][U] UID {} | AK {} | AREA {} | EP {} -> 获取成功",
@@ -721,7 +752,7 @@ pub async fn get_upstream_bili_playurl_background(
         md5::compute(format!("{unsigned_url}{}", params.appsec))
     );
     // finish generating req params
-    let body_data = match async_getwebpage(
+    let upstream_raw_resp = match async_getwebpage(
         &format!("{api}?{signed_url}"),
         proxy_open,
         proxy_url,
@@ -754,9 +785,9 @@ pub async fn get_upstream_bili_playurl_background(
             return Err(value);
         }
     };
-    let mut body_data_json: serde_json::Value = match serde_json::from_str(&body_data) {
-        Ok(value) => value,
-        Err(_) => {
+    let mut upstream_raw_resp_json = match upstream_raw_resp.json() {
+        Some(value) => value,
+        None => {
             report_health(
                 HealthReportType::Playurl(HealthData {
                     area_num: params.area_num,
@@ -768,37 +799,38 @@ pub async fn get_upstream_bili_playurl_background(
                     },
                     is_custom: true,
                     custom_message: format!(
-                        "[GET PLAYURL BACKGROUND] [DEBUG] 请求链: APPKEY {} | APPSEC {} | TS {} | FINAL {}?{}\n实际返回信息: \n{}",
-                        params.appkey, params.appsec, ts, api, signed_url, body_data
+                        "[GET PLAYURL BACKGROUND][U] APPKEY {} | APPSEC {} | TS {} | FINAL {}?{} -> 非JSON返回值, 上游实际返回信息: {}",
+                        params.appkey, params.appsec, ts, api, signed_url, upstream_raw_resp.resp_content
                     ),
                 }),
                 bili_runtime,
             )
             .await;
             error!(
-                "[GET PLAYURL BACKGROUND][U] AREA {} | EP {} | PROXY_OPEN {} | PROXY_URL {} -> 获取播放链接失败: 网络问题",
-                params.area.to_ascii_uppercase(), params.ep_id, proxy_open, proxy_url
+                "[GET PLAYURL BACKGROUND][U] APPKEY {} | APPSEC {} | TS {} | FINAL {}?{} -> 非JSON返回值, 上游实际返回信息: {}",
+                        params.appkey, params.appsec, ts, api, signed_url, upstream_raw_resp.resp_content
             );
             return Err(EType::ServerGeneral);
         }
     };
-    let code = body_data_json["code"].as_i64().unwrap().clone();
-    remove_parameters_playurl(&playurl_type, &mut body_data_json).unwrap_or_default();
+    let code = upstream_raw_resp_json["code"].as_i64().unwrap().clone();
+    remove_parameters_playurl(&playurl_type, &mut upstream_raw_resp_json).unwrap_or_default();
 
     // update_area_cache(&body_data_json, params, bili_runtime).await;
     // report health
-    let message = body_data_json["message"]
+    let message = upstream_raw_resp_json["message"]
         .as_str()
         .unwrap_or("Error on parsing Json Response")
         .to_string();
     let upstream_reply = UpstreamReply {
         code,
         message,
+        upstream_header: upstream_raw_resp.read_headers(),
         proxy_open,
         proxy_url: String::from(proxy_url),
     };
     if upstream_reply.is_available() {
-        let final_data = body_data_json.to_string();
+        let final_data = upstream_raw_resp_json.to_string();
         update_cached_playurl(params, &final_data, bili_runtime).await;
         debug!(
             "[GET PLAYURL BACKGROUND][U] AREA {} | EP {} -> 获取成功",
@@ -916,7 +948,7 @@ pub async fn get_upstream_bili_search(
     .await
     {
         Ok(data) => {
-            let data_json: serde_json::Value = serde_json::from_str(&data).unwrap();
+            let data_json: serde_json::Value = data.json().unwrap();
             let upstream_code = data_json["code"].as_i64().unwrap_or(233);
             let upstream_message = data_json["message"].as_str().unwrap_or("NULL");
             report_health(
@@ -926,6 +958,7 @@ pub async fn get_upstream_bili_search(
                     UpstreamReply {
                         code: upstream_code,
                         message: upstream_message.to_string(),
+                        upstream_header: data.read_headers(),
                         proxy_open,
                         proxy_url: String::from(proxy_url),
                     },
@@ -1006,8 +1039,8 @@ pub async fn get_upstream_bili_subtitle(
     .await
     {
         Ok(value) => {
-            update_th_subtitle_cache(&value, params, bili_runtime).await;
-            Ok(value)
+            update_th_subtitle_cache(&value.resp_content, params, bili_runtime).await;
+            Ok(value.resp_content)
         }
         Err(value) => {
             // not intented to report_health
@@ -1065,8 +1098,7 @@ pub async fn get_upstream_bili_season(
             // println!("[Debug] data:{}", data);
             let season_remake = move || async move {
                 if config.th_app_season_sub_open || config.aid_replace_open {
-                    let mut body_data_json: serde_json::Value =
-                        serde_json::from_str(&body_data).unwrap();
+                    let mut body_data_json: serde_json::Value = body_data.json().unwrap();
                     let user_agent = params.user_agent;
                     if config.aid_replace_open {
                         let len_of_episodes = match body_data_json["result"]["modules"][0]["data"]
@@ -1127,7 +1159,7 @@ pub async fn get_upstream_bili_season(
                                 if config.aid_replace_open {
                                     return serde_json::to_string(&body_data_json).unwrap();
                                 } else {
-                                    return body_data;
+                                    return body_data.resp_content;
                                 }
                             }
                             Some(_) => (),
@@ -1143,12 +1175,12 @@ pub async fn get_upstream_bili_season(
                         )
                         .await
                         {
-                            Ok(value) => value,
+                            Ok(value) => value.resp_content,
                             Err(_) => {
                                 if config.aid_replace_open {
                                     return serde_json::to_string(&body_data_json).unwrap();
                                 } else {
-                                    return body_data;
+                                    return body_data.resp_content;
                                 }
                             }
                         };
@@ -1159,7 +1191,7 @@ pub async fn get_upstream_bili_season(
                                 if config.aid_replace_open {
                                     return serde_json::to_string(&body_data_json).unwrap();
                                 } else {
-                                    return body_data;
+                                    return body_data.resp_content;
                                 }
                             };
                         match sub_replace_json["code"].as_i64().unwrap_or(233) {
@@ -1173,7 +1205,7 @@ pub async fn get_upstream_bili_season(
                                     if config.aid_replace_open {
                                         return serde_json::to_string(&body_data_json).unwrap();
                                     } else {
-                                        return body_data;
+                                        return body_data.resp_content;
                                     }
                                 }
                             }
@@ -1181,7 +1213,7 @@ pub async fn get_upstream_bili_season(
                                 if config.aid_replace_open {
                                     return serde_json::to_string(&body_data_json).unwrap();
                                 } else {
-                                    return body_data;
+                                    return body_data.resp_content;
                                 }
                             }
                         }
@@ -1215,7 +1247,7 @@ pub async fn get_upstream_bili_season(
 
                     return serde_json::to_string(&body_data_json).unwrap();
                 } else {
-                    return body_data;
+                    return body_data.resp_content;
                 }
             };
             let body_data = season_remake().await;
@@ -1335,13 +1367,20 @@ pub async fn get_upstream_bili_ep_info(
     )
     .await
     {
-        Ok(value) => match parse_data(value, ep_id) {
+        Ok(value) => match parse_data(value.resp_content, ep_id) {
             Ok(value) => Ok(value),
             Err(upstream_code_hidden) => {
-                match async_getwebpage(&bili_season_api, proxy_open, proxy_url, user_agent, "", None)
-                    .await
+                match async_getwebpage(
+                    &bili_season_api,
+                    proxy_open,
+                    proxy_url,
+                    user_agent,
+                    "",
+                    None,
+                )
+                .await
                 {
-                    Ok(value) => match parse_data(value, ep_id) {
+                    Ok(value) => match parse_data(value.resp_content, ep_id) {
                         Ok(value) => Ok(value),
                         Err(upstream_code) => {
                             if upstream_code_hidden == -404 && upstream_code == -404 {
@@ -1384,8 +1423,17 @@ pub async fn get_upstream_bili_ep_info(
         },
         Err(_) => {
             // hidden_bili_season_api failed then try bili_season_api
-            match async_getwebpage(&bili_season_api, proxy_open, proxy_url, user_agent, "", None).await {
-                Ok(value) => match parse_data(value, ep_id) {
+            match async_getwebpage(
+                &bili_season_api,
+                proxy_open,
+                proxy_url,
+                user_agent,
+                "",
+                None,
+            )
+            .await
+            {
+                Ok(value) => match parse_data(value.resp_content, ep_id) {
                     Ok(value) => Ok(value),
                     Err(upstream_code) => {
                         error!("[GET EP_INFO] EP {ep_id} -> 获取番剧信息失败: 上游问题 E -500/{upstream_code}");
@@ -1544,24 +1592,25 @@ pub async fn get_upstream_resigned_access_key(
             &area_num,
             &config.resign_api_sign.get(&area_num_str).unwrap()
         );
-        let webgetpage_data = if let Ok(data) = async_getwebpage(&url, false, "", "", "", None).await {
-            data
-        } else {
-            println!("[Error] 从非官方接口处获取accesskey失败");
-            return None;
-        };
-        let webgetpage_data_json: serde_json::Value =
-            if let Ok(value) = serde_json::from_str(&webgetpage_data) {
-                value
+        let upstream_raw_resp =
+            if let Ok(data) = async_getwebpage(&url, false, "", "", "", None).await {
+                data
             } else {
-                println!("[Error] json解析失败: {}", webgetpage_data);
+                println!("[Error] 从非官方接口处获取accesskey失败");
                 return None;
             };
-        if webgetpage_data_json["code"].as_i64().unwrap() != 0 {
+        let upstream_raw_resp_json: serde_json::Value =
+            if let Some(value) = upstream_raw_resp.json() {
+                value
+            } else {
+                println!("[Error] json解析失败: {}", upstream_raw_resp);
+                return None;
+            };
+        if upstream_raw_resp_json["code"].as_i64().unwrap() != 0 {
             println!("err3");
             return None;
         }
-        let access_key = webgetpage_data_json["access_key"]
+        let access_key = upstream_raw_resp_json["access_key"]
             .as_str()
             .unwrap()
             .to_string();
@@ -1569,7 +1618,7 @@ pub async fn get_upstream_resigned_access_key(
             // area_num: *area_num as i32,
             access_key: access_key.clone(),
             refresh_token: "".to_string(),
-            expire_time: webgetpage_data_json["expire_time"]
+            expire_time: upstream_raw_resp_json["expire_time"]
                 .as_u64()
                 .unwrap_or(ts + 3600),
         };

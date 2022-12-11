@@ -79,8 +79,9 @@ pub async fn get_ep_area_limit(ep_id: &str, area: Area, bili_runtime: &BiliRunti
         let (proxy_open, proxy_url) = req_type.get_proxy(config);
         match async_getwebpage(&url, proxy_open, proxy_url, user_agent, "", None).await {
             Ok(value) => {
-                let json_result =
-                    serde_json::from_str(&value).unwrap_or(json!({"code": -2333, "message": ""}));
+                let json_result = value
+                    .json()
+                    .unwrap_or(json!({"code": -2333, "message": ""}));
                 let code = json_result["code"].as_i64().unwrap_or(-2333);
                 match code {
                     0 => true,

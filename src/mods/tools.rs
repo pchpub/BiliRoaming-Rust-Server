@@ -1,4 +1,5 @@
 use log::{debug, error};
+use rand::Rng;
 
 use super::{
     request::{download, getwebpage},
@@ -33,8 +34,11 @@ pub fn check_vip_status_from_playurl(
                     for video in {
                         if let Some(value) = data["dash"]["video"].as_array() {
                             value
-                        }else{
-                            error!(r#"[VIP STATUS] data["dash"]["video"] not exist DATA: {}"#,data.to_string());
+                        } else {
+                            error!(
+                                r#"[VIP STATUS] data["dash"]["video"] not exist DATA: {}"#,
+                                data.to_string()
+                            );
                             return Err(());
                         }
                     } {
@@ -64,10 +68,10 @@ pub fn check_vip_status_from_playurl(
                                 return Err(());
                             }
                         }
-                    },
+                    }
                     None => {
                         return Err(());
-                    },
+                    }
                 }
             } else {
                 return Err(());
@@ -97,22 +101,20 @@ pub fn check_vip_status_from_playurl(
                 }
 
                 match data["result"]["vip_status"].as_i64() {
-                    Some(vip_status) => {
-                        match vip_status {
-                            1 => {
-                                return Ok(true);
-                            }
-                            0 => {
-                                return Ok(false);
-                            }
-                            value => {
-                                error!("[VIP STATUS] 发现无法处理的 vip_status: {value}");
-                                error!(
-                                    "[VIP STATUS] 相关信息 data: {}",
-                                    serde_json::to_string(data).unwrap_or_default()
-                                );
-                                return Err(());
-                            }
+                    Some(vip_status) => match vip_status {
+                        1 => {
+                            return Ok(true);
+                        }
+                        0 => {
+                            return Ok(false);
+                        }
+                        value => {
+                            error!("[VIP STATUS] 发现无法处理的 vip_status: {value}");
+                            error!(
+                                "[VIP STATUS] 相关信息 data: {}",
+                                serde_json::to_string(data).unwrap_or_default()
+                            );
+                            return Err(());
                         }
                     },
                     None => return Err(()),
@@ -293,7 +295,6 @@ pub async fn remove_viponly_clarity<'a>(
 }
 
 #[inline]
-/// - 部分API似乎开始验证mobi_app这个参数, 否则可能报告 `{"code":-663,"message":"鉴权失败，请联系账号组","ttl":1}`.
 /// - 返回(`appkey`, `appsec`, `mobi_app`).
 pub fn get_mobi_app(appkey: &str) -> (&'static str, &'static str, &'static str) {
     match appkey {
@@ -322,10 +323,11 @@ pub fn get_mobi_app(appkey: &str) -> (&'static str, &'static str, &'static str) 
             "34381a26236dd1171185c0beb042e1c6",
             "android_b",
         ),
-        "27eb53fc9058f8c3"=>
-            ("27eb53fc9058f8c3", 
+        "27eb53fc9058f8c3" => (
+            "27eb53fc9058f8c3",
             "c2ed53a74eeefe3cf99fbd01d8c9c375",
-            "ios"),
+            "ios",
+        ),
         "57263273bc6b67f6" => (
             "57263273bc6b67f6",
             "a0488e488d1567960d3a765e8d129f90",
@@ -372,12 +374,11 @@ pub fn update_server<T: std::fmt::Display>(is_auto_close: bool) {
             } else {
                 continue;
             };
-            let releases_json: serde_json::Value =
-                if let Ok(value) = serde_json::from_str(&releases_date) {
-                    value
-                } else {
-                    continue;
-                };
+            let releases_json: serde_json::Value = if let Some(value) = releases_date.json() {
+                value
+            } else {
+                continue;
+            };
             if releases_json["tag_name"].as_str().unwrap() == tags {
                 continue;
             }
@@ -432,8 +433,25 @@ pub fn vec_to_string<T: std::fmt::Display>(vec: &Vec<T>, delimiter: &str) -> Str
     }
 }
 
-// pub fn build_random_useragent() -> String {
-//     use fake_useragent::UserAgents;
-//     let user_agents = UserAgents::new();
-//     user_agents.random().to_owned()
-// }
+pub fn build_random_useragent() -> &'static str {
+    let user_agents = [
+        "Dalvik/2.1.0 (Linux; U; Android 13; Pixel 6 Pro Build/TQ1A.221205.011)",
+        "Dalvik/2.1.0 (Linux; U; Android 13; SM-S9080 Build/TP1A.220624.014)",
+        "Dalvik/2.1.0 (Linux; U; Android 13; 2201122C Build/TKQ1.220807.001)",
+        "Dalvik/2.1.0 (Linux; U; Android 12; JEF-AN00 Build/HUAWEIJEF-AN00)",
+        "Dalvik/2.1.0 (Linux; U; Android 12; VOG-AL10 Build/HUAWEIVOG-AL10)",
+        "Dalvik/2.1.0 (Linux; U; Android 12; ELS-AN00 Build/HUAWEIELS-AN00)",
+        "Dalvik/2.1.0 (Linux; U; Android 12; NOH-AN01 Build/HUAWEINOH-AN01)",
+        "Dalvik/2.1.0 (Linux; U; Android 11; SKW-A0 Build/SKYW2203210CN00MR1)",
+        "Dalvik/2.1.0 (Linux; U; Android 11; 21091116AC Build/RP1A.200720.011)",
+        "Dalvik/2.1.0 (Linux; U; Android 10; Redmi K30 MIUI/V12.0.5.0.QGHCNXM)",
+        "Dalvik/2.1.0 (Linux; U; Android 10; VOG-AL10 Build/HUAWEIVOG-AL10)",
+        "Dalvik/2.1.0 (Linux; U; Android 10; JEF-AN00 Build/HUAWEIJEF-AN00)",
+        "Dalvik/2.1.0 (Linux; U; Android 10; VOG-AL10 Build/HUAWEIVOG-AL10)",
+        "Dalvik/2.1.0 (Linux; U; Android 10; ELS-AN00 Build/HUAWEIELS-AN00)",
+        "Dalvik/2.1.0 (Linux; U; Android 9; BND-AL10 Build/HONORBND-AL10)",
+        "Dalvik/2.1.0 (Linux; U; Android 9; ALP-AL00 Build/HUAWEIALP-AL00)",
+        "Dalvik/2.1.0 (Linux; U; Android 9; MIX 2 MIUI/V12.0.1.0.PDECNXM)",
+    ];
+    user_agents[rand::thread_rng().gen_range(0..=16)]
+}

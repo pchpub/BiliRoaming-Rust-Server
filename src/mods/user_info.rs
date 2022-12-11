@@ -1,6 +1,8 @@
 use super::cache::{get_cached_blacklist_info, get_cached_user_info};
 use super::request::{async_getwebpage, async_postwebpage};
-use super::types::{BiliRuntime, EType, PlayurlParams, UserInfo, UserResignInfo, HasIsappIsthUseragent};
+use super::types::{
+    BiliRuntime, EType, HasIsappIsthUseragent, PlayurlParams, UserInfo, UserResignInfo,
+};
 use super::upstream_res::{get_upstream_bili_account_info, get_upstream_blacklist_info};
 use chrono::prelude::*;
 use log::{debug, error, info};
@@ -20,18 +22,25 @@ pub async fn get_user_info<T: HasIsappIsthUseragent>(
         if params.is_th() {
             if params.user_agent().contains("Chrome") {
                 false
-            }else{
+            } else {
                 true
             }
-        }else{
+        } else {
             params.is_app()
         }
     };
 
     // mixed with blacklist function
     if force_update {
-        match get_upstream_bili_account_info(access_key, appkey, appsec, is_app, params.user_agent(), bili_runtime)
-            .await
+        match get_upstream_bili_account_info(
+            access_key,
+            appkey,
+            appsec,
+            is_app,
+            params.user_agent(),
+            bili_runtime,
+        )
+        .await
         {
             Ok(value) => {
                 debug!(
@@ -393,24 +402,25 @@ pub async fn get_resigned_access_key(
             &area_num,
             &config.resign_api_sign.get(&area_num_str).unwrap()
         );
-        let data = if let Ok(data) = async_getwebpage(&url, false, "", user_agent, "", None).await {
-            data
-        } else {
-            error!("[GET RESIGN] 从非官方接口处获取access_key失败");
-            return None;
-        };
-        let webgetpage_data_json: serde_json::Value = if let Ok(value) = serde_json::from_str(&data)
-        {
-            value
-        } else {
-            error!("[GET RESIGN] json解析失败: {}", data);
-            return None;
-        };
-        if webgetpage_data_json["code"].as_i64().unwrap() != 0 {
+        let upstream_raw_resp =
+            if let Ok(data) = async_getwebpage(&url, false, "", user_agent, "", None).await {
+                data
+            } else {
+                error!("[GET RESIGN] 从非官方接口处获取access_key失败");
+                return None;
+            };
+        let upstream_raw_resp_json: serde_json::Value =
+            if let Some(value) = upstream_raw_resp.json() {
+                value
+            } else {
+                error!("[GET RESIGN] json解析失败: {}", upstream_raw_resp);
+                return None;
+            };
+        if upstream_raw_resp_json["code"].as_i64().unwrap() != 0 {
             error!("[GET RESIGN] err3");
             return None;
         }
-        let access_key = webgetpage_data_json["access_key"]
+        let access_key = upstream_raw_resp_json["access_key"]
             .as_str()
             .unwrap()
             .to_string();
@@ -418,7 +428,7 @@ pub async fn get_resigned_access_key(
             // area_num: *area_num as i32,
             access_key: access_key.clone(),
             refresh_token: "".to_string(),
-            expire_time: webgetpage_data_json["expire_time"]
+            expire_time: upstream_raw_resp_json["expire_time"]
                 .as_u64()
                 .unwrap_or(ts + 3600),
         };
