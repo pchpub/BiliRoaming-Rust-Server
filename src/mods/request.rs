@@ -27,12 +27,14 @@ pub fn getwebpage(
     handle.follow_location(true).unwrap();
     handle.ssl_verify_peer(false).unwrap();
     handle.post(false).unwrap();
-    match headers {
-        Some(value) => handle.http_headers(value).unwrap(),
-        None => (),
-    }
     handle.useragent(&user_agent).unwrap();
     handle.cookie(&cookie).unwrap();
+    match headers {
+        Some(value) => {
+            handle.http_headers(value).unwrap()
+        },
+        None => (),
+    }
     handle.connect_timeout(Duration::new(20, 0)).unwrap();
     if proxy_open {
         if proxy_url.contains("://") {

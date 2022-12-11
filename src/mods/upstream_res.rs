@@ -25,7 +25,7 @@ pub async fn get_upstream_bili_account_info(
     access_key: &str,
     _appkey: &str,
     _appsec: &str,
-    is_app: bool,
+    _is_app: bool,
     // is_th: bool,
     user_agent: &str,
     bili_runtime: &BiliRuntime<'_>,
@@ -38,11 +38,11 @@ pub async fn get_upstream_bili_account_info(
     let appkey = { 
         // Android请求用Android端的appkey, 网页用的ios的appkey (https://github.com/SocialSisterYi/bilibili-API-collect/issues/393#issuecomment-1288749103)
         // 不知道有没有必要这样搞
-        if is_app {
-            "783bbb7264451d82"
-        }else{
-            "27eb53fc9058f8c3"
-        }
+        // if is_app {
+        "783bbb7264451d82" // 先这样试试
+        // }else{
+        //     "27eb53fc9058f8c3"
+        // }
     };
     
     let (appkey, appsec, mobi_app) = get_mobi_app(appkey);
@@ -74,7 +74,9 @@ pub async fn get_upstream_bili_account_info(
     let req_params = qstring::QString::new(req_vec);
 
     let mut headers = List::new();
+    headers.append("x-bili-aurora-eid: UlMFQVcABlAH").unwrap();
     headers.append("x-bili-aurora-zone: sh001").unwrap();
+    headers.append("app-key: android64").unwrap();
 
     let sign = md5::compute(req_params.to_string() + appsec);
     let url: String = format!(
