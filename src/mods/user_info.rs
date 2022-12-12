@@ -18,17 +18,19 @@ pub async fn get_user_info<T: HasIsappIsthUseragent>(
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
     // detect web request
-    let is_app = {
-        if params.is_th() {
-            if params.user_agent().contains("Chrome") {
-                false
-            } else {
-                true
-            }
-        } else {
-            params.is_app()
-        }
-    };
+    // let is_app = {
+    //     if params.is_th() {
+    //         if params.user_agent().contains("Chrome") {
+    //             false
+    //         } else {
+    //             true
+    //         }
+    //     } else {
+    //         params.is_app()
+    //     }
+    // };
+    // 既然获取userinfo不用区分网页请求，那这里就先注释了
+    let is_app = params.is_app();
 
     // mixed with blacklist function
     if force_update {

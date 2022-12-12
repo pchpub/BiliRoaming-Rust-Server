@@ -26,7 +26,6 @@ pub async fn get_upstream_bili_account_info(
     _appkey: &str,
     _appsec: &str,
     _is_app: bool,
-    // is_th: bool,
     user_agent: &str,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
@@ -35,17 +34,11 @@ pub async fn get_upstream_bili_account_info(
     let ts = dt.timestamp_millis() as u64;
     let ts_min = dt.timestamp() as u64;
     let ts_min_string = ts_min.to_string();
-    let appkey = {
-        // Android请求用Android端的appkey, 网页用的ios的appkey (https://github.com/SocialSisterYi/bilibili-API-collect/issues/393#issuecomment-1288749103)
-        // 不知道有没有必要这样搞
-        // if is_app {
-        "783bbb7264451d82" // 先这样试试
-        // } else {
-        //     "27eb53fc9058f8c3"
-        // }
-    };
+    let appkey = "783bbb7264451d82";
+    // Android请求用Android端的appkey, 网页用的ios的appkey (https://github.com/SocialSisterYi/bilibili-API-collect/issues/393#issuecomment-1288749103)
+    // 直接安卓的appkey得了, 61000的话用哪个appkey貌似都一样
 
-    let (appkey, appsec, mobi_app) = get_mobi_app(appkey);
+    let (_, appsec, mobi_app) = get_mobi_app(appkey);
     let rand_string_36 = {
         let words: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
         let mut rng = rand::thread_rng();
