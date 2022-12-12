@@ -1,23 +1,22 @@
-use crate::mods::background_tasks::update_cached_ep_vip_status_background;
-use crate::mods::ep_info::get_ep_need_vip;
-use crate::mods::tools::check_vip_status_from_playurl;
-
-use super::background_tasks::update_cached_user_info_background;
+use super::background_tasks::{
+    update_cached_ep_vip_status_background, update_cached_user_info_background,
+};
 use super::cache::{
     update_area_cache, update_blacklist_info_cache, update_cached_playurl, update_th_season_cache,
     update_th_subtitle_cache, update_user_info_cache,
 };
+use super::ep_info::get_ep_need_vip;
 use super::health::report_health;
-use super::request::{async_getwebpage, async_postwebpage};
-use super::tools::{get_mobi_app, remove_parameters_playurl};
+use super::request::async_getwebpage;
+use super::tools::{check_vip_status_from_playurl, get_mobi_app, remove_parameters_playurl};
 use super::types::{
     Area, BiliRuntime, EType, EpInfo, HealthData, HealthReportType, PlayurlParams, ReqType,
-    SearchParams, UpstreamReply, UserCerinfo, UserInfo, UserResignInfo,
+    SearchParams, UpstreamReply, UserCerinfo, UserInfo,
 };
+use crate::build_signed_url;
 use chrono::prelude::*;
 use curl::easy::List;
 use log::{debug, error};
-use md5;
 use qstring::QString;
 use std::string::String;
 
@@ -65,26 +64,24 @@ pub async fn get_upstream_bili_account_info(
         ("ts", &ts_min_string),
     ];
     req_vec.sort_by_key(|v| v.0);
-    let req_params = qstring::QString::new(req_vec);
+    // let req_params = qstring::QString::new(req_vec);
 
+    // fix -663 error
     let mut headers = List::new();
     headers.append("x-bili-aurora-eid: UlMFQVcABlAH").unwrap();
     headers.append("x-bili-aurora-zone: sh001").unwrap();
     headers.append("app-key: android64").unwrap();
 
-    let sign = md5::compute(req_params.to_string() + appsec);
-    let url: String = format!(
-        "https://app.bilibili.com/x/v2/account/myinfo?{}&sign={:x}",
-        req_params.to_string(),
-        sign
-    );
+    let api = "https://app.bilibili.com/x/v2/account/myinfo";
+    let (signed_url, sign) = build_signed_url!(api, req_vec, appsec);
+
     debug!(
         "[GET USER_INFO][U] AK {} | RAW QUERY -> APPKEY {} TS {} APPSEC {}",
         access_key, appkey, ts_min, appsec
     );
-    debug!("[GET USER_INFO][U] URL {}", url);
+    // debug!("[GET USER_INFO][U] URL {}", url);
     let upstream_raw_resp = match async_getwebpage(
-        &url,
+        &signed_url,
         bili_runtime.config.cn_proxy_accesskey_open,
         &bili_runtime.config.cn_proxy_accesskey_url,
         user_agent,
@@ -137,9 +134,7 @@ pub async fn get_upstream_bili_account_info(
                 ..Default::default()
             },
             is_custom: true,
-            custom_message: format!(
-                "致命错误! 解析用户信息失败!\n上游返回: {upstream_raw_resp_json}"
-            ),
+            custom_message: format!("致命错误! 解析用户信息失败!\n上游返回: {upstream_raw_resp}"),
         });
         report_health(health_report_type, bili_runtime).await;
         return Err(EType::ServerReqError("解析用户信息失败"));
@@ -209,7 +204,7 @@ pub async fn get_upstream_bili_account_info(
             }
         }
         -400 => {
-            error!("[GET USER_INFO][U] AK {} | Get UserInfo failed -400. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {:?}. Upstream Reply -> {}",
+            error!("[GET USER_INFO][U] AK {} | Get UserInfo failed -400. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {}. Upstream Reply -> {}",
                 access_key, appkey, ts_min, appsec, sign, upstream_raw_resp_json
             );
             Err(EType::OtherError(-400, "可能你用的不是手机"))
@@ -267,7 +262,7 @@ pub async fn get_upstream_bili_account_info(
                 },
                 is_custom: true,
                 custom_message: format!(
-                    "[GET USER_INFO][U] 致命错误! 机子-412喵! \n上游返回: {upstream_raw_resp_json}"
+                    "[GET USER_INFO][U] 致命错误! 机子-412喵! \n上游返回: {upstream_raw_resp}"
                 ),
             });
             report_health(health_report_type, bili_runtime).await;
@@ -304,20 +299,23 @@ pub async fn get_upstream_bili_account_info(
             error!("[GET USER_INFO][U] AK {} -> Get UserInfo failed. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {:?}. Upstream Reply -> {}",
                 access_key, appkey, ts_min, appsec, sign, upstream_raw_resp_json
             );
-            error!("[GET USER_INFO][U] URL {}", url);
+            error!("[GET USER_INFO][U] URL {}", signed_url);
             let health_report_type = HealthReportType::Others(HealthData {
                 area_num: 0,
                 is_200_ok: true,
                 upstream_reply: UpstreamReply {
                     code,
-                    message: upstream_raw_resp_json["message"].as_str().unwrap_or("null").to_owned(),
+                    message: upstream_raw_resp_json["message"]
+                        .as_str()
+                        .unwrap_or("null")
+                        .to_owned(),
                     upstream_header: upstream_raw_resp.read_headers(),
                     proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
                     proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
                 },
                 is_custom: true,
                 custom_message: format!(
-                    "[GET USER_INFO][U] 致命错误! 未知的错误码! \n上游返回: {upstream_raw_resp_json}"
+                    "[GET USER_INFO][U] 致命错误! 未知的错误码! \n上游返回: {upstream_raw_resp}"
                 ),
             });
             report_health(health_report_type, bili_runtime).await;
@@ -394,7 +392,7 @@ pub async fn get_upstream_blacklist_info(
                 },
                 is_custom: true,
                 custom_message: format!(
-                    "[GET USER_CER_INFO][U] 致命错误! 解析上游返回数据失败: 非JSON. \n上游返回值: {}", upstream_raw_resp.resp_content
+                    "[GET USER_CER_INFO][U] 致命错误! 解析上游返回数据失败: 非JSON. \n上游返回值: {upstream_raw_resp}"
                 ),
             });
             report_health(health_report_type, bili_runtime).await;
@@ -433,10 +431,7 @@ pub async fn get_upstream_blacklist_info(
         update_blacklist_info_cache(user_info, &return_data, bili_runtime).await;
         return Ok(return_data);
     } else {
-        error!(
-            "[GET USER_CER_INFO][U] UID {uid} -> 鉴权失败: 上游返回 {}",
-            upstream_raw_resp.resp_content
-        );
+        error!("[GET USER_CER_INFO][U] UID {uid} -> 鉴权失败: 上游返回 {upstream_raw_resp}");
         let health_report_type = HealthReportType::Others(HealthData {
             area_num: 0,
             is_200_ok: true,
@@ -446,8 +441,7 @@ pub async fn get_upstream_blacklist_info(
             },
             is_custom: true,
             custom_message: format!(
-                "[GET USER_CER_INFO][U] 致命错误! 黑名单服务器上游返回: {}",
-                upstream_raw_resp.resp_content
+                "[GET USER_CER_INFO][U] 致命错误! 黑名单服务器上游返回: {upstream_raw_resp}"
             ),
         });
         report_health(health_report_type, bili_runtime).await;
@@ -458,12 +452,10 @@ pub async fn get_upstream_blacklist_info(
 }
 
 pub async fn get_upstream_bili_playurl(
-    // query: QString,
     params: &mut PlayurlParams<'_>,
     user_info: &UserInfo,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<String, EType> {
-    // let bilisender_cl = Arc::clone(bilisender);
     // generate api info & proxy_info, for later adding proxy balance
     let config = bili_runtime.config;
     let req_type = ReqType::Playurl(Area::new(params.area_num), params.is_app);
@@ -516,15 +508,11 @@ pub async fn get_upstream_bili_playurl(
     }
 
     query_vec.sort_by_key(|v| v.0);
-    let unsigned_url = qstring::QString::new(query_vec);
-    let unsigned_url = format!("{unsigned_url}");
-    let signed_url = format!(
-        "{unsigned_url}&sign={:x}",
-        md5::compute(format!("{unsigned_url}{}", params.appsec))
-    );
+
+    let (signed_url, _sign) = build_signed_url!(api, query_vec, params.appsec);
     // finish generating req params
     let upstream_raw_resp = match async_getwebpage(
-        &format!("{api}?{signed_url}"),
+        &signed_url,
         proxy_open,
         proxy_url,
         params.user_agent,
@@ -571,16 +559,16 @@ pub async fn get_upstream_bili_playurl(
                     },
                     is_custom: true,
                     custom_message: format!(
-                        "[GET PLAYURL][U] APPKEY {} | APPSEC {} | TS {} | FINAL {}?{} -> 非JSON返回值, 上游实际返回信息: {}",
-                        params.appkey, params.appsec, ts, api, signed_url, upstream_raw_resp.resp_content
+                        "[GET PLAYURL][U] APPKEY {} | APPSEC {} | TS {} | FINAL {} -> 非JSON返回值, 上游实际返回信息: {}",
+                        params.appkey, params.appsec, ts, signed_url, upstream_raw_resp
                     ),
                 }),
                 bili_runtime,
             )
             .await;
             error!(
-                "[GET PLAYURL][U] APPKEY {} | APPSEC {} | TS {} | FINAL {}?{} -> 非JSON返回值, 上游实际返回信息: {}",
-                params.appkey, params.appsec, ts, api, signed_url, upstream_raw_resp.resp_content
+                "[GET PLAYURL][U] APPKEY {} | APPSEC {} | TS {} | FINAL {} -> 非JSON返回值, 上游实际返回信息: {}",
+                params.appkey, params.appsec, ts, signed_url, upstream_raw_resp
             );
             return Err(EType::ServerGeneral);
         }
@@ -613,7 +601,6 @@ pub async fn get_upstream_bili_playurl(
     .await;
     // check user's vip status
     if !params.is_vip {
-        // TODO: add vip only feature here
         if let Ok(value) = check_vip_status_from_playurl(playurl_type, &upstream_raw_resp_json) {
             if value {
                 update_cached_user_info_background(params.access_key.to_string(), bili_runtime)
@@ -738,15 +725,12 @@ pub async fn get_upstream_bili_playurl_background(
     }
 
     query_vec.sort_by_key(|v| v.0);
-    let unsigned_url = qstring::QString::new(query_vec);
-    let unsigned_url = format!("{unsigned_url}");
-    let signed_url = format!(
-        "{unsigned_url}&sign={:x}",
-        md5::compute(format!("{unsigned_url}{}", params.appsec))
-    );
+
+    let (signed_url, _sign) = build_signed_url!(api, query_vec, params.appsec);
+
     // finish generating req params
     let upstream_raw_resp = match async_getwebpage(
-        &format!("{api}?{signed_url}"),
+        &signed_url,
         proxy_open,
         proxy_url,
         params.user_agent,
@@ -792,16 +776,16 @@ pub async fn get_upstream_bili_playurl_background(
                     },
                     is_custom: true,
                     custom_message: format!(
-                        "[GET PLAYURL BACKGROUND][U] APPKEY {} | APPSEC {} | TS {} | FINAL {}?{} -> 非JSON返回值, 上游实际返回信息: {}",
-                        params.appkey, params.appsec, ts, api, signed_url, upstream_raw_resp.resp_content
+                        "[GET PLAYURL BACKGROUND][U] APPKEY {} | APPSEC {} | TS {} | FINAL {} -> 非JSON返回值, 上游实际返回信息: {}",
+                        params.appkey, params.appsec, ts, signed_url, upstream_raw_resp
                     ),
                 }),
                 bili_runtime,
             )
             .await;
             error!(
-                "[GET PLAYURL BACKGROUND][U] APPKEY {} | APPSEC {} | TS {} | FINAL {}?{} -> 非JSON返回值, 上游实际返回信息: {}",
-                        params.appkey, params.appsec, ts, api, signed_url, upstream_raw_resp.resp_content
+                "[GET PLAYURL BACKGROUND][U] APPKEY {} | APPSEC {} | TS {} | FINAL {} -> 非JSON返回值, 上游实际返回信息: {}",
+                        params.appkey, params.appsec, ts, signed_url, upstream_raw_resp
             );
             return Err(EType::ServerGeneral);
         }
@@ -924,14 +908,11 @@ pub async fn get_upstream_bili_search(
     }
 
     query_vec.sort_by_key(|v| v.0.clone());
-    //let unsigned_url = qstring::QString::new(query_vec);
-    let unsigned_url = format!("{}", qstring::QString::new(query_vec));
-    let signed_url = format!(
-        "{unsigned_url}&sign={:x}",
-        md5::compute(format!("{unsigned_url}{}", params.appsec))
-    );
+
+    let (signed_url, _sign) = build_signed_url!(api, query_vec, params.appsec);
+
     match async_getwebpage(
-        &format!("{api}?{signed_url}"),
+        &signed_url,
         proxy_open,
         proxy_url,
         params.user_agent,
@@ -1010,19 +991,15 @@ pub async fn get_upstream_bili_subtitle(
     ));
     let mut query_vec = query.to_pairs();
     query_vec.sort_by_key(|v| v.0);
-    // 硬编码APPSEC
-    let appsec = params.appsec;
+
     let proxy_open = bili_runtime.config.th_proxy_subtitle_open;
     let proxy_url = &bili_runtime.config.th_proxy_subtitle_url;
-    let unsigned_url = qstring::QString::new(query_vec);
-    let unsigned_url = format!("{unsigned_url}");
-    let signed_url = format!(
-        "{unsigned_url}&sign={:x}",
-        md5::compute(format!("{unsigned_url}{appsec}"))
-    );
+
     let api = "https://app.biliintl.com/intl/gateway/v2/app/subtitle";
+    let (signed_url, _sign) = build_signed_url!(api, query_vec, params.appsec);
+
     match async_getwebpage(
-        &format!("{api}?{signed_url}"),
+        &signed_url,
         proxy_open,
         proxy_url,
         params.user_agent,
@@ -1070,14 +1047,10 @@ pub async fn get_upstream_bili_season(
 
     query_vec.sort_by_key(|v| v.0);
     //let unsigned_url = qstring::QString::new(query_vec);
-    let unsigned_url = format!("{}", qstring::QString::new(query_vec));
-    let signed_url = format!(
-        "{unsigned_url}&sign={:x}",
-        md5::compute(format!("{unsigned_url}{}", params.appsec))
-    );
+    let (signed_url, _sign) = build_signed_url!(api, query_vec, params.appsec);
 
     match async_getwebpage(
-        &format!("{api}?{signed_url}"),
+        &signed_url,
         proxy_open,
         proxy_url,
         params.user_agent,
@@ -1458,187 +1431,195 @@ pub async fn get_upstream_bili_ep_info(
     }
 }
 
-pub async fn get_upstream_resigned_access_key(
-    area_num: &u8,
-    user_agent: &str,
-    bili_runtime: &BiliRuntime<'_>,
-) -> Option<(String, u64)> {
-    async fn get_accesskey_from_token_th(
-        user_agent: &str,
-        bili_runtime: &BiliRuntime<'_>,
-    ) -> Option<(String, u64)> {
-        let dt = Local::now();
-        let ts = dt.timestamp() as u64;
-        let resign_info =
-            to_resign_info(&bili_runtime.redis_get(&format!("a41101")).await.unwrap()).await;
-        let access_key = resign_info.access_key;
-        let refresh_token = resign_info.refresh_token;
-        let url = "https://passport.biliintl.com/x/intl/passport-login/oauth2/refresh_token";
-        let content = format!("access_token={access_key}&refresh_token={refresh_token}");
-        let proxy_open = bili_runtime.config.th_proxy_token_open;
-        let proxy_url = &bili_runtime.config.th_proxy_token_url;
-        let getpost_string =
-            match async_postwebpage(&url, &content, proxy_open, proxy_url, user_agent).await {
-                Ok(value) => value,
-                Err(_) => return None,
-            };
-        let getpost_json: serde_json::Value = serde_json::from_str(&getpost_string).unwrap();
-        let resign_info = UserResignInfo {
-            // area_num: 4,
-            access_key: getpost_json["data"]["token_info"]["access_token"]
-                .as_str()
-                .unwrap()
-                .to_string(),
-            refresh_token: getpost_json["data"]["token_info"]["refresh_token"]
-                .as_str()
-                .unwrap()
-                .to_string(),
-            expire_time: getpost_json["data"]["token_info"]["expires_in"]
-                .as_u64()
-                .unwrap()
-                + ts
-                - 3600,
-        };
-        bili_runtime
-            .redis_set("a41101", &resign_info.to_json(), 0)
-            .await;
-        Some((resign_info.access_key, resign_info.expire_time))
-    }
+// 这是重构忘删掉的吧? 跟get_resigned_access_key一个样了
+// pub async fn get_upstream_resigned_access_key(
+//     area_num: &u8,
+//     user_agent: &str,
+//     bili_runtime: &BiliRuntime<'_>,
+// ) -> Option<(String, u64)> {
+//     async fn get_accesskey_from_token_th(
+//         user_agent: &str,
+//         bili_runtime: &BiliRuntime<'_>,
+//     ) -> Option<(String, u64)> {
+//         let dt = Local::now();
+//         let ts = dt.timestamp() as u64;
+//         let resign_info =
+//             to_resign_info(&bili_runtime.redis_get(&format!("a41101")).await.unwrap()).await;
+//         let access_key = resign_info.access_key;
+//         let refresh_token = resign_info.refresh_token;
+//         let url = "https://passport.biliintl.com/x/intl/passport-login/oauth2/refresh_token";
+//         let content = format!("access_token={access_key}&refresh_token={refresh_token}");
+//         let proxy_open = bili_runtime.config.th_proxy_token_open;
+//         let proxy_url = &bili_runtime.config.th_proxy_token_url;
+//         let getpost_string =
+//             match async_postwebpage(&url, &content, proxy_open, proxy_url, user_agent).await {
+//                 Ok(value) => value,
+//                 Err(_) => return None,
+//             };
+//         let getpost_json: serde_json::Value = serde_json::from_str(&getpost_string).unwrap();
+//         let resign_info = UserResignInfo {
+//             // area_num: 4,
+//             access_key: getpost_json["data"]["token_info"]["access_token"]
+//                 .as_str()
+//                 .unwrap()
+//                 .to_string(),
+//             refresh_token: getpost_json["data"]["token_info"]["refresh_token"]
+//                 .as_str()
+//                 .unwrap()
+//                 .to_string(),
+//             expire_time: getpost_json["data"]["token_info"]["expires_in"]
+//                 .as_u64()
+//                 .unwrap()
+//                 + ts
+//                 - 3600,
+//         };
+//         bili_runtime
+//             .redis_set("a41101", &resign_info.to_json(), 0)
+//             .await;
+//         Some((resign_info.access_key, resign_info.expire_time))
+//     }
 
-    async fn get_accesskey_from_token_cn(
-        _area_num: &u8,
-        user_agent: &str,
-        bili_runtime: &BiliRuntime<'_>,
-    ) -> Option<(String, u64)> {
-        let dt = Local::now();
-        let ts = dt.timestamp() as u64;
-        let resign_info =
-            to_resign_info(&bili_runtime.redis_get(&format!("a11101")).await.unwrap()).await;
-        let access_key = resign_info.access_key;
-        let refresh_token = resign_info.refresh_token;
-        let unsign_request_body = format!(
-        "access_token={access_key}&appkey=1d8b6e7d45233436&refresh_token={refresh_token}&ts={ts}"
-    );
-        let url = "https://passport.bilibili.com/x/passport-login/oauth2/refresh_token";
-        let content = format!(
-            "{unsign_request_body}&sign={:x}",
-            md5::compute(format!(
-                "{unsign_request_body}560c52ccd288fed045859ed18bffd973"
-            ))
-        );
-        let proxy_open = bili_runtime.config.cn_proxy_token_open;
-        let proxy_url = &bili_runtime.config.cn_proxy_token_url;
-        let getpost_string =
-            match async_postwebpage(&url, &content, proxy_open, proxy_url, user_agent).await {
-                Ok(value) => value,
-                Err(_) => return None,
-            };
-        let getpost_json: serde_json::Value = serde_json::from_str(&getpost_string).unwrap();
-        let resign_info = UserResignInfo {
-            // area_num: 1,
-            access_key: getpost_json["data"]["token_info"]["access_token"]
-                .as_str()
-                .unwrap()
-                .to_string(),
-            refresh_token: getpost_json["data"]["token_info"]["refresh_token"]
-                .as_str()
-                .unwrap()
-                .to_string(),
-            expire_time: getpost_json["data"]["token_info"]["expires_in"]
-                .as_u64()
-                .unwrap()
-                + ts
-                - 3600,
-        };
-        bili_runtime
-            .redis_set("a11101", &resign_info.to_json(), 0)
-            .await;
-        Some((resign_info.access_key, resign_info.expire_time))
-    }
+//     async fn get_accesskey_from_token_cn(
+//         _area_num: &u8,
+//         user_agent: &str,
+//         bili_runtime: &BiliRuntime<'_>,
+//     ) -> Option<(String, u64)> {
+//         let dt = Local::now();
+//         let ts = dt.timestamp() as u64;
+//         let ts_string = format!("{ts}");
+//         let resign_info =
+//             to_resign_info(&bili_runtime.redis_get(&format!("a11101")).await.unwrap()).await;
+//         let access_key = resign_info.access_key;
+//         let refresh_token = resign_info.refresh_token;
+//         // let unsign_request_body = format!(
+//         //     "access_token={access_key}&appkey=1d8b6e7d45233436&refresh_token={refresh_token}&ts={ts}"
+//         // );
+//         let mut query_vec = vec![
+//             ("access_token", access_key.as_str()),
+//             ("appkey", "1d8b6e7d45233436"),
+//             ("refresh_token", refresh_token.as_str()),
+//             ("ts", ts_string.as_str()),
+//         ];
+//         query_vec.sort_by_key(|v| v.0);
+//         let api = "https://passport.bilibili.com/x/passport-login/oauth2/refresh_token";
+//         let (signed_content, sign) =
+//             build_signed_params!(query_vec, "560c52ccd288fed045859ed18bffd973");
 
-    async fn to_resign_info(resin_info_str: &str) -> UserResignInfo {
-        serde_json::from_str(resin_info_str).unwrap()
-    }
+//         let proxy_open = bili_runtime.config.cn_proxy_token_open;
+//         let proxy_url = &bili_runtime.config.cn_proxy_token_url;
 
-    let config = bili_runtime.config;
-    if *config
-        .resign_from_api_open
-        .get(&area_num.to_string())
-        .unwrap_or(&false)
-    {
-        let key = format!("a{area_num}1201");
-        let dt = Local::now();
-        let ts = dt.timestamp() as u64;
-        match bili_runtime.redis_get(&key).await {
-            Some(value) => {
-                let resign_info_json: UserResignInfo = serde_json::from_str(&value).unwrap();
-                if resign_info_json.expire_time > ts {
-                    return Some((resign_info_json.access_key, resign_info_json.expire_time));
-                }
-            }
-            None => (),
-        };
-        let area_num_str = area_num.to_string();
-        let url = format!(
-            "{}?area_num={}&sign={}",
-            &config.resign_api.get(&area_num_str).unwrap(),
-            &area_num,
-            &config.resign_api_sign.get(&area_num_str).unwrap()
-        );
-        let upstream_raw_resp =
-            if let Ok(data) = async_getwebpage(&url, false, "", "", "", None).await {
-                data
-            } else {
-                println!("[Error] 从非官方接口处获取accesskey失败");
-                return None;
-            };
-        let upstream_raw_resp_json: serde_json::Value =
-            if let Some(value) = upstream_raw_resp.json() {
-                value
-            } else {
-                println!("[Error] json解析失败: {}", upstream_raw_resp);
-                return None;
-            };
-        if upstream_raw_resp_json["code"].as_i64().unwrap() != 0 {
-            println!("err3");
-            return None;
-        }
-        let access_key = upstream_raw_resp_json["access_key"]
-            .as_str()
-            .unwrap()
-            .to_string();
-        let resign_info = UserResignInfo {
-            // area_num: *area_num as i32,
-            access_key: access_key.clone(),
-            refresh_token: "".to_string(),
-            expire_time: upstream_raw_resp_json["expire_time"]
-                .as_u64()
-                .unwrap_or(ts + 3600),
-        };
+//         let getpost_string =
+//             match async_postwebpage(&api, &signed_content, proxy_open, proxy_url, user_agent).await
+//             {
+//                 Ok(value) => value,
+//                 Err(_) => return None,
+//             };
+//         let getpost_json: serde_json::Value = serde_json::from_str(&getpost_string).unwrap();
+//         let resign_info = UserResignInfo {
+//             // area_num: 1,
+//             access_key: getpost_json["data"]["token_info"]["access_token"]
+//                 .as_str()
+//                 .unwrap()
+//                 .to_string(),
+//             refresh_token: getpost_json["data"]["token_info"]["refresh_token"]
+//                 .as_str()
+//                 .unwrap()
+//                 .to_string(),
+//             expire_time: getpost_json["data"]["token_info"]["expires_in"]
+//                 .as_u64()
+//                 .unwrap()
+//                 + ts
+//                 - 3600,
+//         };
+//         bili_runtime
+//             .redis_set("a11101", &resign_info.to_json(), 0)
+//             .await;
+//         Some((resign_info.access_key, resign_info.expire_time))
+//     }
 
-        bili_runtime
-            .redis_set(&key, &resign_info.to_json(), 3600)
-            .await;
-        return Some((access_key, resign_info.expire_time));
-    } else {
-        let area_num: u8 = match area_num {
-            4 => 4,
-            _ => 1,
-        };
-        let resign_info_str = match bili_runtime.redis_get(&format!("a{area_num}1101")).await {
-            Some(value) => value,
-            None => return None,
-        };
-        let resign_info_json: UserResignInfo = serde_json::from_str(&resign_info_str).unwrap();
-        let dt = Local::now();
-        let ts = dt.timestamp() as u64;
-        if resign_info_json.expire_time > ts {
-            return Some((resign_info_json.access_key, resign_info_json.expire_time));
-        } else {
-            match area_num {
-                4 => get_accesskey_from_token_th(user_agent, bili_runtime).await,
-                _ => get_accesskey_from_token_cn(&area_num, user_agent, bili_runtime).await,
-            }
-        }
-    }
-}
+//     async fn to_resign_info(resin_info_str: &str) -> UserResignInfo {
+//         serde_json::from_str(resin_info_str).unwrap()
+//     }
+
+//     let config = bili_runtime.config;
+//     if *config
+//         .resign_from_api_open
+//         .get(&area_num.to_string())
+//         .unwrap_or(&false)
+//     {
+//         let key = format!("a{area_num}1201");
+//         let dt = Local::now();
+//         let ts = dt.timestamp() as u64;
+//         match bili_runtime.redis_get(&key).await {
+//             Some(value) => {
+//                 let resign_info_json: UserResignInfo = serde_json::from_str(&value).unwrap();
+//                 if resign_info_json.expire_time > ts {
+//                     return Some((resign_info_json.access_key, resign_info_json.expire_time));
+//                 }
+//             }
+//             None => (),
+//         };
+//         let area_num_str = area_num.to_string();
+//         let url = format!(
+//             "{}?area_num={}&sign={}",
+//             &config.resign_api.get(&area_num_str).unwrap(),
+//             &area_num,
+//             &config.resign_api_sign.get(&area_num_str).unwrap()
+//         );
+//         let upstream_raw_resp =
+//             if let Ok(data) = async_getwebpage(&url, false, "", "", "", None).await {
+//                 data
+//             } else {
+//                 println!("[Error] 从非官方接口处获取accesskey失败");
+//                 return None;
+//             };
+//         let upstream_raw_resp_json: serde_json::Value =
+//             if let Some(value) = upstream_raw_resp.json() {
+//                 value
+//             } else {
+//                 println!("[Error] json解析失败: {}", upstream_raw_resp);
+//                 return None;
+//             };
+//         if upstream_raw_resp_json["code"].as_i64().unwrap() != 0 {
+//             println!("err3");
+//             return None;
+//         }
+//         let access_key = upstream_raw_resp_json["access_key"]
+//             .as_str()
+//             .unwrap()
+//             .to_string();
+//         let resign_info = UserResignInfo {
+//             // area_num: *area_num as i32,
+//             access_key: access_key.clone(),
+//             refresh_token: "".to_string(),
+//             expire_time: upstream_raw_resp_json["expire_time"]
+//                 .as_u64()
+//                 .unwrap_or(ts + 3600),
+//         };
+
+//         bili_runtime
+//             .redis_set(&key, &resign_info.to_json(), 3600)
+//             .await;
+//         return Some((access_key, resign_info.expire_time));
+//     } else {
+//         let area_num: u8 = match area_num {
+//             4 => 4,
+//             _ => 1,
+//         };
+//         let resign_info_str = match bili_runtime.redis_get(&format!("a{area_num}1101")).await {
+//             Some(value) => value,
+//             None => return None,
+//         };
+//         let resign_info_json: UserResignInfo = serde_json::from_str(&resign_info_str).unwrap();
+//         let dt = Local::now();
+//         let ts = dt.timestamp() as u64;
+//         if resign_info_json.expire_time > ts {
+//             return Some((resign_info_json.access_key, resign_info_json.expire_time));
+//         } else {
+//             match area_num {
+//                 4 => get_accesskey_from_token_th(user_agent, bili_runtime).await,
+//                 _ => get_accesskey_from_token_cn(&area_num, user_agent, bili_runtime).await,
+//             }
+//         }
+//     }
+// }

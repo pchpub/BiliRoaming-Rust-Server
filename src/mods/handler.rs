@@ -1,24 +1,24 @@
 use super::cache::{
     get_cached_ep_area, get_cached_playurl, get_cached_th_season, get_cached_th_subtitle,
 };
+use super::health::report_health;
 use super::types::{
-    random_string, Area, BackgroundTaskType, BiliConfig, BiliRuntime, EType, PlayurlParams,
-    SearchParams,
+    random_string, Area, BackgroundTaskType, BiliConfig, BiliRuntime, EType, HealthData,
+    HealthReportType, PlayurlParams, SearchParams,
 };
 use super::upstream_res::{
     get_upstream_bili_playurl, get_upstream_bili_search, get_upstream_bili_season,
-    get_upstream_bili_subtitle, get_upstream_resigned_access_key,
+    get_upstream_bili_subtitle,
 };
 use super::user_info::*;
-use crate::mods::health::report_health;
-use crate::mods::types::{HealthData, HealthReportType};
 use crate::{build_response, build_result_response};
 use actix_web::http::header::ContentType;
 use actix_web::{HttpRequest, HttpResponse};
 use async_channel::Sender;
+use crypto::digest::Digest;
+use crypto::md5::Md5;
 use deadpool_redis::Pool;
 use log::{debug, error, warn};
-use md5;
 use pcre2::bytes::Regex;
 use qstring::QString;
 use serde_json::{self, json};
@@ -64,7 +64,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
 
     // detect req UA
     params.user_agent = match req.headers().get("user-agent") {
-        Option::Some(_ua) => req.headers().get("user-agent").unwrap().to_str().unwrap(),
+        Option::Some(ua) => ua.to_str().unwrap(),
         _ => {
             warn!("[GET PLAYURL] IP {client_ip} -> Detect req without UA");
             build_response!(EType::ReqUAError)
@@ -72,7 +72,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     };
 
     // detect req client ver
-    if is_app && config.limit_biliroaming_version_open {
+    if config.limit_biliroaming_version_open && is_app {
         match req.headers().get("build") {
             Some(value) => {
                 let version: u16 = value.to_str().unwrap_or("0").parse().unwrap_or(0);
@@ -87,10 +87,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     }
 
     // detect user's appkey
-    params.appkey = match query.get("appkey") {
-        Option::Some(key) => key,
-        _ => "1d8b6e7d45233436",
-    };
+    params.appkey = query.get("appkey").unwrap_or("1d8b6e7d45233436");
     if let Err(_) = params.appkey_to_sec() {
         error!(
             "[GET PLAYURL] IP {client_ip} -> Detect unknown appkey: {}",
@@ -115,14 +112,14 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     // TODO: add ignore sign err
     if is_app || is_th {
         if query_string.len() <= 39
-            || (format!(
-                "{:x}",
-                md5::compute(format!(
-                    "{}{}",
-                    &query_string[..query_string.len() - 38],
-                    params.appsec
-                ))
-            ) != &query_string[query_string.len() - 32..])
+            || ({
+                let mut raw_unsign_query_string = String::with_capacity(600);
+                raw_unsign_query_string.push_str(&query_string[..query_string.len() - 38]);
+                raw_unsign_query_string.push_str(params.appsec);
+                let mut new_md5 = Md5::new();
+                new_md5.input_str(&raw_unsign_query_string);
+                new_md5.result_str()
+            } != &query_string[query_string.len() - 32..])
         {
             build_response!(EType::ReqSignError);
         }
@@ -130,8 +127,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
 
     // detect user's access_key
     params.access_key = match query.get("access_key") {
-        Option::Some(key) => {
-            let key = key;
+        Some(key) => {
             if key.len() == 0 {
                 error!("[GET PLAYURL] IP {client_ip} -> Detect req without access_key");
                 build_response!(EType::UserNotLoginedError);
@@ -146,23 +142,15 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     };
 
     // detect req ep
-    params.ep_id = match query.get("ep_id") {
-        Option::Some(key) => key,
-        _ => "",
-    };
-    params.cid = match query.get("cid") {
-        Option::Some(key) => key,
-        _ => "",
-    };
+    params.ep_id = query.get("ep_id").unwrap_or("");
+    params.cid = query.get("cid").unwrap_or("");
 
     // detect other info
     params.build = query.get("build").unwrap_or("6800300");
     params.device = query.get("device").unwrap_or("android");
     params.is_tv = match query.get("fnval") {
         Some(value) => match value {
-            "130" => true,
-            "0" => true,
-            "2" => true,
+            "130" | "0" | "2" => true,
             _ => false,
         },
         None => false,
@@ -219,7 +207,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     }
 
     // get area cache
-    if config.area_cache_open && !(params.ep_id == "") {
+    if config.area_cache_open && params.ep_id != "" {
         match get_cached_ep_area(&params, &bili_runtime).await {
             Ok(value) => match value {
                 Some(area) => {
@@ -356,15 +344,13 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
     // verify req sign
     // TODO: add ignore sign err
     if is_app || is_th {
+        let mut raw_unsign_query_string = String::with_capacity(600);
+        raw_unsign_query_string.push_str(&query_string[..query_string.len() - 38]);
+        raw_unsign_query_string.push_str(params.appsec);
+        let mut new_md5 = Md5::new();
+        new_md5.input_str(&raw_unsign_query_string);
         if query_string.len() <= 39
-            || (format!(
-                "{:x}",
-                md5::compute(format!(
-                    "{}{}",
-                    &query_string[..query_string.len() - 38],
-                    params.appsec
-                ))
-            ) != &query_string[query_string.len() - 32..])
+            || (new_md5.result_str() != &query_string[query_string.len() - 32..])
         {
             build_response!(EType::ReqSignError);
         }
@@ -697,13 +683,12 @@ pub async fn handle_api_access_key_request(req: &HttpRequest) -> HttpResponse {
 
     let user_agent = "User-Agent:Mozilla/5.0 (Linux; Android 4.1.2; Nexus 7 Build/JZ054K) AppleWebKit/535.19 (KHTML, like Gecko) Chrome/18.0.1025.166 Safari/535.19";
 
-    let (access_key, expire_time) = if let Some(value) =
-        get_upstream_resigned_access_key(&area_num, user_agent, &bili_runtime).await
-    {
-        value
-    } else {
-        build_response!(-404, "获取AK失败");
-    };
+    let (access_key, expire_time) =
+        if let Some(value) = get_resigned_access_key(&area_num, user_agent, &bili_runtime).await {
+            value
+        } else {
+            build_response!(-404, "获取AK失败");
+        };
 
     build_response!(format!(
         r#"{{"code":0,"message":"","access_key":"{access_key}","expire_time":{expire_time}}}"#

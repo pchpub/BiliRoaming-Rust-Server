@@ -4,6 +4,7 @@ use super::types::{
     BiliRuntime, EType, HasIsappIsthUseragent, PlayurlParams, UserInfo, UserResignInfo,
 };
 use super::upstream_res::{get_upstream_bili_account_info, get_upstream_blacklist_info};
+use crate::build_signed_params;
 use chrono::prelude::*;
 use log::{debug, error, info};
 
@@ -374,6 +375,7 @@ pub async fn resign_user_info(
         }
     }
 }
+
 pub async fn get_resigned_access_key(
     area_num: &u8,
     user_agent: &str,
@@ -390,7 +392,7 @@ pub async fn get_resigned_access_key(
         let ts = dt.timestamp() as u64;
         match bili_runtime.redis_get(&key).await {
             Some(value) => {
-                let resign_info_json: UserResignInfo = serde_json::from_str(&value).unwrap();
+                let resign_info_json = UserResignInfo::new(&value);
                 if resign_info_json.expire_time > ts {
                     return Some((resign_info_json.access_key, resign_info_json.expire_time));
                 }
@@ -476,13 +478,13 @@ async fn get_accesskey_from_token(
     let config = bili_runtime.config;
     let dt = Local::now();
     let ts = dt.timestamp() as u64;
-    let resign_info = to_resign_info(
+    let ts_string = format!("{ts}");
+    let resign_info = UserResignInfo::new(
         &bili_runtime
             .redis_get(&format!("a{sub_area_num}1101"))
             .await
             .unwrap(),
-    )
-    .await;
+    );
     let access_key = resign_info.access_key;
     let refresh_token = resign_info.refresh_token;
     let (url, content, proxy_open, proxy_url) = match sub_area_num {
@@ -493,17 +495,16 @@ async fn get_accesskey_from_token(
             &config.th_proxy_token_url,
         ),
         1 => {
-            let unsign_request_body = format!(
-                "access_token={access_key}&appkey=1d8b6e7d45233436&refresh_token={refresh_token}&ts={ts}"
-            );
+            let mut query_vec = vec![
+                ("access_token", access_key.as_str()),
+                ("appkey", "1d8b6e7d45233436"),
+                ("refresh_token", refresh_token.as_str()),
+                ("ts", ts_string.as_str()),
+            ];
+            query_vec.sort_by_key(|v| v.0);
             (
                 "https://passport.bilibili.com/x/passport-login/oauth2/refresh_token",
-                format!(
-                    "{unsign_request_body}&sign={:x}",
-                    md5::compute(format!(
-                        "{unsign_request_body}560c52ccd288fed045859ed18bffd973"
-                    ))
-                ),
+                build_signed_params!(query_vec, "560c52ccd288fed045859ed18bffd973").0,
                 &config.cn_proxy_token_open,
                 &config.cn_proxy_token_url,
             )
@@ -538,6 +539,3 @@ async fn get_accesskey_from_token(
     Some((resign_info.access_key, resign_info.expire_time))
 }
 
-async fn to_resign_info(resin_info_str: &str) -> UserResignInfo {
-    serde_json::from_str(resin_info_str).unwrap()
-}

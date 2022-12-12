@@ -556,6 +556,39 @@ macro_rules! build_response {
     };
 }
 
+#[macro_export]
+/// support like `build_signed_url!(unsigned_url, vec![query_param], "sign_secret");`, return tuple (signed_url, md5_sign), mg5_sign for debug
+macro_rules! build_signed_url {
+    ($unsigned_url:expr, $query_vec:expr, $sign_secret:expr) => {{
+        let req_params = qstring::QString::new($query_vec).to_string();
+        let mut signed_url = String::with_capacity(600);
+        signed_url.push_str(&($unsigned_url));
+        signed_url.push_str("?");
+        signed_url.push_str(&req_params);
+        signed_url.push_str("&sign=");
+        let mut sign = crypto::md5::Md5::new();
+        crypto::digest::Digest::input_str(&mut sign, &(req_params + $sign_secret));
+        let md5_sign = crypto::digest::Digest::result_str(&mut sign);
+        signed_url.push_str(&md5_sign);
+        (signed_url, md5_sign)
+    }};
+}
+#[macro_export]
+/// support like `build_signed_url!(unsigned_url, vec![query_param], "sign_secret");`, return tuple (signed_url, md5_sign), mg5_sign for debug
+macro_rules! build_signed_params {
+    ($query_vec:expr, $sign_secret:expr) => {{
+        let req_params = qstring::QString::new($query_vec).to_string();
+        let mut signed_params = String::with_capacity(600);
+        signed_params.push_str(&req_params);
+        signed_params.push_str("&sign=");
+        let mut sign = crypto::md5::Md5::new();
+        crypto::digest::Digest::input_str(&mut sign, &(req_params + $sign_secret));
+        let md5_sign = crypto::digest::Digest::result_str(&mut sign);
+        signed_params.push_str(&md5_sign);
+        (signed_params, md5_sign)
+    }};
+}
+
 /*
 * the following is background task related struct & impl
 */
@@ -1597,6 +1630,9 @@ pub struct UserResignInfo {
 }
 
 impl UserResignInfo {
+    pub fn new(resin_info_str: &str) -> UserResignInfo {
+        serde_json::from_str(resin_info_str).unwrap()
+    }
     pub fn to_json(&self) -> String {
         serde_json::to_string(&self).unwrap()
         // format!(

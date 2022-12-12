@@ -154,7 +154,7 @@ fn main() -> std::io::Result<()> {
     info!("你好喵~");
     ctrlc::set_handler(move || {
         //目前来看这个已经没用了,但以防万一卡死,还是留着好了
-        println!("\n已关闭 biliroaming_rust_server");
+        error!("已关闭 biliroaming_rust_server");
         std::process::exit(0);
     })
     .unwrap();
