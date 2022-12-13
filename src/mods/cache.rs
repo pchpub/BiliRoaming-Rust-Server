@@ -209,6 +209,7 @@ pub async fn get_cached_user_info(
         .get_cache(&CacheType::UserInfo(access_key, 1145141919810))
         .await
     {
+        // TODO: 处理expire_time, 主动刷新
         Some(value) => Some(serde_json::from_str(&value).unwrap()),
         None => None,
     }

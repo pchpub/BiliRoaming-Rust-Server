@@ -2,8 +2,8 @@ use super::background_tasks::{
     update_cached_ep_vip_status_background, update_cached_user_info_background,
 };
 use super::cache::{
-    update_area_cache, update_blacklist_info_cache, update_cached_playurl, update_th_season_cache,
-    update_th_subtitle_cache, update_user_info_cache,
+    get_cached_user_info, update_area_cache, update_blacklist_info_cache, update_cached_playurl,
+    update_th_season_cache, update_th_subtitle_cache, update_user_info_cache,
 };
 use super::ep_info::get_ep_need_vip;
 use super::health::report_health;
@@ -17,6 +17,7 @@ use crate::build_signed_url;
 use chrono::prelude::*;
 use curl::easy::List;
 use log::{debug, error};
+use pcre2::bytes::Regex;
 use qstring::QString;
 use std::string::String;
 
@@ -360,6 +361,125 @@ pub async fn get_upstream_bili_account_info(
                     .to_string(),
             ))
         }
+    }
+}
+
+pub async fn get_upstream_bili_account_info_background(
+    access_key: &str,
+    bili_runtime: &BiliRuntime<'_>,
+) -> Result<UserInfo, EType> {
+    match get_upstream_bili_account_info(access_key, "", "", false, "", 0, bili_runtime).await {
+        Ok(value) => Ok(value),
+        Err(value) => match value {
+            EType::ServerReqError("-663错误, 您的账号似乎被鼠鼠风控了, 请稍后重试") =>
+            {
+                let dt = Local::now();
+                let ts = dt.timestamp_millis() as u64;
+                let cached_user_info = get_cached_user_info(access_key, bili_runtime).await;
+                let uid = match cached_user_info {
+                    Some(value) => value.uid,
+                    None => {
+                        // TODO: 添加更多获取mid的方式
+                        if let Some(value) =
+                            get_upstream_mid_from_playurl(access_key, bili_runtime).await
+                        {
+                            value
+                        } else {
+                            error!(
+                                "[GET USER_INFO][U] AK {} | Get User's mid failed",
+                                access_key
+                            );
+                            return Err(EType::ServerGeneral);
+                        }
+                    }
+                };
+                let vip_expire_time = get_upstream_vip_due_date_from_mid(uid, bili_runtime)
+                    .await
+                    .unwrap_or(0);
+                Ok(UserInfo {
+                    code: 0,
+                    access_key: access_key.to_owned(),
+                    uid,
+                    vip_expire_time,
+                    expire_time: {
+                        if ts < vip_expire_time && vip_expire_time < ts + 25 * 24 * 60 * 60 * 1000 {
+                            vip_expire_time
+                        } else {
+                            ts + 25 * 24 * 60 * 60 * 1000
+                        }
+                    },
+                })
+            }
+            _ => Err(value),
+        },
+    }
+}
+
+/// 从播放链接中提取mid
+async fn get_upstream_mid_from_playurl(
+    access_key: &str,
+    bili_runtime: &BiliRuntime<'_>,
+) -> Option<u64> {
+    if let Ok(playurl_string) = get_upstream_bili_playurl_background(
+        &mut PlayurlParams {
+            access_key,
+            ep_id: "425578",
+            area: "hk",
+            area_num: 2,
+            ep_need_vip: false,
+            user_agent: &FakeUA::App.gen(),
+            ..Default::default()
+        },
+        bili_runtime,
+    )
+    .await
+    {
+        // 感觉不太优雅...
+        let re = Regex::new(r#"(?m)&mid=(\d{0,})&platform"#).unwrap();
+        let mid = match re.captures(playurl_string.as_bytes()) {
+            Ok(value) => {
+                if let Some(value) = value {
+                    value
+                } else {
+                    return None;
+                }
+            }
+            Err(value) => {
+                error!("REGEX CAPTURE FAILED: {:?}", value);
+                return None;
+            }
+        };
+        let mid: u64 = String::from_utf8(mid[1].to_vec()).unwrap().parse().unwrap();
+        Some(mid)
+    } else {
+        None
+    }
+}
+async fn get_upstream_vip_due_date_from_mid(
+    mid: u64,
+    bili_runtime: &BiliRuntime<'_>,
+) -> Option<u64> {
+    let url =
+        format!("https://api.bilibili.com/x/space/wbi/acc/info?mid={mid}&token=&platform=web");
+    match async_getwebpage(
+        &url,
+        bili_runtime.config.cn_proxy_accesskey_open,
+        &bili_runtime.config.cn_proxy_accesskey_url,
+        &FakeUA::Web.gen(),
+        "",
+        None,
+    )
+    .await
+    {
+        Ok(data) => {
+            let data_json = if let Some(value) = data.json() {
+                value
+            } else {
+                return None;
+            };
+            Some(data_json["data"]["vip"]["due_date"].as_u64().unwrap_or(0))
+        }
+        Err(_) => None,
     }
 }
 

@@ -1,4 +1,4 @@
-use super::cache::update_cached_playurl;
+use super::cache::{update_cached_playurl, update_user_info_cache};
 use super::ep_info::update_ep_vip_status_cache;
 use super::health::*;
 use super::push::send_report;
@@ -8,7 +8,7 @@ use super::types::{
     HealthTask, PlayurlParams, PlayurlParamsStatic, ReqType,
 };
 use super::upstream_res::*;
-use super::user_info::{get_blacklist_info, get_user_info};
+use super::user_info::get_blacklist_info;
 use log::{debug, error, info, trace};
 use serde_json::json;
 
@@ -217,22 +217,18 @@ pub async fn background_task_run(
             }
         },
         BackgroundTaskType::Cache(value) => match value {
-            CacheTask::UserInfoCacheRefresh(access_key, retry_num) => {
-                let appkey = "1d8b6e7d45233436";
-                let appsec = "560c52ccd288fed045859ed18bffd973";
-                // let user_agent = "Dalvik/2.1.0 (Linux; U; Android 11; 21091116AC Build/RP1A.200720.011)";
-                let user_agent = FakeUA::Web.gen();
-                match get_user_info(&access_key, appkey, appsec, &PlayurlParams {
-                    is_app: true,
-                    is_th: false,
-                    user_agent: &user_agent,
-                    ..Default::default()
-                }, true, retry_num, &bili_runtime).await {
-                    Ok(new_user_info) => match get_blacklist_info(&new_user_info, bili_runtime).await {
-                        Ok(_) => Ok(()),
-                        Err(value) => Err(format!("[BACKGROUND TASK] UID {} | Refreshing blacklist info failed, ErrMsg: {}", new_user_info.uid, value.to_string())),
+            CacheTask::UserInfoCacheRefresh(access_key, _) => {
+                match get_upstream_bili_account_info_background(&access_key, &bili_runtime).await {
+                    Ok(new_user_info) => {
+                        update_user_info_cache(&new_user_info, &bili_runtime).await;
+                        match get_blacklist_info(&new_user_info, bili_runtime).await {
+                            Ok(_) => Ok(()),
+                            Err(value) => Err(format!("[BACKGROUND TASK] UID {} | Refreshing blacklist info failed, ErrMsg: {}", new_user_info.uid, value.to_string())),
+                        }
                     },
-                    Err(value) => Err(format!("[BACKGROUND TASK] ACCESS_KEY {} | Refreshing blacklist info failed, ErrMsg: {}", access_key, value.to_string())),
+                    Err(value) => {
+                        Err(format!("[BACKGROUND TASK] ACCESS_KEY {} | Refreshing blacklist info failed, ErrMsg: {}", access_key, value.to_string()))
+                    },
                 }
             }
             CacheTask::PlayurlCacheRefresh(params) => {
