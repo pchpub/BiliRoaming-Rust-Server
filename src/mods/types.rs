@@ -1568,6 +1568,79 @@ impl Area {
     }
 }
 
+pub enum FakeUA {
+    Web,      // 网页版, 统一使用Chrome
+    Mobile,   // 移动UA, 移动版Chrome
+    App,      //App的UA, Dalvik开头的类型
+    Bilibili, //Bilibili的UA, 类似Mozilla/5.0 BiliDroid/{6.80.0}{ (bbcallen@gmail.com) os/android model/M2012K11AC mobi_app/android build/6800300 channel/master innerVer/6800310 osVer/12 network/2
+}
+
+impl FakeUA {
+    #[inline]
+    fn gen_random_phone() -> (&'static str, &'static str, &'static str) {
+        let phones = [
+            ("13", "Pixel 6 Pro", "TQ1A.221205.011"),
+            ("13", "SM-S9080", "TP1A.220624.014"),
+            ("13", "2201122C", "TKQ1.220807.001"),
+            ("12", "JEF-AN00", "HUAWEIJEF-AN00"),
+            ("12", "VOG-AL10", "HUAWEIVOG-AL10"),
+            ("12", "ELS-AN00", "HUAWEIELS-AN00"),
+            ("12", "NOH-AN01", "HUAWEINOH-AN01"),
+            ("11", "SKW-A0", "SKYW2203210CN00MR1"),
+            ("11", "21091116AC", "RP1A.200720.011"),
+            ("10", "VOG-AL10", "HUAWEIVOG-AL10"),
+            ("10", "JEF-AN00", "HUAWEIJEF-AN00"),
+            ("10", "VOG-AL10", "HUAWEIVOG-AL10"),
+            ("10", "ELS-AN00", "HUAWEIELS-AN00"),
+            ("9", "BND-AL10", "HONORBND-AL10"),
+            ("9", "ALP-AL00", "HUAWEIALP-AL00"),
+        ];
+        phones[rand::thread_rng().gen_range(0..=14)]
+    }
+    #[inline]
+    pub fn gen(&self) -> String {
+        match self {
+            FakeUA::Web => {
+                // 非常粗暴的做法
+                format!("Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{}.0.0.0 Safari/537.36", rand::thread_rng().gen_range(90..=108))
+            }
+            FakeUA::Mobile => {
+                let phone = FakeUA::gen_random_phone();
+                format!("Mozilla/5.0 (Linux; U; Android {}; {} Build/{}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{}.0.0.0 Mobile Safari/537.36", phone.0, phone.1, phone.2, rand::thread_rng().gen_range(90..=108))
+            } //虽然暂时用不到
+            FakeUA::App => {
+                // 性能考虑才这么写, 虽然只是快一点, 100次循环format!()是7,073 ns/iter (+/- 277), String::with_capacity是2,387 ns/iter (+/- 163).
+                // "Dalvik/2.1.0 (Linux; U; Android 13; Pixel 6 Pro Build/TQ1A.221205.011)"
+                let mut user_agent = String::with_capacity(100);
+                let phone = FakeUA::gen_random_phone();
+                user_agent.push_str("Dalvik/2.1.0 (Linux; U; Android ");
+                user_agent.push_str(phone.0);
+                user_agent.push_str("; ");
+                user_agent.push_str(phone.1);
+                user_agent.push_str(" Build/");
+                user_agent.push_str(phone.2);
+                user_agent.push_str(")");
+                user_agent
+            }
+            FakeUA::Bilibili => {
+                // Mozilla/5.0 BiliDroid/6.80.0 (bbcallen@gmail.com) os/android model/M2012K11AC mobi_app/android build/6800300 channel/master innerVer/6800310 osVer/12 network/2
+                let mut user_agent = String::with_capacity(200);
+                let (android_version, _, phone_model) = FakeUA::gen_random_phone();
+                user_agent.push_str(
+                    "Mozilla/5.0 BiliDroid/6.80.0 (bbcallen@gmail.com) os/android model/",
+                );
+                user_agent.push_str(phone_model);
+                user_agent.push_str(
+                    " mobi_app/android build/6800300 channel/master innerVer/6800310 osVer/",
+                );
+                user_agent.push_str(android_version);
+                user_agent.push_str("network/2");
+                user_agent
+            }
+        }
+    }
+}
+
 /*
 * the following is user related struct & impl
 */

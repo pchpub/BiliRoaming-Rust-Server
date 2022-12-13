@@ -542,4 +542,3 @@ async fn get_accesskey_from_token(
         .await;
     Some((resign_info.access_key, resign_info.expire_time))
 }
-

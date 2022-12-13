@@ -3,9 +3,8 @@ use super::ep_info::update_ep_vip_status_cache;
 use super::health::*;
 use super::push::send_report;
 use super::request::async_getwebpage;
-use super::tools::build_random_useragent;
 use super::types::{
-    Area, BackgroundTaskType, BiliRuntime, CacheTask, CacheType, EpInfo, HealthReportType,
+    Area, BackgroundTaskType, BiliRuntime, CacheTask, CacheType, EpInfo, FakeUA, HealthReportType,
     HealthTask, PlayurlParams, PlayurlParamsStatic, ReqType,
 };
 use super::upstream_res::*;
@@ -72,7 +71,7 @@ pub async fn update_cached_user_info_background(
 ) {
     trace!("[BACKGROUND TASK] AK {access_key} -> Accept UserInfo Cache Refresh Task...");
     let background_task_data =
-        BackgroundTaskType::Cache(CacheTask::UserInfoCacheRefresh(access_key,retry_num));
+        BackgroundTaskType::Cache(CacheTask::UserInfoCacheRefresh(access_key, retry_num));
     bili_runtime.send_task(background_task_data).await
 }
 
@@ -218,11 +217,11 @@ pub async fn background_task_run(
             }
         },
         BackgroundTaskType::Cache(value) => match value {
-            CacheTask::UserInfoCacheRefresh(access_key,retry_num) => {
+            CacheTask::UserInfoCacheRefresh(access_key, retry_num) => {
                 let appkey = "1d8b6e7d45233436";
                 let appsec = "560c52ccd288fed045859ed18bffd973";
                 // let user_agent = "Dalvik/2.1.0 (Linux; U; Android 11; 21091116AC Build/RP1A.200720.011)";
-                let user_agent = build_random_useragent();
+                let user_agent = FakeUA::Web.gen();
                 match get_user_info(&access_key, appkey, appsec, &PlayurlParams {
                     is_app: true,
                     is_th: false,
@@ -284,7 +283,7 @@ pub async fn background_task_run(
                 // // 没弹幕/评论区还不如去看RC-RAWS
                 let bili_user_status_api: &str =
                     "https://api.bilibili.com/pgc/view/web/season/user/status";
-                let user_agent = build_random_useragent();
+                let user_agent = FakeUA::Web.gen();
                 // let user_agent = "Dalvik/2.1.0 (Linux; U; Android 11; 21091116AC Build/RP1A.200720.011)";
                 let area_to_check = [
                     (

@@ -10,7 +10,7 @@ use super::health::report_health;
 use super::request::async_getwebpage;
 use super::tools::{check_vip_status_from_playurl, get_mobi_app, remove_parameters_playurl};
 use super::types::{
-    Area, BiliRuntime, EType, EpInfo, HealthData, HealthReportType, PlayurlParams, ReqType,
+    Area, BiliRuntime, EType, EpInfo, FakeUA, HealthData, HealthReportType, PlayurlParams, ReqType,
     SearchParams, UpstreamReply, UserCerinfo, UserInfo,
 };
 use crate::build_signed_url;
@@ -25,7 +25,7 @@ pub async fn get_upstream_bili_account_info(
     _appkey: &str,
     _appsec: &str,
     _is_app: bool,
-    user_agent: &str,
+    _user_agent: &str,
     retry_num: u8,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
@@ -73,7 +73,10 @@ pub async fn get_upstream_bili_account_info(
     headers.append("x-bili-aurora-zone: sh001").unwrap();
     headers.append("app-key: android64").unwrap();
 
-    let api = format!("https://{}/x/v2/account/mine", bili_runtime.config.general_app_bilibili_com_proxy_api);
+    let api = format!(
+        "https://{}/x/v2/account/mine",
+        bili_runtime.config.general_app_bilibili_com_proxy_api
+    );
     let (signed_url, sign) = build_signed_url!(api, req_vec, appsec);
 
     debug!(
@@ -85,7 +88,7 @@ pub async fn get_upstream_bili_account_info(
         &signed_url,
         bili_runtime.config.cn_proxy_accesskey_open,
         &bili_runtime.config.cn_proxy_accesskey_url,
-        user_agent,
+        &FakeUA::Bilibili.gen(), // 客户端请求UA和普通的不一样
         "",
         Some(headers),
     )
@@ -142,7 +145,8 @@ pub async fn get_upstream_bili_account_info(
     };
     match code {
         0 => {
-            if upstream_raw_resp_json["data"]["mid"].as_u64().unwrap_or(0) == 0 {// accesskey失效时mid为0
+            if upstream_raw_resp_json["data"]["mid"].as_u64().unwrap_or(0) == 0 {
+                // accesskey失效时mid为0
                 let output_struct = UserInfo {
                     code,
                     expire_time: ts + 1 * 60 * 60 * 1000, // 未登录缓存1h,防止高频请求b站服务器
@@ -154,7 +158,7 @@ pub async fn get_upstream_bili_account_info(
                     access_key, upstream_raw_resp_json
                 );
                 Err(EType::UserNotLoginedError)
-            }else{
+            } else {
                 let output_struct = UserInfo {
                     code: 0,
                     access_key: String::from(access_key),
@@ -189,7 +193,12 @@ pub async fn get_upstream_bili_account_info(
                 "84956560bc028eb7" | "85eb6835b0a1034e" => {
                     // 还是迂回更新其用户信息试一下
                     if retry_num != 0 {
-                        update_cached_user_info_background(access_key.to_string(), retry_num-1,bili_runtime).await;
+                        update_cached_user_info_background(
+                            access_key.to_string(),
+                            retry_num - 1,
+                            bili_runtime,
+                        )
+                        .await;
                     }
                     Err(EType::OtherError(
                         -10403,
@@ -291,7 +300,12 @@ pub async fn get_upstream_bili_account_info(
                 access_key, upstream_raw_resp_json
             );
             if retry_num != 0 {
-                update_cached_user_info_background(access_key.to_string(), retry_num-1,bili_runtime).await;
+                update_cached_user_info_background(
+                    access_key.to_string(),
+                    retry_num - 1,
+                    bili_runtime,
+                )
+                .await;
             }
             let health_report_type = HealthReportType::Others(HealthData {
                 area_num: 0,

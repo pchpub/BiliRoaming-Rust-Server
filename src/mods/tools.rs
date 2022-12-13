@@ -1,10 +1,8 @@
-use log::{debug, error};
-use rand::Rng;
-
 use super::{
     request::{download, getwebpage},
     types::PlayurlType,
 };
+use log::{debug, error};
 use std::env;
 use std::path::PathBuf;
 use std::thread;
@@ -431,27 +429,4 @@ pub fn vec_to_string<T: std::fmt::Display>(vec: &Vec<T>, delimiter: &str) -> Str
             processed_string
         }
     }
-}
-
-pub fn build_random_useragent() -> &'static str {
-    let user_agents = [
-        "Dalvik/2.1.0 (Linux; U; Android 13; Pixel 6 Pro Build/TQ1A.221205.011)",
-        "Dalvik/2.1.0 (Linux; U; Android 13; SM-S9080 Build/TP1A.220624.014)",
-        "Dalvik/2.1.0 (Linux; U; Android 13; 2201122C Build/TKQ1.220807.001)",
-        "Dalvik/2.1.0 (Linux; U; Android 12; JEF-AN00 Build/HUAWEIJEF-AN00)",
-        "Dalvik/2.1.0 (Linux; U; Android 12; VOG-AL10 Build/HUAWEIVOG-AL10)",
-        "Dalvik/2.1.0 (Linux; U; Android 12; ELS-AN00 Build/HUAWEIELS-AN00)",
-        "Dalvik/2.1.0 (Linux; U; Android 12; NOH-AN01 Build/HUAWEINOH-AN01)",
-        "Dalvik/2.1.0 (Linux; U; Android 11; SKW-A0 Build/SKYW2203210CN00MR1)",
-        "Dalvik/2.1.0 (Linux; U; Android 11; 21091116AC Build/RP1A.200720.011)",
-        "Dalvik/2.1.0 (Linux; U; Android 10; Redmi K30 MIUI/V12.0.5.0.QGHCNXM)",
-        "Dalvik/2.1.0 (Linux; U; Android 10; VOG-AL10 Build/HUAWEIVOG-AL10)",
-        "Dalvik/2.1.0 (Linux; U; Android 10; JEF-AN00 Build/HUAWEIJEF-AN00)",
-        "Dalvik/2.1.0 (Linux; U; Android 10; VOG-AL10 Build/HUAWEIVOG-AL10)",
-        "Dalvik/2.1.0 (Linux; U; Android 10; ELS-AN00 Build/HUAWEIELS-AN00)",
-        "Dalvik/2.1.0 (Linux; U; Android 9; BND-AL10 Build/HONORBND-AL10)",
-        "Dalvik/2.1.0 (Linux; U; Android 9; ALP-AL00 Build/HUAWEIALP-AL00)",
-        "Dalvik/2.1.0 (Linux; U; Android 9; MIX 2 MIUI/V12.0.1.0.PDECNXM)",
-    ];
-    user_agents[rand::thread_rng().gen_range(0..=16)]
 }
