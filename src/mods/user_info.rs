@@ -16,6 +16,7 @@ pub async fn get_user_info<T: HasIsappIsthUseragent>(
     appsec: &str,
     params: &T,
     force_update: bool,
+    retry_num: u8,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
     // detect web request
@@ -41,6 +42,7 @@ pub async fn get_user_info<T: HasIsappIsthUseragent>(
             appsec,
             is_app,
             params.user_agent(),
+            retry_num,
             bili_runtime,
         )
         .await
@@ -88,6 +90,7 @@ pub async fn get_user_info<T: HasIsappIsthUseragent>(
                 appsec,
                 is_app,
                 params.user_agent(),
+                retry_num,
                 bili_runtime,
             )
             .await
@@ -354,6 +357,7 @@ pub async fn resign_user_info(
                 params.appsec,
                 params,
                 false,
+                1,
                 bili_runtime,
             )
             .await

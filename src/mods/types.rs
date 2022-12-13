@@ -601,7 +601,7 @@ pub enum HealthTask {
     HealthReport(HealthReportType),
 }
 pub enum CacheTask {
-    UserInfoCacheRefresh(String),
+    UserInfoCacheRefresh(String,u8),
     PlayurlCacheRefresh(PlayurlParamsStatic),
     ProactivePlayurlCacheRefresh,
     EpInfoCacheRefresh(bool, Vec<EpInfo>),

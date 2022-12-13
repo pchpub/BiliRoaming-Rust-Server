@@ -67,11 +67,12 @@ pub async fn update_cached_area_background(
 
 pub async fn update_cached_user_info_background(
     access_key: String,
+    retry_num: u8,
     bili_runtime: &BiliRuntime<'_>,
 ) {
     trace!("[BACKGROUND TASK] AK {access_key} -> Accept UserInfo Cache Refresh Task...");
     let background_task_data =
-        BackgroundTaskType::Cache(CacheTask::UserInfoCacheRefresh(access_key));
+        BackgroundTaskType::Cache(CacheTask::UserInfoCacheRefresh(access_key,retry_num));
     bili_runtime.send_task(background_task_data).await
 }
 
@@ -217,7 +218,7 @@ pub async fn background_task_run(
             }
         },
         BackgroundTaskType::Cache(value) => match value {
-            CacheTask::UserInfoCacheRefresh(access_key) => {
+            CacheTask::UserInfoCacheRefresh(access_key,retry_num) => {
                 let appkey = "1d8b6e7d45233436";
                 let appsec = "560c52ccd288fed045859ed18bffd973";
                 // let user_agent = "Dalvik/2.1.0 (Linux; U; Android 11; 21091116AC Build/RP1A.200720.011)";
@@ -227,7 +228,7 @@ pub async fn background_task_run(
                     is_th: false,
                     user_agent: &user_agent,
                     ..Default::default()
-                }, true, &bili_runtime).await {
+                }, true, retry_num, &bili_runtime).await {
                     Ok(new_user_info) => match get_blacklist_info(&new_user_info, bili_runtime).await {
                         Ok(_) => Ok(()),
                         Err(value) => Err(format!("[BACKGROUND TASK] UID {} | Refreshing blacklist info failed, ErrMsg: {}", new_user_info.uid, value.to_string())),

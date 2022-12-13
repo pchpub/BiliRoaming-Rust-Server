@@ -163,6 +163,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
         params.appsec,
         &params,
         false,
+        1,
         &bili_runtime,
     )
     .await
@@ -407,6 +408,7 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
             params.appsec,
             &params,
             false,
+            1,
             &bili_runtime,
         )
         .await

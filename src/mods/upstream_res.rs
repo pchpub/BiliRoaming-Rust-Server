@@ -26,6 +26,7 @@ pub async fn get_upstream_bili_account_info(
     _appsec: &str,
     _is_app: bool,
     user_agent: &str,
+    retry_num: u8,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
     use rand::Rng;
@@ -173,7 +174,9 @@ pub async fn get_upstream_bili_account_info(
             match appkey {
                 "84956560bc028eb7" | "85eb6835b0a1034e" => {
                     // 还是迂回更新其用户信息试一下
-                    update_cached_user_info_background(access_key.to_string(), bili_runtime).await;
+                    if retry_num != 0 {
+                        update_cached_user_info_background(access_key.to_string(), retry_num-1,bili_runtime).await;
+                    }
                     Err(EType::OtherError(
                         -10403,
                         "不兼容的APPKEY, 请升级油猴脚本或其他你正在用的客户端!",
@@ -273,7 +276,9 @@ pub async fn get_upstream_bili_account_info(
                 "[GET USER_INFO][U] AK {} | Get UserInfo failed -663. Upstream Reply -> {}",
                 access_key, upstream_raw_resp_json
             );
-            // update_cached_user_info_background(access_key.to_string(), bili_runtime).await;
+            if retry_num != 0 {
+                update_cached_user_info_background(access_key.to_string(), retry_num-1,bili_runtime).await;
+            }
             let health_report_type = HealthReportType::Others(HealthData {
                 area_num: 0,
                 is_200_ok: true,
@@ -286,7 +291,7 @@ pub async fn get_upstream_bili_account_info(
                 },
                 is_custom: true,
                 custom_message: format!(
-                    "[GET USER_INFO][U] -663错误! 理论上已修复, 仍出现此错误请提issue\nDevice: {}, APPKEY: {}, AK: {}, TS: {}",
+                    "[GET USER_INFO][U] -663错误! 正在尝试修复\nDevice: {}, APPKEY: {}, AK: {}, TS: {}",
                     mobi_app, appkey, access_key, ts
                 ),
             });
@@ -603,7 +608,7 @@ pub async fn get_upstream_bili_playurl(
     if !params.is_vip {
         if let Ok(value) = check_vip_status_from_playurl(playurl_type, &upstream_raw_resp_json) {
             if value {
-                update_cached_user_info_background(params.access_key.to_string(), bili_runtime)
+                update_cached_user_info_background(params.access_key.to_string(), 1, bili_runtime)
                     .await;
                 match get_ep_need_vip(params.ep_id, bili_runtime).await {
                     Some(ep_need_vip) => {
