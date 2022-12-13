@@ -204,7 +204,7 @@ pub async fn get_blacklist_info(
             };
             if data.white {
                 info!(
-                    "[GET USER_CER_INFO] UID {} | AK {} -> 在线白名单, 过期时间: {}",
+                    "[GET USER_CER_INFO] UID {} | AK {} -> 在线白名单, 下次刷新: {}",
                     user_info.uid, user_info.access_key, data.status_expire_time
                 );
                 Ok(true)
@@ -213,7 +213,7 @@ pub async fn get_blacklist_info(
                     "[GET USER_CER_INFO] UID {} | AK {} -> 在线黑名单, {}",
                     user_info.uid,
                     user_info.access_key,
-                    timestamp_to_time(&data.status_expire_time)
+                    timestamp_to_time(&data.ban_until)
                 );
                 Err(EType::UserBlacklistedError(data.ban_until as i64))
             } else {

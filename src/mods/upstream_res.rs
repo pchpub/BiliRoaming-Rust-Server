@@ -519,6 +519,8 @@ pub async fn get_upstream_blacklist_info(
                 .as_bool()
                 .unwrap_or(false),
             status_expire_time: {
+                // 3376656000
+                // 1671057927
                 match upstream_raw_resp_json["data"]["ban_until"].as_u64() {
                     Some(ban_until) => {
                         if ban_until > ts && ban_until < ts + 1 * 24 * 60 * 60 {

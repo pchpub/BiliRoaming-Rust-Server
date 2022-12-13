@@ -78,6 +78,9 @@ pub fn check_vip_status_from_playurl(
         }
         PlayurlType::ChinaWeb => {
             if data["code"].as_i64().unwrap_or(233) == 0 {
+                if data["result"]["is_preview"].as_bool().unwrap_or(false) {
+                    return Ok(true);
+                }
                 let mut quality_need_vip: Vec<u64> = Vec::with_capacity(2);
                 let items = if let Some(value) = data["result"]["support_formats"].as_array() {
                     value
