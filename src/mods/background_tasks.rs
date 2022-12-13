@@ -1,4 +1,4 @@
-use super::cache::{update_cached_playurl, update_user_info_cache};
+use super::cache::{get_cached_user_info, update_cached_playurl, update_user_info_cache};
 use super::ep_info::update_ep_vip_status_cache;
 use super::health::*;
 use super::push::send_report;
@@ -220,51 +220,62 @@ pub async fn background_task_run(
         BackgroundTaskType::Cache(value) => match value {
             CacheTask::UserInfoCacheRefresh(access_key) => {
                 // 不管刷新是否成功
-                match get_upstream_bili_playurl_background(
-                    &mut PlayurlParams {
-                        access_key: &access_key,
-                        ep_id: "425578",
-                        area: "hk",
-                        area_num: 2,
-                        ep_need_vip: false,
-                        user_agent: &FakeUA::App.gen(),
-                        ..Default::default()
-                    },
-                    bili_runtime,
-                )
-                .await
+                let uid = if let Some(value) = get_cached_user_info(&access_key, bili_runtime).await
                 {
-                    Ok(playurl_string) => {
-                        let uid = if let Some(value) = get_user_mid_from_playurl(&playurl_string) {
-                            value
-                        } else {
-                            // 不考虑失败的情况
-                            return Err("".to_owned());
-                        };
-                        let vip_expire_time =
-                            get_upstream_bili_account_info_vip_due_date(uid, bili_runtime)
-                                .await
-                                .unwrap_or(0);
-                        let new_user_info = UserInfo::new(0, &access_key, uid, vip_expire_time);
-                        update_user_info_cache(&new_user_info, bili_runtime).await;
-                        Ok(())
-                    }
-                    Err(err_type) => match err_type {
-                        EType::OtherError(_, "上游错误, 刷新失败") => {
-                            // 这种情况下缓存30min防止请求过于频繁
-                            let new_user_info = UserInfo {
-                                code: -500,
-                                access_key: access_key.to_owned(),
-                                expire_time: Local::now().timestamp_millis() as u64
-                                    + 10 * 60 * 1000, // 暂时缓存10m,
-                                ..Default::default()
-                            };
-                            update_user_info_cache(&new_user_info, bili_runtime).await;
-                            Ok(())
+                    value.uid
+                } else {
+                    match get_upstream_bili_playurl_background(
+                        &mut PlayurlParams {
+                            access_key: &access_key,
+                            ep_id: "425578",
+                            area: "hk",
+                            area_num: 2,
+                            ep_need_vip: false,
+                            user_agent: &FakeUA::App.gen(),
+                            ..Default::default()
+                        },
+                        bili_runtime,
+                    )
+                    .await
+                    {
+                        Ok(playurl_string) => {
+                            if let Some(value) = get_user_mid_from_playurl(&playurl_string) {
+                                value
+                            } else {
+                                // 不考虑失败的情况
+                                return Err("[BACKGROUND TASK] | 从playurl正则匹配获取mid失败, 刷新用户信息终止".to_owned());
+                            }
                         }
-                        _ => Ok(()),
-                    },
-                }
+                        Err(err_type) => {
+                            match err_type {
+                                EType::OtherError(_, "上游错误, 刷新失败") => {
+                                    // 这种情况下缓存30min防止请求过于频繁
+                                    let new_user_info = UserInfo {
+                                        code: -500,
+                                        access_key: access_key.to_owned(),
+                                        expire_time: Local::now().timestamp_millis() as u64
+                                            + 10 * 60 * 1000, // 暂时缓存10m,
+                                        ..Default::default()
+                                    };
+                                    update_user_info_cache(&new_user_info, bili_runtime).await;
+                                    return Err("[BACKGROUND TASK] | 上游问题, 刷新用户信息失败"
+                                        .to_string());
+                                }
+                                _ => {
+                                    return Err("[BACKGROUND TASK] | 网络问题, 刷新用户信息失败"
+                                        .to_string())
+                                }
+                            }
+                        }
+                    }
+                };
+                let vip_expire_time =
+                    get_upstream_bili_account_info_vip_due_date(uid, bili_runtime)
+                        .await
+                        .unwrap_or(0);
+                let new_user_info = UserInfo::new(0, &access_key, uid, vip_expire_time);
+                update_user_info_cache(&new_user_info, bili_runtime).await;
+                Ok(())
             }
             CacheTask::PlayurlCacheRefresh(params) => {
                 match get_upstream_bili_playurl_background(&mut params.as_ref(), bili_runtime).await
