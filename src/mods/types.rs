@@ -81,6 +81,10 @@ pub struct BiliConfig {
     pub cn_proxy_accesskey_open: bool,
     pub th_proxy_subtitle_url: String,
     pub th_proxy_subtitle_open: bool,
+    #[serde(default = "default_api_bilibili_com")]
+    pub general_api_bilibili_com_proxy_api: String,
+    #[serde(default = "default_app_bilibili_com")]
+    pub general_app_bilibili_com_proxy_api: String,
     pub aid: u64,
     pub aid_replace_open: bool,
     #[serde(default = "default_hashmap_false")]
@@ -601,7 +605,7 @@ pub enum HealthTask {
     HealthReport(HealthReportType),
 }
 pub enum CacheTask {
-    UserInfoCacheRefresh(String,u8),
+    UserInfoCacheRefresh(String, u8),
     PlayurlCacheRefresh(PlayurlParamsStatic),
     ProactivePlayurlCacheRefresh,
     EpInfoCacheRefresh(bool, Vec<EpInfo>),
@@ -1404,6 +1408,14 @@ fn default_true() -> bool {
 
 fn default_string() -> String {
     "".to_string()
+}
+
+fn default_api_bilibili_com() -> String {
+    "api.bilibili.com".to_string()
+}
+
+fn default_app_bilibili_com() -> String {
+    "app.bilibili.com".to_string()
 }
 
 pub fn random_string() -> String {

@@ -73,7 +73,7 @@ pub async fn get_upstream_bili_account_info(
     headers.append("x-bili-aurora-zone: sh001").unwrap();
     headers.append("app-key: android64").unwrap();
 
-    let api = "https://app.bilibili.com/x/v2/account/mine";
+    let api = format!("https://{}/x/v2/account/mine", bili_runtime.config.general_app_bilibili_com_proxy_api);
     let (signed_url, sign) = build_signed_url!(api, req_vec, appsec);
 
     debug!(
