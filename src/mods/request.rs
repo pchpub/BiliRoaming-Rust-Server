@@ -8,7 +8,7 @@ use std::string::String;
 use std::time::Duration;
 use tokio::task::spawn_blocking;
 
-use super::types::EType;
+use super::types::{EType, UpstreamRawResp};
 
 /// `getwebpage` GET请求
 /// - 返回 Result<String, bool>
@@ -19,17 +19,22 @@ pub fn getwebpage(
     proxy_url: String,
     user_agent: String,
     cookie: String,
-) -> Result<String, bool> {
-    let mut data = Vec::new();
+    headers: Option<List>,
+) -> Result<UpstreamRawResp, bool> {
+    let mut resp_data = Vec::new();
+    let mut resp_header_data = Vec::new();
     let mut handle = Easy::new();
     handle.url(&url).unwrap();
     handle.follow_location(true).unwrap();
     handle.ssl_verify_peer(false).unwrap();
     handle.post(false).unwrap();
     handle.useragent(&user_agent).unwrap();
-    handle.connect_timeout(Duration::new(20, 0)).unwrap();
     handle.cookie(&cookie).unwrap();
-
+    match headers {
+        Some(value) => handle.http_headers(value).unwrap(),
+        None => (),
+    }
+    handle.connect_timeout(Duration::new(20, 0)).unwrap();
     if proxy_open {
         if proxy_url.contains("://") {
             handle.proxy(&proxy_url).unwrap();
@@ -44,8 +49,15 @@ pub fn getwebpage(
     {
         let mut transfer = handle.transfer();
         transfer
+            .header_function(|header| {
+                resp_header_data.extend(header.to_owned()); //为了保证速度不解析之
+                resp_header_data.extend([226u8, 128, 161]); //分隔符: ‡
+                true
+            })
+            .unwrap();
+        transfer
             .write_function(|new_data| {
-                data.extend_from_slice(new_data);
+                resp_data.extend_from_slice(new_data);
                 Ok(new_data.len())
             })
             .unwrap();
@@ -58,13 +70,15 @@ pub fn getwebpage(
         }
     }
 
-    let getwebpage_string: String = match String::from_utf8(data) {
+    let getwebpage_string: String = match String::from_utf8(resp_data) {
         Ok(value) => value,
         Err(_) => {
             return Err(false);
         }
     };
-    Ok(getwebpage_string)
+    // debug!("测试header: \n{}", resp_header_data.join("\n"));
+    let upstream_resp = UpstreamRawResp::new(getwebpage_string, resp_header_data);
+    Ok(upstream_resp)
 }
 
 /// `async_getwebpage` 异步GET请求
@@ -75,13 +89,18 @@ pub async fn async_getwebpage(
     proxy_url: &str,
     user_agent: &str,
     cookie: &str,
-) -> Result<String, EType> {
+    headers: Option<List>,
+) -> Result<UpstreamRawResp, EType> {
     let url = url.to_owned();
     let proxy_open = proxy_open.to_owned();
     let proxy_url = proxy_url.to_owned();
     let user_agent = user_agent.to_owned();
     let cookie = cookie.to_owned();
-    match spawn_blocking(move || getwebpage(url, proxy_open, proxy_url, user_agent, cookie)).await {
+    match spawn_blocking(move || {
+        getwebpage(url, proxy_open, proxy_url, user_agent, cookie, headers)
+    })
+    .await
+    {
         Ok(value) => match value {
             Ok(value) => return Ok(value),
             Err(is_network_problem) => {

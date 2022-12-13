@@ -90,8 +90,8 @@ pub struct BiliConfig {
     #[serde(default = "default_false")]
     pub resign_from_existed_key: bool, // 仅限 cn (危险功能)
     // #[serde(default = "default_hashmap_string")]                                 // 与上方 resign 功能重复
-    // pub resign_from_local: HashMap<String, String>, //限制白名单共享带会员的uid    // 注释在 user_info.rs 的 255 行 
-    // #[serde(default = "default_true")]                                           // 
+    // pub resign_from_local: HashMap<String, String>, //限制白名单共享带会员的uid    // 注释在 user_info.rs 的 255 行
+    // #[serde(default = "default_true")]                                           //
     // pub resign_from_local_open: bool, //启用后白名单将共享带会员                   //
     #[serde(default = "default_hashmap_false")]
     pub resign_from_api_open: HashMap<String, bool>, //启用后assesskey从api获取
@@ -118,9 +118,9 @@ pub struct BiliConfig {
     #[serde(default = "default_false")]
     pub area_cache_open: bool,
     // 以下为不会序列化的配置
-    #[serde(skip_serializing,default)]
+    #[serde(skip_serializing, default)]
     pub cn_resign_info: UserResignInfo,
-    #[serde(skip_serializing,default)]
+    #[serde(skip_serializing, default)]
     pub th_resign_info: UserResignInfo,
 }
 
@@ -312,6 +312,7 @@ pub enum CacheType<'cache_type> {
     EpVipInfo(&'cache_type str),
     UserInfo(&'cache_type str, u64),
     UserCerInfo(&'cache_type str, u64),
+    // UserUniqueInfo(&'cache_type str, u64)
 }
 impl<'cache_type> CacheType<'cache_type> {
     #[inline]
@@ -436,6 +437,18 @@ impl<'cache_type> CacheType<'cache_type> {
                 key += "20602";
                 keys.push(key);
             }
+            // CacheType::UserUniqueInfo(access_key, uid) => {
+            //     let mut key = String::with_capacity(64);
+            //     key.push_str("a");
+            //     key.push_str(access_key);
+            //     key += "2001";
+            //     keys.push(key);
+            //     let mut key = String::with_capacity(32);
+            //     key.push_str("u");
+            //     key.push_str(&uid.to_string());
+            //     key += "2001";
+            //     keys.push(key);
+            // },
         };
         keys
     }
@@ -543,6 +556,39 @@ macro_rules! build_response {
     };
 }
 
+#[macro_export]
+/// support like `build_signed_url!(unsigned_url, vec![query_param], "sign_secret");`, return tuple (signed_url, md5_sign), mg5_sign for debug
+macro_rules! build_signed_url {
+    ($unsigned_url:expr, $query_vec:expr, $sign_secret:expr) => {{
+        let req_params = qstring::QString::new($query_vec).to_string();
+        let mut signed_url = String::with_capacity(600);
+        signed_url.push_str(&($unsigned_url));
+        signed_url.push_str("?");
+        signed_url.push_str(&req_params);
+        signed_url.push_str("&sign=");
+        let mut sign = crypto::md5::Md5::new();
+        crypto::digest::Digest::input_str(&mut sign, &(req_params + $sign_secret));
+        let md5_sign = crypto::digest::Digest::result_str(&mut sign);
+        signed_url.push_str(&md5_sign);
+        (signed_url, md5_sign)
+    }};
+}
+#[macro_export]
+/// support like `build_signed_url!(unsigned_url, vec![query_param], "sign_secret");`, return tuple (signed_url, md5_sign), mg5_sign for debug
+macro_rules! build_signed_params {
+    ($query_vec:expr, $sign_secret:expr) => {{
+        let req_params = qstring::QString::new($query_vec).to_string();
+        let mut signed_params = String::with_capacity(600);
+        signed_params.push_str(&req_params);
+        signed_params.push_str("&sign=");
+        let mut sign = crypto::md5::Md5::new();
+        crypto::digest::Digest::input_str(&mut sign, &(req_params + $sign_secret));
+        let md5_sign = crypto::digest::Digest::result_str(&mut sign);
+        signed_params.push_str(&md5_sign);
+        (signed_params, md5_sign)
+    }};
+}
+
 /*
 * the following is background task related struct & impl
 */
@@ -568,6 +614,7 @@ pub enum CacheTask {
 pub struct UpstreamReply {
     pub code: i64,
     pub message: String,
+    pub upstream_header: String,
     pub proxy_open: bool,
     pub proxy_url: String,
 }
@@ -576,6 +623,7 @@ impl std::default::Default for UpstreamReply {
         Self {
             code: -2333,
             message: String::from("default null"),
+            upstream_header: String::from("default null"),
             proxy_open: false,
             proxy_url: String::new(),
         }
@@ -650,14 +698,15 @@ impl HealthData {
         health_data.is_custom = !health_data.is_available();
         if health_data.is_custom {
             health_data.custom_message = format!(
-                "详细信息:\n区域代码: {}\n网络正常: {}\n代理信息: {} {}\n请求资源(EP/SID/KEYWORD): {}\n上游返回信息: CODE {}, Message -> {}",
+                "详细信息:\n区域代码: {}\n网络正常: {}\n代理信息: {} {}\n请求资源(EP/SID/KEYWORD): {}\n上游返回信息: CODE {}, Message -> {}\n上游返回Headers: \n{}",
                 health_data.area_num,
                 health_data.is_200_ok,
                 health_data.upstream_reply.proxy_open,
                 health_data.upstream_reply.proxy_url,
                 req_id,
                 health_data.upstream_reply.code,
-                health_data.upstream_reply.message
+                health_data.upstream_reply.message,
+                health_data.upstream_reply.upstream_header,
             );
         }
         health_data
@@ -1256,14 +1305,15 @@ impl ReportHealthData {
         match health_report_type {
             HealthReportType::Others(value) => {
                 format!(
-                    "服务器温馨提醒您: \n\n{}\n\n详细信息:\n区域代码: {}\n网络正常: {}\n代理信息: {} {}\n上游返回信息: CODE {}, Message -> {}",
+                    "服务器温馨提醒您: \n\n{}\n\n详细信息:\n区域代码: {}\n网络正常: {}\n代理信息: {} {}\n上游返回信息: CODE {}, Message -> {}\n上游返回Headers: \n{}",
                     value.custom_message,
                     value.area_num,
                     value.is_200_ok,
                     value.upstream_reply.proxy_open,
                     value.upstream_reply.proxy_url,
                     value.upstream_reply.code,
-                    value.upstream_reply.message
+                    value.upstream_reply.message,
+                    value.upstream_reply.upstream_header,
                 )
             }
             _ => {
@@ -1297,14 +1347,15 @@ impl ReportHealthData {
         match health_report_type {
             HealthReportType::Others(value) => {
                 format!(
-                    "服务器温馨提醒您: {}<br>详细信息:<br>区域代码: {}<br>网络正常: {}<br>代理信息: {} {}<br>上游返回信息: CODE {}, Message -> {}",
+                    "服务器温馨提醒您: {}<br>详细信息:<br>区域代码: {}<br>网络正常: {}<br>代理信息: {} {}<br>上游返回信息: CODE {}, Message -> {}<br>上游返回Headers: <br>{}",
                     value.custom_message.replace("\n", "<br>"),
                     value.area_num,
                     value.is_200_ok,
                     value.upstream_reply.proxy_open,
                     value.upstream_reply.proxy_url,
                     value.upstream_reply.code,
-                    value.upstream_reply.message
+                    value.upstream_reply.message,
+                    value.upstream_reply.upstream_header.replace("\n", "<br>"),
                 )
             }
             _ => {
@@ -1406,6 +1457,66 @@ fn default_i64() -> i64 {
     0
 }
 
+pub struct UpstreamRawResp {
+    pub resp_header: Vec<u8>, //keep raw code
+    pub resp_content: String,
+}
+
+impl UpstreamRawResp {
+    pub fn new(resp_content: String, resp_header: Vec<u8>) -> UpstreamRawResp {
+        UpstreamRawResp {
+            resp_header,
+            resp_content,
+        }
+    }
+    pub fn init_headers(&self) -> HashMap<String, String> {
+        let mut resp_header: HashMap<String, String> = HashMap::new();
+        let resp_header_raw_string =
+            unsafe { String::from_utf8_unchecked(self.resp_header.clone()) };
+        let mut resp_header_raw_string_vec: Vec<&str> = resp_header_raw_string.split("‡").collect();
+        resp_header_raw_string_vec.pop(); //去掉最后一个
+        for header_item in resp_header_raw_string_vec {
+            let header_item: Vec<&str> = header_item.split(": ").collect();
+            if header_item.len() == 2 {
+                resp_header.insert(header_item[0].to_string(), header_item[1].to_string());
+            }
+        }
+        resp_header
+    }
+    pub fn json(&self) -> Option<serde_json::Value> {
+        if let Ok(json_content) = serde_json::from_str(&self.resp_content) {
+            Some(json_content)
+        } else {
+            None
+        }
+    }
+    // pub fn read_header(&self, header: &str) -> Option<String> {
+    //     let headers_hashmap = self.init_headers();
+    //     headers_hashmap.get(header).unwrap()
+    // }
+    pub fn read_headers(&self) -> String {
+        let mut headers: Vec<String> = Vec::new();
+        let headers_hashmap = self.init_headers();
+        for (key, value) in &headers_hashmap {
+            headers.push(key.to_owned());
+            unsafe {
+                headers.push(String::from_utf8_unchecked(vec![58u8, 32]));
+            }
+            headers.push(value.to_owned());
+            unsafe {
+                headers.push(String::from_utf8_unchecked(vec![13u8, 10]));
+            }
+        }
+        headers.join("")
+    }
+}
+
+impl std::fmt::Display for UpstreamRawResp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.resp_content)
+    }
+}
+
 pub enum Area {
     Cn,
     Hk,
@@ -1500,7 +1611,13 @@ impl UserInfo {
 
 impl Default for UserInfo {
     fn default() -> Self {
-        Self { code: 0, access_key: Default::default(), uid: Default::default(), vip_expire_time: Default::default(), expire_time: Default::default() }
+        Self {
+            code: 0,
+            access_key: Default::default(),
+            uid: Default::default(),
+            vip_expire_time: Default::default(),
+            expire_time: Default::default(),
+        }
     }
 }
 
@@ -1513,6 +1630,9 @@ pub struct UserResignInfo {
 }
 
 impl UserResignInfo {
+    pub fn new(resin_info_str: &str) -> UserResignInfo {
+        serde_json::from_str(resin_info_str).unwrap()
+    }
     pub fn to_json(&self) -> String {
         serde_json::to_string(&self).unwrap()
         // format!(
@@ -1524,7 +1644,11 @@ impl UserResignInfo {
 
 impl Default for UserResignInfo {
     fn default() -> Self {
-        Self { access_key: Default::default(), refresh_token: Default::default(), expire_time: Default::default() }
+        Self {
+            access_key: Default::default(),
+            refresh_token: Default::default(),
+            expire_time: Default::default(),
+        }
     }
 }
 
@@ -1604,6 +1728,24 @@ pub struct PlayurlParams<'playurl_params> {
     pub user_agent: &'playurl_params str,
 }
 
+pub trait HasIsappIsthUseragent {
+    fn is_app(&self) -> bool;
+    fn is_th(&self) -> bool;
+    fn user_agent(&self) -> &str;
+}
+
+impl HasIsappIsthUseragent for PlayurlParams<'_> {
+    fn is_app(&self) -> bool {
+        self.is_app
+    }
+    fn is_th(&self) -> bool {
+        self.is_th
+    }
+    fn user_agent(&self) -> &str {
+        self.user_agent
+    }
+}
+
 impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl> Default
     for PlayurlParams<'playurl_params_impl>
 {
@@ -1659,6 +1801,7 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl>
         self.appsec = match self.appkey {
             "9d5889cf67e615cd" => "8fd9bb32efea8cef801fd895bef2713d", // Ai4cCreatorAndroid
             "1d8b6e7d45233436" => "560c52ccd288fed045859ed18bffd973", // Android
+            "783bbb7264451d82" => "2653583c8873dea268ab9386918b1d65", // Android credential related
             "07da50c9a0bf829f" => "25bdede4e1581c836cab73a48790ca6e", // AndroidB
             "8d23902c1688a798" => "710f0212e62bd499b8d3ac6e1db9302a", // AndroidBiliThings
             "dfca71928277209b" => "b5475a8825547a4fc26c7d518eaaa02e", // AndroidHD
@@ -1735,6 +1878,21 @@ pub struct SearchParams<'search_params> {
     pub user_agent: &'search_params str,
     pub cookie: &'search_params str,
 }
+
+impl HasIsappIsthUseragent for SearchParams<'_> {
+    fn is_app(&self) -> bool {
+        self.is_app
+    }
+
+    fn is_th(&self) -> bool {
+        self.is_th
+    }
+
+    fn user_agent(&self) -> &str {
+        self.user_agent
+    }
+}
+
 impl<'search_params: 'search_params_impl, 'search_params_impl> Default
     for SearchParams<'search_params_impl>
 {
@@ -1769,6 +1927,7 @@ impl<'search_params: 'search_params_impl, 'search_params_impl> SearchParams<'sea
         self.appsec = match self.appkey {
             "9d5889cf67e615cd" => "8fd9bb32efea8cef801fd895bef2713d", // Ai4cCreatorAndroid
             "1d8b6e7d45233436" => "560c52ccd288fed045859ed18bffd973", // Android
+            "783bbb7264451d82" => "2653583c8873dea268ab9386918b1d65", // Android credential related
             "07da50c9a0bf829f" => "25bdede4e1581c836cab73a48790ca6e", // AndroidB
             "8d23902c1688a798" => "710f0212e62bd499b8d3ac6e1db9302a", // AndroidBiliThings
             "dfca71928277209b" => "b5475a8825547a4fc26c7d518eaaa02e", // AndroidHD
@@ -1885,6 +2044,7 @@ pub enum EType {
     UserWhitelistedError,      //服务器仅允许白名单内用户使用
     UserNonVIPError,           //大会员错误
     UserNotLoginedError,       //用户未登录错误
+    UserLoginInvalid,          //用户登录无效
     InvalidReq,
     OtherError(i64, &'static str), //其他自定义错误
     OtherUpstreamError(i64, String),
@@ -1918,7 +2078,8 @@ impl EType {
                         },
                         0,
                     )
-                    .unwrap().with_timezone(&FixedOffset::east_opt(8 * 3600).unwrap());
+                    .unwrap()
+                    .with_timezone(&FixedOffset::east_opt(8 * 3600).unwrap());
                 let tips = dt.format(r#"\n%Y年%m月%d日 %H:%M解封, 请耐心等待"#);
                 format!("{{\"code\":-10403,\"message\":\"服务器不欢迎您: 黑名单限制{tips}\"}}")
             }
@@ -1938,6 +2099,9 @@ impl EType {
             EType::OtherUpstreamError(err_code, err_msg) => {
                 format!("{{\"code\":{err_code},\"message\":\"其他上游错误: {err_msg}\"}}")
             }
+            EType::UserLoginInvalid => String::from(
+                "{{\"code\":-61000,\"message\":\"无效的用户态, 请尝试重新登陆Bilibili\"}}",
+            ),
         }
     }
 }

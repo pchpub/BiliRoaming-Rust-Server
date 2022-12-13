@@ -138,7 +138,6 @@ fn main() -> std::io::Result<()> {
     // init log
     use chrono::Local;
     use std::io::Write;
-
     let env = env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info");
     env_logger::Builder::from_env(env)
         .format(|buf, record| {
@@ -155,7 +154,7 @@ fn main() -> std::io::Result<()> {
     info!("你好喵~");
     ctrlc::set_handler(move || {
         //目前来看这个已经没用了,但以防万一卡死,还是留着好了
-        println!("\n已关闭 biliroaming_rust_server");
+        error!("已关闭 biliroaming_rust_server");
         std::process::exit(0);
     })
     .unwrap();
