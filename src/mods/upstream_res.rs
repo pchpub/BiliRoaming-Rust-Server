@@ -408,8 +408,10 @@ pub async fn get_upstream_bili_account_info_vip_due_date(
     mid: u64,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Option<u64> {
-    let url =
-        format!("https://api.bilibili.com/x/space/wbi/acc/info?mid={mid}&token=&platform=web");
+    let url = format!(
+        "https://{}/x/space/wbi/acc/info?mid={mid}&token=&platform=web",
+        bili_runtime.config.general_api_bilibili_com_proxy_api
+    );
     match async_getwebpage(
         &url,
         bili_runtime.config.cn_proxy_accesskey_open,
