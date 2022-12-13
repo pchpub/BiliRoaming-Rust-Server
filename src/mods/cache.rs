@@ -209,7 +209,6 @@ pub async fn get_cached_user_info(
         .get_cache(&CacheType::UserInfo(access_key, 1145141919810))
         .await
     {
-        // TODO: 处理expire_time, 主动刷新
         Some(value) => Some(serde_json::from_str(&value).unwrap()),
         None => None,
     }
@@ -253,7 +252,9 @@ pub async fn update_user_info_cache(new_user_info: &UserInfo, bili_runtime: &Bil
             .redis_set("av11301", &new_user_info.access_key, expire_time)
             .await;
         // 此处保存vip用户的access_key到本地使用, 02版本号, 刷新access_token的方法比较麻烦
-        bili_runtime.redis_set("a11102", &new_user_info.access_key, expire_time).await
+        bili_runtime
+            .redis_set("a11102", &new_user_info.access_key, expire_time)
+            .await
     } else {
         bili_runtime
             .redis_set("uv01301", &new_user_info.uid.to_string(), expire_time)

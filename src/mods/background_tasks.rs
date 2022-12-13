@@ -3,12 +3,13 @@ use super::ep_info::update_ep_vip_status_cache;
 use super::health::*;
 use super::push::send_report;
 use super::request::async_getwebpage;
+use super::tools::get_user_mid_from_playurl;
 use super::types::{
-    Area, BackgroundTaskType, BiliRuntime, CacheTask, CacheType, EpInfo, FakeUA, HealthReportType,
-    HealthTask, PlayurlParams, PlayurlParamsStatic, ReqType,
+    Area, BackgroundTaskType, BiliRuntime, CacheTask, CacheType, EType, EpInfo, FakeUA,
+    HealthReportType, HealthTask, PlayurlParams, PlayurlParamsStatic, ReqType, UserInfo,
 };
 use super::upstream_res::*;
-use super::user_info::get_blacklist_info;
+use chrono::Local;
 use log::{debug, error, info, trace};
 use serde_json::json;
 
@@ -64,14 +65,14 @@ pub async fn update_cached_area_background(
     bili_runtime.send_task(background_task_data).await
 }
 
+/// 不采用常规方法更新, 仅限用于未知的错误码下的刷新
 pub async fn update_cached_user_info_background(
     access_key: String,
-    retry_num: u8,
     bili_runtime: &BiliRuntime<'_>,
 ) {
     trace!("[BACKGROUND TASK] AK {access_key} -> Accept UserInfo Cache Refresh Task...");
     let background_task_data =
-        BackgroundTaskType::Cache(CacheTask::UserInfoCacheRefresh(access_key, retry_num));
+        BackgroundTaskType::Cache(CacheTask::UserInfoCacheRefresh(access_key));
     bili_runtime.send_task(background_task_data).await
 }
 
@@ -217,17 +218,51 @@ pub async fn background_task_run(
             }
         },
         BackgroundTaskType::Cache(value) => match value {
-            CacheTask::UserInfoCacheRefresh(access_key, _) => {
-                match get_upstream_bili_account_info_background(&access_key, &bili_runtime).await {
-                    Ok(new_user_info) => {
-                        update_user_info_cache(&new_user_info, &bili_runtime).await;
-                        match get_blacklist_info(&new_user_info, bili_runtime).await {
-                            Ok(_) => Ok(()),
-                            Err(value) => Err(format!("[BACKGROUND TASK] UID {} | Refreshing blacklist info failed, ErrMsg: {}", new_user_info.uid, value.to_string())),
-                        }
+            CacheTask::UserInfoCacheRefresh(access_key) => {
+                // 不管刷新是否成功
+                match get_upstream_bili_playurl_background(
+                    &mut PlayurlParams {
+                        access_key: &access_key,
+                        ep_id: "425578",
+                        area: "hk",
+                        area_num: 2,
+                        ep_need_vip: false,
+                        user_agent: &FakeUA::App.gen(),
+                        ..Default::default()
                     },
-                    Err(value) => {
-                        Err(format!("[BACKGROUND TASK] ACCESS_KEY {} | Refreshing blacklist info failed, ErrMsg: {}", access_key, value.to_string()))
+                    bili_runtime,
+                )
+                .await
+                {
+                    Ok(playurl_string) => {
+                        let uid = if let Some(value) = get_user_mid_from_playurl(&playurl_string) {
+                            value
+                        } else {
+                            // 不考虑失败的情况
+                            return Err("".to_owned());
+                        };
+                        let vip_expire_time =
+                            get_upstream_bili_account_info_vip_due_date(uid, bili_runtime)
+                                .await
+                                .unwrap_or(0);
+                        let new_user_info = UserInfo::new(0, &access_key, uid, vip_expire_time);
+                        update_user_info_cache(&new_user_info, bili_runtime).await;
+                        Ok(())
+                    }
+                    Err(err_type) => match err_type {
+                        EType::OtherError(_, "上游错误, 刷新失败") => {
+                            // 这种情况下缓存30min防止请求过于频繁
+                            let new_user_info = UserInfo {
+                                code: -500,
+                                access_key: access_key.to_owned(),
+                                expire_time: Local::now().timestamp_millis() as u64
+                                    + 10 * 60 * 1000, // 暂时缓存10m,
+                                ..Default::default()
+                            };
+                            update_user_info_cache(&new_user_info, bili_runtime).await;
+                            Ok(())
+                        }
+                        _ => Ok(()),
                     },
                 }
             }

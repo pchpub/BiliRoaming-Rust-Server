@@ -1,8 +1,6 @@
 use super::cache::{get_cached_blacklist_info, get_cached_user_info};
 use super::request::{async_getwebpage, async_postwebpage};
-use super::types::{
-    BiliRuntime, EType, HasIsappIsthUseragent, PlayurlParams, UserInfo, UserResignInfo,
-};
+use super::types::{BiliRuntime, EType, PlayurlParams, UserInfo, UserResignInfo};
 use super::upstream_res::{get_upstream_bili_account_info, get_upstream_blacklist_info};
 use crate::build_signed_params;
 use chrono::prelude::*;
@@ -10,43 +8,32 @@ use log::{debug, error, info};
 
 // general
 #[inline]
-pub async fn get_user_info<T: HasIsappIsthUseragent>(
+pub async fn get_user_info(
     access_key: &str,
-    appkey: &str,
-    appsec: &str,
-    params: &T,
-    force_update: bool,
-    retry_num: u8,
+    is_app: bool,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
-    // detect web request
-    // let is_app = {
-    //     if params.is_th() {
-    //         if params.user_agent().contains("Chrome") {
-    //             false
-    //         } else {
-    //             true
-    //         }
-    //     } else {
-    //         params.is_app()
-    //     }
-    // };
-    // 既然获取userinfo不用区分网页请求，那这里就先注释了
-    let is_app = params.is_app();
-
-    // mixed with blacklist function
-    if force_update {
-        match get_upstream_bili_account_info(
-            access_key,
-            appkey,
-            appsec,
-            is_app,
-            params.user_agent(),
-            retry_num,
-            bili_runtime,
-        )
-        .await
-        {
+    match get_cached_user_info(access_key, bili_runtime).await {
+        Some(cached_user_info) => {
+            debug!(
+                "[GET USER_INFO] UID {} | AK {} | U.VIP {} -> Got AK {}'s user info from cache",
+                cached_user_info.uid,
+                cached_user_info.access_key,
+                cached_user_info.is_vip(),
+                access_key
+            );
+            match cached_user_info.code {
+                0 | -999 => Ok(cached_user_info),
+                -3 => Err(EType::ReqSignError),
+                -101 => Err(EType::UserNotLoginedError),
+                -400 | -404 => Err(EType::ServerReqError("APPKEY失效")),
+                -412 => Err(EType::ServerFatalError),
+                61000 => Err(EType::UserLoginInvalid),
+                -663 => Err(EType::ServerReqError("-663错误, 被鼠鼠制裁了, 请稍后重试")),
+                _ => Err(EType::ServerGeneral),
+            }
+        }
+        None => match get_upstream_bili_account_info(access_key, is_app, bili_runtime).await {
             Ok(value) => {
                 debug!(
                     "[GET USER_INFO] UID {} | AK {} | U.VIP {} -> Got AK {}'s user info from upstream",
@@ -58,74 +45,7 @@ pub async fn get_user_info<T: HasIsappIsthUseragent>(
                 Ok(value)
             }
             Err(value) => Err(value),
-        }
-    } else {
-        match get_cached_user_info(access_key, bili_runtime).await {
-            Some(cached_user_info) => {
-                debug!(
-                    "[GET USER_INFO] UID {} | AK {} | U.VIP {} -> Got AK {}'s user info from cache",
-                    cached_user_info.uid,
-                    cached_user_info.access_key,
-                    cached_user_info.is_vip(),
-                    access_key
-                );
-                match cached_user_info.code {
-                    0 => Ok(cached_user_info),
-                    -101 => Err(EType::UserNotLoginedError),
-                    -404 => Err(EType::OtherError(
-                        -10403,
-                        "不兼容的APPKEY, 请升级油猴脚本或其他你正在用的客户端!",
-                    )),
-                    -400 => Err(EType::OtherError(-400, "可能你用的不是手机")),
-                    -3 => Err(EType::ReqSignError),
-                    -412 => Err(EType::ServerFatalError),
-                    61000 => Err(EType::UserLoginInvalid),
-                    -663 => Err(EType::UserLoginInvalid),
-                    _ => Err(EType::ServerGeneral),
-                }
-            }
-            None => match get_upstream_bili_account_info(
-                access_key,
-                appkey,
-                appsec,
-                is_app,
-                params.user_agent(),
-                retry_num,
-                bili_runtime,
-            )
-            .await
-            {
-                Ok(value) => {
-                    debug!(
-                        "[GET USER_INFO] UID {} | AK {} | U.VIP {} -> Got AK {}'s user info from upstream",
-                        value.uid,
-                        value.access_key,
-                        value.is_vip(),
-                        access_key
-                    );
-                    Ok(value)
-                }
-                Err(value) => match value {
-                    // 也不知道为啥有一堆access_key失效了的请求
-                    EType::UserNotLoginedError => Err(value),
-                    _ => {
-                        let dt = Local::now();
-                        let ts = dt.timestamp_millis() as u64;
-                        let user_info = UserInfo {
-                            code: -1,
-                            access_key: access_key.to_owned(),
-                            uid: 0,
-                            vip_expire_time: 0,
-                            expire_time: ts + 30 * 60 * 1000,
-                        };
-                        match get_blacklist_info(&user_info, bili_runtime).await {
-                            Ok(_) => Ok(user_info),
-                            Err(_) => Err(value),
-                        }
-                    }
-                },
-            },
-        }
+        },
     }
 }
 
@@ -351,22 +271,13 @@ pub async fn resign_user_info(
                 .await
                 .unwrap_or((params.access_key.to_string(), 1));
 
-            let resign_user_info = match get_user_info(
-                &new_access_key,
-                params.appkey,
-                params.appsec,
-                params,
-                false,
-                1,
-                bili_runtime,
-            )
-            .await
-            {
-                Ok(value) => value,
-                Err(value) => {
-                    return Err(value);
-                }
-            };
+            let resign_user_info =
+                match get_user_info(&new_access_key, params.is_app, bili_runtime).await {
+                    Ok(value) => value,
+                    Err(value) => {
+                        return Err(value);
+                    }
+                };
 
             if !params.is_vip && resign_user_info.is_vip() {
                 // 用户不是大会员且resign accesskey是大会员时才需要替换, 否则会因为请求过多导致黑号(已经有个人的测速的key寄了)

@@ -157,17 +157,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     };
 
     // get user_info
-    let user_info = match get_user_info(
-        params.access_key,
-        params.appkey,
-        params.appsec,
-        &params,
-        false,
-        1,
-        &bili_runtime,
-    )
-    .await
-    {
+    let user_info = match get_user_info(params.access_key, params.is_app, &bili_runtime).await {
         Ok(value) => value,
         Err(value) => {
             build_response!(value);
@@ -242,6 +232,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
         params.ep_id
     );
     let resp = match get_cached_playurl(&params, &bili_runtime).await {
+        // 允许-999时用户获取缓存, 但不是VIP
         Ok(data) => {
             debug!(
                 "[GET PLAYURL] IP {client_ip} | UID {} | AREA {} | EP {} -> Serve from cache",
@@ -402,17 +393,7 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
 
     //为了记录accesskey to uid
     let uid = if is_app && (!is_th) {
-        match get_user_info(
-            params.access_key,
-            params.appkey,
-            params.appsec,
-            &params,
-            false,
-            1,
-            &bili_runtime,
-        )
-        .await
-        {
+        match get_user_info(params.access_key, params.is_app, &bili_runtime).await {
             Ok(value) => {
                 get_blacklist_info(&value, &bili_runtime)
                     .await

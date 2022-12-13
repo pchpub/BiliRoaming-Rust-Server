@@ -4,7 +4,7 @@ use super::{
     tools::remove_viponly_clarity,
 };
 use async_channel::{Sender, TrySendError};
-use chrono::{FixedOffset, TimeZone, Utc};
+use chrono::{FixedOffset, Local, TimeZone, Utc};
 use deadpool_redis::Pool;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -605,7 +605,7 @@ pub enum HealthTask {
     HealthReport(HealthReportType),
 }
 pub enum CacheTask {
-    UserInfoCacheRefresh(String, u8),
+    UserInfoCacheRefresh(String),
     PlayurlCacheRefresh(PlayurlParamsStatic),
     ProactivePlayurlCacheRefresh,
     EpInfoCacheRefresh(bool, Vec<EpInfo>),
@@ -1676,6 +1676,33 @@ pub struct UserInfo {
 }
 
 impl UserInfo {
+    pub fn new(code:i64, access_key: &str, uid: u64, vip_expire_time: u64) -> UserInfo {
+        let dt = Local::now();
+        let ts = dt.timestamp_millis() as u64;
+        UserInfo {
+            code,
+            access_key: access_key.to_owned(),
+            uid,
+            vip_expire_time,
+            expire_time: {
+                if ts < vip_expire_time && vip_expire_time < ts + 25 * 24 * 60 * 60 * 1000 {
+                    vip_expire_time
+                } else {
+                    ts + 25 * 24 * 60 * 60 * 1000
+                }
+            },
+        }
+    }
+    /// 遇到未预料的错误, 如网络问题/上游-663时可用这个
+    pub fn new_unintended_error(access_key: &str) -> UserInfo {
+        UserInfo {
+            code: -999,
+            access_key: access_key.to_owned(),
+            uid: 0,
+            vip_expire_time: 0,
+            expire_time: Local::now().timestamp_millis() as u64 + 10 * 60 * 1000, //缓存10min
+        }
+    }
     pub fn to_json(&self) -> String {
         serde_json::to_string(&self).unwrap()
         // format!(
@@ -2175,7 +2202,7 @@ impl EType {
                 String::from("{\"code\":-10403,\"message\":\"大会员专享限制\"}")
             }
             EType::UserNotLoginedError => {
-                String::from("{\"code\":-101,\"message\":\"账号未登录\",\"ttl\":1}")
+                String::from("{\"code\":-101,\"message\":\"账号未登录, 若已登录请尝试退出重新登录\"}")
             }
             EType::InvalidReq => String::from("{\"code\":-412,\"message\":\"请求被拦截\"}"),
             EType::OtherError(err_code, err_msg) => {
@@ -2185,7 +2212,7 @@ impl EType {
                 format!("{{\"code\":{err_code},\"message\":\"其他上游错误: {err_msg}\"}}")
             }
             EType::UserLoginInvalid => String::from(
-                "{{\"code\":-61000,\"message\":\"无效的用户态, 请尝试重新登陆Bilibili\"}}",
+                "{{\"code\":61000,\"message\":\"无效的用户态, 请尝试重新登陆Bilibili\"}}",
             ),
         }
     }

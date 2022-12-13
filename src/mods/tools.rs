@@ -3,6 +3,7 @@ use super::{
     types::PlayurlType,
 };
 use log::{debug, error};
+use pcre2::bytes::Regex;
 use std::env;
 use std::path::PathBuf;
 use std::thread;
@@ -123,6 +124,27 @@ pub fn check_vip_status_from_playurl(
         }
         PlayurlType::ChinaTv => Err(()), //过年回家的时候抓包看看（宿舍没电视机）
     }
+}
+
+#[inline]
+pub fn get_user_mid_from_playurl(playurl_string: &str) -> Option<u64> {
+    // 感觉不太优雅...
+    let re = Regex::new(r#"(?m)&mid=(\d{0,})&platform"#).unwrap();
+    let mid = match re.captures(playurl_string.as_bytes()) {
+        Ok(value) => {
+            if let Some(value) = value {
+                value
+            } else {
+                return None;
+            }
+        }
+        Err(value) => {
+            error!("REGEX CAPTURE FAILED: {:?}", value);
+            return None;
+        }
+    };
+    let mid: u64 = String::from_utf8(mid[1].to_vec()).unwrap().parse().unwrap();
+    Some(mid)
 }
 
 #[inline]
