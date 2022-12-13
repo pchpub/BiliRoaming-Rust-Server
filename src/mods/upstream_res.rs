@@ -273,7 +273,7 @@ pub async fn get_upstream_bili_account_info(
                 "[GET USER_INFO][U] AK {} | Get UserInfo failed -663. Upstream Reply -> {}",
                 access_key, upstream_raw_resp_json
             );
-            update_cached_user_info_background(access_key.to_string(), bili_runtime).await;
+            // update_cached_user_info_background(access_key.to_string(), bili_runtime).await;
             let health_report_type = HealthReportType::Others(HealthData {
                 area_num: 0,
                 is_200_ok: true,
