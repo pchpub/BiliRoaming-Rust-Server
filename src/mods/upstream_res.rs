@@ -73,7 +73,7 @@ pub async fn get_upstream_bili_account_info(
     headers.append("x-bili-aurora-zone: sh001").unwrap();
     headers.append("app-key: android64").unwrap();
 
-    let api = "https://app.bilibili.com/x/v2/account/myinfo";
+    let api = "https://app.bilibili.com/x/v2/account/mine";
     let (signed_url, sign) = build_signed_url!(api, req_vec, appsec);
 
     debug!(
@@ -142,33 +142,47 @@ pub async fn get_upstream_bili_account_info(
     };
     match code {
         0 => {
-            let output_struct = UserInfo {
-                code: 0,
-                access_key: String::from(access_key),
-                uid: upstream_raw_resp_json["data"]["mid"].as_u64().unwrap(),
-                vip_expire_time: upstream_raw_resp_json["data"]["vip"]["due_date"]
-                    .as_u64()
-                    .unwrap(),
-                expire_time: {
-                    if ts
-                        < upstream_raw_resp_json["data"]["vip"]["due_date"]
-                            .as_u64()
-                            .unwrap()
-                        && upstream_raw_resp_json["data"]["vip"]["due_date"]
-                            .as_u64()
-                            .unwrap()
-                            < ts + 25 * 24 * 60 * 60 * 1000
-                    {
-                        upstream_raw_resp_json["data"]["vip"]["due_date"]
-                            .as_u64()
-                            .unwrap()
-                    } else {
-                        ts + 25 * 24 * 60 * 60 * 1000
-                    }
-                }, //用户状态25天强制更新
-            };
-            update_user_info_cache(&output_struct, bili_runtime).await;
-            Ok(output_struct)
+            if upstream_raw_resp_json["data"]["mid"].as_u64().unwrap_or(0) == 0 {// accesskey失效时mid为0
+                let output_struct = UserInfo {
+                    code,
+                    expire_time: ts + 1 * 60 * 60 * 1000, // 未登录缓存1h,防止高频请求b站服务器
+                    ..Default::default()
+                };
+                update_user_info_cache(&output_struct, bili_runtime).await;
+                error!(
+                    "[GET USER_INFO][U] AK {} | Get UserInfo failed -101. Upstream Reply -> {}",
+                    access_key, upstream_raw_resp_json
+                );
+                Err(EType::UserNotLoginedError)
+            }else{
+                let output_struct = UserInfo {
+                    code: 0,
+                    access_key: String::from(access_key),
+                    uid: upstream_raw_resp_json["data"]["mid"].as_u64().unwrap(),
+                    vip_expire_time: upstream_raw_resp_json["data"]["vip"]["due_date"]
+                        .as_u64()
+                        .unwrap(),
+                    expire_time: {
+                        if ts
+                            < upstream_raw_resp_json["data"]["vip"]["due_date"]
+                                .as_u64()
+                                .unwrap()
+                            && upstream_raw_resp_json["data"]["vip"]["due_date"]
+                                .as_u64()
+                                .unwrap()
+                                < ts + 25 * 24 * 60 * 60 * 1000
+                        {
+                            upstream_raw_resp_json["data"]["vip"]["due_date"]
+                                .as_u64()
+                                .unwrap()
+                        } else {
+                            ts + 25 * 24 * 60 * 60 * 1000
+                        }
+                    }, //用户状态25天强制更新
+                };
+                update_user_info_cache(&output_struct, bili_runtime).await;
+                Ok(output_struct)
+            }
         }
         -404 => {
             match appkey {
