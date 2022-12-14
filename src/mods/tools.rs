@@ -455,3 +455,12 @@ pub fn vec_to_string<T: std::fmt::Display>(vec: &Vec<T>, delimiter: &str) -> Str
         }
     }
 }
+
+pub fn mid_to_eid(mid: &str) -> String {
+    let mid: Vec<(char,usize)> = mid.chars().zip(0..).collect();
+    let mut eid = Vec::with_capacity(mid.len());
+    for (single_char,index) in &mid{
+        eid.push(*single_char as u8 ^ "ad1va46a7lza".as_bytes()[index % 12] as u8);
+    }
+    base64::encode(eid)
+}
