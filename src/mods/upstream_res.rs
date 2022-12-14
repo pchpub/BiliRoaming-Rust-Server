@@ -671,7 +671,7 @@ pub async fn get_upstream_bili_playurl(
     // check user's vip status update web user's user_info
     // 是vip的用户必定是正常请求api获得了用户信息的
     // 对非VIP用户不友好, 笑
-    if !params.is_vip || user_info.code == -999 {
+    if (!params.is_vip || user_info.code == -999) && (!params.is_th) {
         // 处理网页用户等
         let uid = if let Some(value) = get_user_mid_from_playurl(&upstream_raw_resp.resp_content) {
             value
