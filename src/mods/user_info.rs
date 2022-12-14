@@ -10,6 +10,7 @@ use log::{debug, error, info};
 #[inline]
 pub async fn get_user_info(
     access_key: &str,
+    appkey: &str,
     is_app: bool,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
@@ -33,19 +34,21 @@ pub async fn get_user_info(
                 _ => Err(EType::ServerGeneral),
             }
         }
-        None => match get_upstream_bili_account_info(access_key, is_app, bili_runtime).await {
-            Ok(value) => {
-                debug!(
+        None => {
+            match get_upstream_bili_account_info(access_key, appkey, is_app, bili_runtime).await {
+                Ok(value) => {
+                    debug!(
                     "[GET USER_INFO] UID {} | AK {} | U.VIP {} -> Got AK {}'s user info from upstream",
                     value.uid,
                     value.access_key,
                     value.is_vip(),
                     access_key
                 );
-                Ok(value)
+                    Ok(value)
+                }
+                Err(value) => Err(value),
             }
-            Err(value) => Err(value),
-        },
+        }
     }
 }
 
@@ -272,7 +275,7 @@ pub async fn resign_user_info(
                 .unwrap_or((params.access_key.to_string(), 1));
 
             let resign_user_info =
-                match get_user_info(&new_access_key, params.is_app, bili_runtime).await {
+                match get_user_info(&new_access_key, params.appkey, params.is_app, bili_runtime).await {
                     Ok(value) => value,
                     Err(value) => {
                         return Err(value);

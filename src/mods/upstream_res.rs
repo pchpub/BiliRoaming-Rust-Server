@@ -17,6 +17,7 @@ use super::types::{
 };
 use super::user_info::get_blacklist_info;
 use crate::build_signed_url;
+use crate::mods::tools::get_mobi_app;
 use chrono::prelude::*;
 use curl::easy::List;
 use log::{debug, error};
@@ -27,77 +28,32 @@ use std::string::String;
 
 pub async fn get_upstream_bili_account_info(
     access_key: &str,
+    appkey: &str,
     is_app: bool,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
-    // 分流, 相当长时间内网页的key不可用, 除非web脚本的作者修复.
-    if is_app {
-        match get_upstream_bili_account_info_app(access_key, bili_runtime).await {
-            Ok(value) => Ok(value),
-            Err(err_type) => match err_type {
-                _ => Err(err_type),
-            },
-        }
-    } else {
-        let new_user_info = UserInfo::new_unintended_error(access_key);
-        update_user_info_cache(&new_user_info, bili_runtime).await;
-        Ok(new_user_info)
+    match get_upstream_bili_account_info_app(access_key, appkey, bili_runtime).await {
+        Ok(value) => Ok(value),
+        Err(err_type) => match err_type {
+            // web端可能appkey不可用?
+            EType::ServerReqError("-663错误, 被鼠鼠制裁了, 请稍后重试") => {
+                if !is_app {
+                    let new_user_info = UserInfo::new_unintended_error(access_key);
+                    update_user_info_cache(&new_user_info, bili_runtime).await;
+                    Ok(new_user_info)
+                } else {
+                    // app端再次出现-663就是寄
+                    Err(err_type)
+                }
+            }
+            _ => Err(err_type),
+        },
     }
 }
 
-// pub async fn get_upstream_bili_account_info_background(
-//     access_key: &str,
-//     bili_runtime: &BiliRuntime<'_>,
-// ) -> Result<UserInfo, EType> {
-//     match get_upstream_bili_account_info(access_key, "", "", false, "", 0, bili_runtime).await {
-//         Ok(value) => Ok(value),
-//         Err(value) => match value {
-//             EType::ServerReqError("-663错误, 您的账号似乎被鼠鼠风控了, 请稍后重试") =>
-//             {
-//                 let dt = Local::now();
-//                 let ts = dt.timestamp_millis() as u64;
-//                 let cached_user_info = get_cached_user_info(access_key, bili_runtime).await;
-//                 let uid = match cached_user_info {
-//                     Some(value) => value.uid,
-//                     None => {
-//                         // TODO: 添加更多获取mid的方式
-//                         if let Some(value) =
-//                             get_upstream_mid_from_playurl(access_key, bili_runtime).await
-//                         {
-//                             value
-//                         } else {
-//                             error!(
-//                                 "[GET USER_INFO][U] AK {} | Get User's mid failed",
-//                                 access_key
-//                             );
-//                             return Err(EType::ServerGeneral);
-//                         }
-//                     }
-//                 };
-//                 let vip_expire_time = get_upstream_vip_due_date_from_mid(uid, bili_runtime)
-//                     .await
-//                     .unwrap_or(0);
-//                 Ok(UserInfo {
-//                     code: 0,
-//                     access_key: access_key.to_owned(),
-//                     uid,
-//                     vip_expire_time,
-//                     expire_time: {
-//                         if ts < vip_expire_time && vip_expire_time < ts + 25 * 24 * 60 * 60 * 1000 {
-//                             vip_expire_time
-//                         } else {
-//                             ts + 25 * 24 * 60 * 60 * 1000
-//                         }
-//                     },
-//                 })
-//             }
-//             _ => Err(value),
-//         },
-//     }
-// }
-
 async fn get_upstream_bili_account_info_app(
     access_key: &str,
+    appkey: &str,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
     let dt = Local::now();
@@ -105,9 +61,7 @@ async fn get_upstream_bili_account_info_app(
     let ts_min = dt.timestamp() as u64;
     let ts_min_string = ts_min.to_string();
 
-    let appkey = "783bbb7264451d82";
-    let appsec = "2653583c8873dea268ab9386918b1d65";
-    let mobi_app = "android";
+    let (appkey, appsec, mobi_app) = get_mobi_app(appkey);
 
     let rand_string_36 = {
         let words: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -251,7 +205,6 @@ async fn get_upstream_bili_account_info_app(
             Ok(UserInfo::new_unintended_error(access_key))
         }
         -400 | -404 => {
-            // 已经指定appkey了, 不应当出现-404/-400, 除非这个appkey寄了
             error!("[GET USER_INFO][U] AK {} -> Get UserInfo failed. Invalid APPKEY -> APPKEY {} | TS {} | APPSEC {}. Upstream Reply -> {}",
                         access_key, appkey, ts_min, appsec, upstream_raw_resp
                     );
@@ -408,6 +361,7 @@ pub async fn get_upstream_bili_account_info_vip_due_date(
     mid: u64,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Option<u64> {
+    // https://api.bilibili.com/x/space/acc/info?mid=114514 也可以
     let url = format!(
         "https://{}/x/space/wbi/acc/info?mid={mid}&token=&platform=web",
         bili_runtime.config.general_api_bilibili_com_proxy_api

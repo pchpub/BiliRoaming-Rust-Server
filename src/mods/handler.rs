@@ -87,7 +87,14 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     }
 
     // detect user's appkey
-    params.appkey = query.get("appkey").unwrap_or("1d8b6e7d45233436");
+    params.appkey = query.get("appkey").unwrap_or_else(|| {
+        if params.is_app {
+            "1d8b6e7d45233436"
+        } else {
+            // 网页端是ios的key
+            "27eb53fc9058f8c3"
+        }
+    });
     if let Err(_) = params.appkey_to_sec() {
         error!(
             "[GET PLAYURL] IP {client_ip} -> Detect unknown appkey: {}",
@@ -142,12 +149,19 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     };
 
     // detect req ep
-    params.ep_id = query.get("ep_id").unwrap_or("");
+    params.ep_id = if let Some(value) = query.get("ep_id") {
+        value
+    } else {
+        build_response!(EType::InvalidReq)
+    };
     params.cid = query.get("cid").unwrap_or("");
 
     // detect other info
     params.build = query.get("build").unwrap_or("6800300");
-    params.device = query.get("device").unwrap_or("android");
+    params.device =
+        query
+            .get("device")
+            .unwrap_or_else(|| if params.is_app { "android" } else { "iphone" });
     params.is_tv = match query.get("fnval") {
         Some(value) => match value {
             "130" | "0" | "2" => true,
@@ -157,7 +171,14 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     };
 
     // get user_info
-    let user_info = match get_user_info(params.access_key, params.is_app, &bili_runtime).await {
+    let user_info = match get_user_info(
+        params.access_key,
+        params.appkey,
+        params.is_app,
+        &bili_runtime,
+    )
+    .await
+    {
         Ok(value) => value,
         Err(value) => {
             build_response!(value);
@@ -309,10 +330,13 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
     }
 
     // detect user's appkey
-    params.appkey = match query.get("appkey") {
-        Option::Some(key) => key,
-        _ => "1d8b6e7d45233436",
-    };
+    params.appkey = query.get("appkey").unwrap_or_else(|| {
+        if params.is_app {
+            "1d8b6e7d45233436"
+        } else {
+            "27eb53fc9058f8c3"
+        }
+    });
     if let Err(_) = params.appkey_to_sec() {
         error!(
             "[GET SEARCH] IP {client_ip} | Detect unknown appkey: {}",
@@ -362,10 +386,11 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
             build_response!(EType::UserNotLoginedError);
         }
     };
-
-    // detect other info
     params.build = query.get("build").unwrap_or("6800300");
-    params.device = query.get("device").unwrap_or("android");
+    params.device =
+        query
+            .get("device")
+            .unwrap_or_else(|| if params.is_app { "android" } else { "iphone" });
     params.statistics = match query.get("statistics") {
         Some(value) => value,
         _ => "",
@@ -393,7 +418,14 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
 
     //为了记录accesskey to uid
     let uid = if is_app && (!is_th) {
-        match get_user_info(params.access_key, params.is_app, &bili_runtime).await {
+        match get_user_info(
+            params.access_key,
+            params.appkey,
+            params.is_app,
+            &bili_runtime,
+        )
+        .await
+        {
             Ok(value) => {
                 get_blacklist_info(&value, &bili_runtime)
                     .await

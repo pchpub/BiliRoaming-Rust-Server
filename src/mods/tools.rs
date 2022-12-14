@@ -349,7 +349,7 @@ pub fn get_mobi_app(appkey: &str) -> (&'static str, &'static str, &'static str) 
         "27eb53fc9058f8c3" => (
             "27eb53fc9058f8c3",
             "c2ed53a74eeefe3cf99fbd01d8c9c375",
-            "ios",
+            "iphone", // ios
         ),
         "57263273bc6b67f6" => (
             "57263273bc6b67f6",
