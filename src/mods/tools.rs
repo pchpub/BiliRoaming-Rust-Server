@@ -4,7 +4,7 @@ use super::{
 };
 use log::{debug, error};
 use pcre2::bytes::Regex;
-use std::env;
+use std::{env, u8};
 use std::path::PathBuf;
 use std::thread;
 
@@ -459,8 +459,164 @@ pub fn vec_to_string<T: std::fmt::Display>(vec: &Vec<T>, delimiter: &str) -> Str
 pub fn mid_to_eid(mid: &str) -> String {
     let mid: Vec<(char,usize)> = mid.chars().zip(0..).collect();
     let mut eid = Vec::with_capacity(mid.len());
-    for (single_char,index) in &mid{
+    for (single_char,index) in &mid {
         eid.push(*single_char as u8 ^ "ad1va46a7lza".as_bytes()[index % 12] as u8);
     }
     base64::encode(eid)
 }
+
+// 有些api带eid, 这时候就可以获取到mid, 此函数作为后备方案
+pub fn eid_to_mid(eid: &str) -> Result<String,()> {
+    fn mid_and_index_to_mid(mid: &u8,index: &usize) -> Result<char,()> {
+        let index = index % 12;
+        match (mid,index) {
+            (81,0) => Ok('0'),
+            (84,1) => Ok('0'),
+            (1,2) => Ok('0'),
+            (70,3) => Ok('0'),
+            (81,4) => Ok('0'),
+            (4,5) => Ok('0'),
+            (6,6) => Ok('0'),
+            (81,7) => Ok('0'),
+            (7,8) => Ok('0'),
+            (92,9) => Ok('0'),
+            (74,10) => Ok('0'),
+            (81,11) => Ok('0'),
+            (80,0) => Ok('1'),
+            (85,1) => Ok('1'),
+            (0,2) => Ok('1'),
+            (71,3) => Ok('1'),
+            (80,4) => Ok('1'),
+            (5,5) => Ok('1'),
+            (7,6) => Ok('1'),
+            (80,7) => Ok('1'),
+            (6,8) => Ok('1'),
+            (93,9) => Ok('1'),
+            (75,10) => Ok('1'),
+            (80,11) => Ok('1'),
+            (83,0) => Ok('2'),
+            (86,1) => Ok('2'),
+            (3,2) => Ok('2'),
+            (68,3) => Ok('2'),
+            (83,4) => Ok('2'),
+            (6,5) => Ok('2'),
+            (4,6) => Ok('2'),
+            (83,7) => Ok('2'),
+            (5,8) => Ok('2'),
+            (94,9) => Ok('2'),
+            (72,10) => Ok('2'),
+            (83,11) => Ok('2'),
+            (82,0) => Ok('3'),
+            (87,1) => Ok('3'),
+            (2,2) => Ok('3'),
+            (69,3) => Ok('3'),
+            (82,4) => Ok('3'),
+            (7,5) => Ok('3'),
+            (5,6) => Ok('3'),
+            (82,7) => Ok('3'),
+            (4,8) => Ok('3'),
+            (95,9) => Ok('3'),
+            (73,10) => Ok('3'),
+            (82,11) => Ok('3'),
+            (85,0) => Ok('4'),
+            (80,1) => Ok('4'),
+            (5,2) => Ok('4'),
+            (66,3) => Ok('4'),
+            (85,4) => Ok('4'),
+            (0,5) => Ok('4'),
+            (2,6) => Ok('4'),
+            (85,7) => Ok('4'),
+            (3,8) => Ok('4'),
+            (88,9) => Ok('4'),
+            (78,10) => Ok('4'),
+            (85,11) => Ok('4'),
+            (84,0) => Ok('5'),
+            (81,1) => Ok('5'),
+            (4,2) => Ok('5'),
+            (67,3) => Ok('5'),
+            (84,4) => Ok('5'),
+            (1,5) => Ok('5'),
+            (3,6) => Ok('5'),
+            (84,7) => Ok('5'),
+            (2,8) => Ok('5'),
+            (89,9) => Ok('5'),
+            (79,10) => Ok('5'),
+            (84,11) => Ok('5'),
+            (87,0) => Ok('6'),
+            (82,1) => Ok('6'),
+            (7,2) => Ok('6'),
+            (64,3) => Ok('6'),
+            (87,4) => Ok('6'),
+            (2,5) => Ok('6'),
+            (0,6) => Ok('6'),
+            (87,7) => Ok('6'),
+            (1,8) => Ok('6'),
+            (90,9) => Ok('6'),
+            (76,10) => Ok('6'),
+            (87,11) => Ok('6'),
+            (86,0) => Ok('7'),
+            (83,1) => Ok('7'),
+            (6,2) => Ok('7'),
+            (65,3) => Ok('7'),
+            (86,4) => Ok('7'),
+            (3,5) => Ok('7'),
+            (1,6) => Ok('7'),
+            (86,7) => Ok('7'),
+            (0,8) => Ok('7'),
+            (91,9) => Ok('7'),
+            (77,10) => Ok('7'),
+            (86,11) => Ok('7'),
+            (89,0) => Ok('8'),
+            (92,1) => Ok('8'),
+            (9,2) => Ok('8'),
+            (78,3) => Ok('8'),
+            (89,4) => Ok('8'),
+            (12,5) => Ok('8'),
+            (14,6) => Ok('8'),
+            (89,7) => Ok('8'),
+            (15,8) => Ok('8'),
+            (84,9) => Ok('8'),
+            (66,10) => Ok('8'),
+            (89,11) => Ok('8'),
+            (88,0) => Ok('9'),
+            (93,1) => Ok('9'),
+            (8,2) => Ok('9'),
+            (79,3) => Ok('9'),
+            (88,4) => Ok('9'),
+            (13,5) => Ok('9'),
+            (15,6) => Ok('9'),
+            (88,7) => Ok('9'),
+            (14,8) => Ok('9'),
+            (85,9) => Ok('9'),
+            (67,10) => Ok('9'),
+            (88,11) => Ok('9'),
+            _ => Err(())
+        }
+    }
+    let eid: Vec<(u8,usize)> = if let Ok(value) = base64::decode(eid){
+        value.into_iter().zip(0..).collect()
+    }else{
+        return Err(());
+    };
+    let mut mid = String::with_capacity(eid.len());
+    for (single_char,index) in &eid {
+        mid.push({
+            if let Ok(value) = mid_and_index_to_mid(single_char, index) {
+                value
+            }else{
+                return Err(());
+            }
+        });
+    }
+    Ok(mid)
+}
+
+// 用来生成代码段挺方便的 仅供测试
+// pub fn gen_eid_to_mid_map() -> () {
+//     for i in 0..10 {
+//         for n in 0..12 {
+//             println!("({},{n}) => Ok('{i}'),",i.to_string().as_str().chars().collect::<Vec<char>>()[0] as u8 ^ "ad1va46a7lza".as_bytes()[n] as u8);
+//         }
+//     }
+//     ()
+// }
