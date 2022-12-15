@@ -641,12 +641,10 @@ pub async fn get_upstream_bili_playurl(
         query_vec = vec![
             ("access_key", &params.access_key[..]),
             ("appkey", params.appkey),
-            ("build", params.build),
-            ("device", params.device),
+            ("ep_id", params.ep_id),
             ("fnval", "130"),
             ("fnver", "0"),
             ("fourk", "1"),
-            ("platform", "android"),
             //("qn", query.get("qn").unwrap_or("112")), //720P 64 1080P高码率 112
             ("qn", "112"), //测试了下,没会员会回落到下一档,所以没必要区分 DLNA投屏就最高一档好了,支持其他档没必要,还增加服务器负担
             ("ts", &ts_string),
@@ -655,24 +653,30 @@ pub async fn get_upstream_bili_playurl(
         query_vec = vec![
             ("access_key", &params.access_key[..]),
             ("appkey", params.appkey),
-            ("build", params.build),
-            ("device", params.device),
+            ("ep_id", params.ep_id),
             ("fnval", "4048"),
             ("fnver", "0"),
             ("fourk", "1"),
-            ("platform", "android"),
             ("qn", "125"),
             ("ts", &ts_string),
         ];
     }
-    if params.ep_id.is_empty() {
-        return Err(EType::InvalidReq);
-    } else {
-        query_vec.push(("ep_id", params.ep_id));
-    }
     if !params.cid.is_empty() {
         query_vec.push(("cid", params.cid));
     }
+    if !params.build.is_empty() {
+        query_vec.push(("build", params.build));
+    }
+    if !params.device.is_empty() {
+        query_vec.push(("device", params.device));
+    }
+    if !params.mobi_app.is_empty() {
+        query_vec.push(("mobi_app", params.mobi_app));
+    }
+    if !params.platform.is_empty() {
+        query_vec.push(("platform", params.platform));
+    }
+
     if params.is_th {
         query_vec.push(("s_locale", "zh_SG"));
     }
