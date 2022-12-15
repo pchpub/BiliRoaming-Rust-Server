@@ -11,6 +11,7 @@ use super::upstream_res::{
     get_upstream_bili_subtitle,
 };
 use super::user_info::*;
+use crate::mods::types::ClientType;
 use crate::{build_response, build_result_response};
 use actix_web::http::header::ContentType;
 use actix_web::{HttpRequest, HttpResponse};
@@ -156,12 +157,25 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     };
     params.cid = query.get("cid").unwrap_or("");
 
+    // detect client_type
+    let client_type =
+        if let Some(value) = ClientType::init(params.appkey, params.is_app, params.is_th, req) {
+            value
+        } else {
+            build_response!(EType::InvalidReq)
+        };
     // detect other info
     params.build = query.get("build").unwrap_or("6800300");
-    params.device =
-        query
-            .get("device")
-            .unwrap_or_else(|| if params.is_app { "android" } else { "iphone" });
+    params.device = query
+        .get("device")
+        .unwrap_or(client_type.device().unwrap_or(""));
+    params.platform = query
+        .get("platform")
+        .unwrap_or(client_type.platform().unwrap_or(""));
+    params.mobi_app = query
+        .get("platform")
+        .unwrap_or(client_type.mobi_app().unwrap_or(""));
+
     params.is_tv = match query.get("fnval") {
         Some(value) => match value {
             "130" | "0" | "2" => true,

@@ -34,20 +34,32 @@ pub async fn get_upstream_bili_account_info(
 ) -> Result<UserInfo, EType> {
     match get_upstream_bili_account_info_app(access_key, appkey, bili_runtime).await {
         Ok(value) => Ok(value),
-        Err(err_type) => match err_type {
-            // web端可能appkey不可用?
-            EType::ServerReqError("-663错误, 被鼠鼠制裁了, 请稍后重试") => {
-                if !is_app {
-                    let new_user_info = UserInfo::new_unintended_error(access_key);
-                    update_user_info_cache(&new_user_info, bili_runtime).await;
-                    Ok(new_user_info)
-                } else {
-                    // app端再次出现-663就是寄
-                    Err(err_type)
+        Err(err_type) => {
+            // more method get mid
+            if let Some(mid) =
+                get_upstream_bili_account_info_ak_to_mid(access_key, bili_runtime).await
+            {
+                if let Some(vip_expire_time) =
+                    get_upstream_bili_account_info_vip_due_date(mid, bili_runtime).await
+                {
+                    return Ok(UserInfo::new(0, access_key, mid, vip_expire_time));
                 }
+            };
+            match err_type {
+                // web端可能appkey不可用?
+                EType::ServerReqError("-663错误, 被鼠鼠制裁了, 请稍后重试") => {
+                    if !is_app {
+                        let new_user_info = UserInfo::new_unintended_error(access_key);
+                        update_user_info_cache(&new_user_info, bili_runtime).await;
+                        Ok(new_user_info)
+                    } else {
+                        // app端再次出现-663就是寄
+                        Err(err_type)
+                    }
+                }
+                _ => Err(err_type),
             }
-            _ => Err(err_type),
-        },
+        }
     }
 }
 
@@ -134,11 +146,6 @@ async fn get_upstream_bili_account_info_app(
             return Ok(new_user_info);
         }
     };
-
-    debug!(
-        "[GET USER_INFO][U] AK {} | Upstream Reply: {}",
-        access_key, upstream_raw_resp
-    );
 
     let upstream_raw_resp_json = upstream_raw_resp
         .json()
@@ -388,6 +395,104 @@ pub async fn get_upstream_bili_account_info_vip_due_date(
     }
 }
 
+pub async fn get_upstream_bili_account_info_ak_to_mid(
+    access_key: &str,
+    bili_runtime: &BiliRuntime<'_>,
+) -> Option<u64> {
+    let api = format!("https://api.bilibili.com/x/member/web/account?access_key={access_key}");
+    let upstream_raw_resp = match async_getwebpage(
+        &api,
+        bili_runtime.config.cn_proxy_accesskey_open,
+        &bili_runtime.config.cn_proxy_accesskey_url,
+        &FakeUA::Web.gen(), // 客户端请求UA和普通的不一样
+        "",
+        None,
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(_) => {
+            error!("[GET MID FUNC] AK {access_key} | 获取mid失败, 网络问题");
+            return None;
+        }
+    };
+    let upstream_raw_resp_json = upstream_raw_resp.json().unwrap_or(json!({"code": -999}));
+    let code = upstream_raw_resp_json["code"].as_i64().unwrap_or(-999);
+    match code {
+        0 => {
+            if let Some(value) = upstream_raw_resp_json["data"]["mid"].as_u64() {
+                Some(value)
+            } else {
+                let health_report_type = HealthReportType::Others(HealthData {
+                    area_num: 0,
+                    is_200_ok: true,
+                    upstream_reply: UpstreamReply {
+                        message: upstream_raw_resp_json["message"]
+                            .as_str()
+                            .unwrap_or("null")
+                            .to_owned(),
+                        ..Default::default()
+                    },
+                    is_custom: true,
+                    custom_message: format!(
+                        "[GET USER_INFO][U][GET MID FUNC] 解析mid为u64失败! 上游返回: {upstream_raw_resp}"
+                    ),
+                });
+                report_health(health_report_type, bili_runtime).await;
+                error!("[GET MID FUNC] AK {access_key} | 解析mid为u64失败. 上级返回内容 -> {upstream_raw_resp}");
+                None
+            }
+        }
+        -101 => {
+            // 用户未登录, 即access_key失效
+            error!("[GET MID FUNC] AK {access_key} | 获取mid失败, 用户未登录. 上级返回内容 -> {upstream_raw_resp}");
+            Some(0)
+        }
+        -999 => {
+            error!("[GET MID FUNC] AK {access_key} | 解析上级返回JSON失败 -> {upstream_raw_resp}");
+            let health_report_type = HealthReportType::Others(HealthData {
+                area_num: 0,
+                is_200_ok: true,
+                upstream_reply: UpstreamReply {
+                    message: upstream_raw_resp_json["message"]
+                        .as_str()
+                        .unwrap_or("null")
+                        .to_owned(),
+                    upstream_header: upstream_raw_resp.read_headers(),
+                    ..Default::default()
+                },
+                is_custom: true,
+                custom_message: format!(
+                    "[GET USER_INFO][U][GET MID FUNC] 解析上级返回JSON失败! 上游返回: {upstream_raw_resp}"
+                ),
+            });
+            report_health(health_report_type, bili_runtime).await;
+            None
+        }
+        _ => {
+            error!("[GET MID FUNC] AK {access_key} | 获取mid失败, 未知的错误码. 上级返回内容 -> {upstream_raw_resp}");
+            let health_report_type = HealthReportType::Others(HealthData {
+                area_num: 0,
+                is_200_ok: true,
+                upstream_reply: UpstreamReply {
+                    code,
+                    message: upstream_raw_resp_json["message"]
+                        .as_str()
+                        .unwrap_or("null")
+                        .to_owned(),
+                    upstream_header: upstream_raw_resp.read_headers(),
+                    ..Default::default()
+                },
+                is_custom: true,
+                custom_message: format!(
+                    "[GET USER_INFO][U][GET MID FUNC] 获取mid失败, 未知的错误码! 上游返回: {upstream_raw_resp}"
+                ),
+            });
+            report_health(health_report_type, bili_runtime).await;
+            None
+        }
+    }
+}
 pub async fn get_upstream_blacklist_info(
     user_info: &UserInfo,
     bili_runtime: &BiliRuntime<'_>,

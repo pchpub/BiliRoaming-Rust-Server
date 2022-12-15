@@ -37,6 +37,8 @@ pub async fn update_cached_playurl_background(
             season_id: params.season_id.to_string(),
             build: params.build.to_string(),
             device: params.device.to_string(),
+            mobi_app: params.mobi_app.to_string(),
+            platform: params.platform.to_string(),
             is_app: params.is_app,
             is_tv: params.is_tv,
             is_th: params.is_th,

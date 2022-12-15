@@ -379,6 +379,7 @@ pub fn get_mobi_app(appkey: &str) -> (&'static str, &'static str, &'static str) 
     }
 }
 
+
 pub fn update_server<T: std::fmt::Display>(is_auto_close: bool) {
     thread::spawn(move || {
         let mut tags = format!("v{}", env!("CARGO_PKG_VERSION"));
