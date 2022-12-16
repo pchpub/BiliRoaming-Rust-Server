@@ -11,6 +11,7 @@ use super::upstream_res::{
     get_upstream_bili_subtitle,
 };
 use super::user_info::*;
+use crate::mods::types::ClientType;
 use crate::{build_response, build_result_response};
 use actix_web::http::header::ContentType;
 use actix_web::{HttpRequest, HttpResponse};
@@ -87,7 +88,14 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     }
 
     // detect user's appkey
-    params.appkey = query.get("appkey").unwrap_or("1d8b6e7d45233436");
+    params.appkey = query.get("appkey").unwrap_or_else(|| {
+        if params.is_app {
+            "1d8b6e7d45233436"
+        } else {
+            // 网页端是ios的key
+            "27eb53fc9058f8c3"
+        }
+    });
     if let Err(_) = params.appkey_to_sec() {
         error!(
             "[GET PLAYURL] IP {client_ip} -> Detect unknown appkey: {}",
@@ -142,12 +150,32 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     };
 
     // detect req ep
-    params.ep_id = query.get("ep_id").unwrap_or("");
+    params.ep_id = if let Some(value) = query.get("ep_id") {
+        value
+    } else {
+        build_response!(EType::InvalidReq)
+    };
     params.cid = query.get("cid").unwrap_or("");
 
+    // detect client_type
+    let client_type =
+        if let Some(value) = ClientType::init(params.appkey, params.is_app, params.is_th, req) {
+            value
+        } else {
+            build_response!(EType::InvalidReq)
+        };
     // detect other info
     params.build = query.get("build").unwrap_or("6800300");
-    params.device = query.get("device").unwrap_or("android");
+    params.device = query
+        .get("device")
+        .unwrap_or(client_type.device().unwrap_or(""));
+    params.platform = query
+        .get("platform")
+        .unwrap_or(client_type.platform().unwrap_or(""));
+    params.mobi_app = query
+        .get("platform")
+        .unwrap_or(client_type.mobi_app().unwrap_or(""));
+
     params.is_tv = match query.get("fnval") {
         Some(value) => match value {
             "130" | "0" | "2" => true,
@@ -160,9 +188,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     let user_info = match get_user_info(
         params.access_key,
         params.appkey,
-        params.appsec,
-        &params,
-        false,
+        params.is_app,
         &bili_runtime,
     )
     .await
@@ -241,6 +267,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
         params.ep_id
     );
     let resp = match get_cached_playurl(&params, &bili_runtime).await {
+        // 允许-999时用户获取缓存, 但不是VIP
         Ok(data) => {
             debug!(
                 "[GET PLAYURL] IP {client_ip} | UID {} | AREA {} | EP {} -> Serve from cache",
@@ -317,10 +344,13 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
     }
 
     // detect user's appkey
-    params.appkey = match query.get("appkey") {
-        Option::Some(key) => key,
-        _ => "1d8b6e7d45233436",
-    };
+    params.appkey = query.get("appkey").unwrap_or_else(|| {
+        if params.is_app {
+            "1d8b6e7d45233436"
+        } else {
+            "27eb53fc9058f8c3"
+        }
+    });
     if let Err(_) = params.appkey_to_sec() {
         error!(
             "[GET SEARCH] IP {client_ip} | Detect unknown appkey: {}",
@@ -370,10 +400,11 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
             build_response!(EType::UserNotLoginedError);
         }
     };
-
-    // detect other info
     params.build = query.get("build").unwrap_or("6800300");
-    params.device = query.get("device").unwrap_or("android");
+    params.device =
+        query
+            .get("device")
+            .unwrap_or_else(|| if params.is_app { "android" } else { "iphone" });
     params.statistics = match query.get("statistics") {
         Some(value) => value,
         _ => "",
@@ -404,9 +435,7 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         match get_user_info(
             params.access_key,
             params.appkey,
-            params.appsec,
-            &params,
-            false,
+            params.is_app,
             &bili_runtime,
         )
         .await

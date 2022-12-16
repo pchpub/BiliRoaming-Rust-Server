@@ -1,11 +1,10 @@
-use log::{debug, error};
-use rand::Rng;
-
 use super::{
     request::{download, getwebpage},
     types::PlayurlType,
 };
-use std::env;
+use log::{debug, error};
+use pcre2::bytes::Regex;
+use std::{env, u8};
 use std::path::PathBuf;
 use std::thread;
 
@@ -79,6 +78,9 @@ pub fn check_vip_status_from_playurl(
         }
         PlayurlType::ChinaWeb => {
             if data["code"].as_i64().unwrap_or(233) == 0 {
+                if data["result"]["is_preview"].as_bool().unwrap_or(false) {
+                    return Ok(true);
+                }
                 let mut quality_need_vip: Vec<u64> = Vec::with_capacity(2);
                 let items = if let Some(value) = data["result"]["support_formats"].as_array() {
                     value
@@ -125,6 +127,27 @@ pub fn check_vip_status_from_playurl(
         }
         PlayurlType::ChinaTv => Err(()), //过年回家的时候抓包看看（宿舍没电视机）
     }
+}
+
+#[inline]
+pub fn get_user_mid_from_playurl(playurl_string: &str) -> Option<u64> {
+    // 感觉不太优雅...
+    let re = Regex::new(r#"(?m)&mid=(\d{0,})&platform"#).unwrap();
+    let mid = match re.captures(playurl_string.as_bytes()) {
+        Ok(value) => {
+            if let Some(value) = value {
+                value
+            } else {
+                return None;
+            }
+        }
+        Err(value) => {
+            error!("REGEX CAPTURE FAILED: {:?}", value);
+            return None;
+        }
+    };
+    let mid: u64 = String::from_utf8(mid[1].to_vec()).unwrap().parse().unwrap();
+    Some(mid)
 }
 
 #[inline]
@@ -326,7 +349,7 @@ pub fn get_mobi_app(appkey: &str) -> (&'static str, &'static str, &'static str) 
         "27eb53fc9058f8c3" => (
             "27eb53fc9058f8c3",
             "c2ed53a74eeefe3cf99fbd01d8c9c375",
-            "ios",
+            "iphone", // ios
         ),
         "57263273bc6b67f6" => (
             "57263273bc6b67f6",
@@ -355,6 +378,7 @@ pub fn get_mobi_app(appkey: &str) -> (&'static str, &'static str, &'static str) 
         ), // 默认值, 使用app端appkey
     }
 }
+
 
 pub fn update_server<T: std::fmt::Display>(is_auto_close: bool) {
     thread::spawn(move || {
@@ -433,25 +457,167 @@ pub fn vec_to_string<T: std::fmt::Display>(vec: &Vec<T>, delimiter: &str) -> Str
     }
 }
 
-pub fn build_random_useragent() -> &'static str {
-    let user_agents = [
-        "Dalvik/2.1.0 (Linux; U; Android 13; Pixel 6 Pro Build/TQ1A.221205.011)",
-        "Dalvik/2.1.0 (Linux; U; Android 13; SM-S9080 Build/TP1A.220624.014)",
-        "Dalvik/2.1.0 (Linux; U; Android 13; 2201122C Build/TKQ1.220807.001)",
-        "Dalvik/2.1.0 (Linux; U; Android 12; JEF-AN00 Build/HUAWEIJEF-AN00)",
-        "Dalvik/2.1.0 (Linux; U; Android 12; VOG-AL10 Build/HUAWEIVOG-AL10)",
-        "Dalvik/2.1.0 (Linux; U; Android 12; ELS-AN00 Build/HUAWEIELS-AN00)",
-        "Dalvik/2.1.0 (Linux; U; Android 12; NOH-AN01 Build/HUAWEINOH-AN01)",
-        "Dalvik/2.1.0 (Linux; U; Android 11; SKW-A0 Build/SKYW2203210CN00MR1)",
-        "Dalvik/2.1.0 (Linux; U; Android 11; 21091116AC Build/RP1A.200720.011)",
-        "Dalvik/2.1.0 (Linux; U; Android 10; Redmi K30 MIUI/V12.0.5.0.QGHCNXM)",
-        "Dalvik/2.1.0 (Linux; U; Android 10; VOG-AL10 Build/HUAWEIVOG-AL10)",
-        "Dalvik/2.1.0 (Linux; U; Android 10; JEF-AN00 Build/HUAWEIJEF-AN00)",
-        "Dalvik/2.1.0 (Linux; U; Android 10; VOG-AL10 Build/HUAWEIVOG-AL10)",
-        "Dalvik/2.1.0 (Linux; U; Android 10; ELS-AN00 Build/HUAWEIELS-AN00)",
-        "Dalvik/2.1.0 (Linux; U; Android 9; BND-AL10 Build/HONORBND-AL10)",
-        "Dalvik/2.1.0 (Linux; U; Android 9; ALP-AL00 Build/HUAWEIALP-AL00)",
-        "Dalvik/2.1.0 (Linux; U; Android 9; MIX 2 MIUI/V12.0.1.0.PDECNXM)",
-    ];
-    user_agents[rand::thread_rng().gen_range(0..=16)]
+pub fn mid_to_eid(mid: &str) -> String {
+    let mid: Vec<(char,usize)> = mid.chars().zip(0..).collect();
+    let mut eid = Vec::with_capacity(mid.len());
+    for (single_char,index) in &mid {
+        eid.push(*single_char as u8 ^ "ad1va46a7lza".as_bytes()[index % 12] as u8);
+    }
+    base64::encode(eid)
 }
+
+// 有些api带eid, 这时候就可以获取到mid, 此函数作为后备方案
+pub fn eid_to_mid(eid: &str) -> Result<String,()> {
+    fn mid_and_index_to_mid(mid: &u8,index: &usize) -> Result<char,()> {
+        let index = index % 12;
+        match (mid,index) {
+            (81,0) => Ok('0'),
+            (84,1) => Ok('0'),
+            (1,2) => Ok('0'),
+            (70,3) => Ok('0'),
+            (81,4) => Ok('0'),
+            (4,5) => Ok('0'),
+            (6,6) => Ok('0'),
+            (81,7) => Ok('0'),
+            (7,8) => Ok('0'),
+            (92,9) => Ok('0'),
+            (74,10) => Ok('0'),
+            (81,11) => Ok('0'),
+            (80,0) => Ok('1'),
+            (85,1) => Ok('1'),
+            (0,2) => Ok('1'),
+            (71,3) => Ok('1'),
+            (80,4) => Ok('1'),
+            (5,5) => Ok('1'),
+            (7,6) => Ok('1'),
+            (80,7) => Ok('1'),
+            (6,8) => Ok('1'),
+            (93,9) => Ok('1'),
+            (75,10) => Ok('1'),
+            (80,11) => Ok('1'),
+            (83,0) => Ok('2'),
+            (86,1) => Ok('2'),
+            (3,2) => Ok('2'),
+            (68,3) => Ok('2'),
+            (83,4) => Ok('2'),
+            (6,5) => Ok('2'),
+            (4,6) => Ok('2'),
+            (83,7) => Ok('2'),
+            (5,8) => Ok('2'),
+            (94,9) => Ok('2'),
+            (72,10) => Ok('2'),
+            (83,11) => Ok('2'),
+            (82,0) => Ok('3'),
+            (87,1) => Ok('3'),
+            (2,2) => Ok('3'),
+            (69,3) => Ok('3'),
+            (82,4) => Ok('3'),
+            (7,5) => Ok('3'),
+            (5,6) => Ok('3'),
+            (82,7) => Ok('3'),
+            (4,8) => Ok('3'),
+            (95,9) => Ok('3'),
+            (73,10) => Ok('3'),
+            (82,11) => Ok('3'),
+            (85,0) => Ok('4'),
+            (80,1) => Ok('4'),
+            (5,2) => Ok('4'),
+            (66,3) => Ok('4'),
+            (85,4) => Ok('4'),
+            (0,5) => Ok('4'),
+            (2,6) => Ok('4'),
+            (85,7) => Ok('4'),
+            (3,8) => Ok('4'),
+            (88,9) => Ok('4'),
+            (78,10) => Ok('4'),
+            (85,11) => Ok('4'),
+            (84,0) => Ok('5'),
+            (81,1) => Ok('5'),
+            (4,2) => Ok('5'),
+            (67,3) => Ok('5'),
+            (84,4) => Ok('5'),
+            (1,5) => Ok('5'),
+            (3,6) => Ok('5'),
+            (84,7) => Ok('5'),
+            (2,8) => Ok('5'),
+            (89,9) => Ok('5'),
+            (79,10) => Ok('5'),
+            (84,11) => Ok('5'),
+            (87,0) => Ok('6'),
+            (82,1) => Ok('6'),
+            (7,2) => Ok('6'),
+            (64,3) => Ok('6'),
+            (87,4) => Ok('6'),
+            (2,5) => Ok('6'),
+            (0,6) => Ok('6'),
+            (87,7) => Ok('6'),
+            (1,8) => Ok('6'),
+            (90,9) => Ok('6'),
+            (76,10) => Ok('6'),
+            (87,11) => Ok('6'),
+            (86,0) => Ok('7'),
+            (83,1) => Ok('7'),
+            (6,2) => Ok('7'),
+            (65,3) => Ok('7'),
+            (86,4) => Ok('7'),
+            (3,5) => Ok('7'),
+            (1,6) => Ok('7'),
+            (86,7) => Ok('7'),
+            (0,8) => Ok('7'),
+            (91,9) => Ok('7'),
+            (77,10) => Ok('7'),
+            (86,11) => Ok('7'),
+            (89,0) => Ok('8'),
+            (92,1) => Ok('8'),
+            (9,2) => Ok('8'),
+            (78,3) => Ok('8'),
+            (89,4) => Ok('8'),
+            (12,5) => Ok('8'),
+            (14,6) => Ok('8'),
+            (89,7) => Ok('8'),
+            (15,8) => Ok('8'),
+            (84,9) => Ok('8'),
+            (66,10) => Ok('8'),
+            (89,11) => Ok('8'),
+            (88,0) => Ok('9'),
+            (93,1) => Ok('9'),
+            (8,2) => Ok('9'),
+            (79,3) => Ok('9'),
+            (88,4) => Ok('9'),
+            (13,5) => Ok('9'),
+            (15,6) => Ok('9'),
+            (88,7) => Ok('9'),
+            (14,8) => Ok('9'),
+            (85,9) => Ok('9'),
+            (67,10) => Ok('9'),
+            (88,11) => Ok('9'),
+            _ => Err(())
+        }
+    }
+    let eid: Vec<(u8,usize)> = if let Ok(value) = base64::decode(eid){
+        value.into_iter().zip(0..).collect()
+    }else{
+        return Err(());
+    };
+    let mut mid = String::with_capacity(eid.len());
+    for (single_char,index) in &eid {
+        mid.push({
+            if let Ok(value) = mid_and_index_to_mid(single_char, index) {
+                value
+            }else{
+                return Err(());
+            }
+        });
+    }
+    Ok(mid)
+}
+
+// 用来生成代码段挺方便的 仅供测试
+// pub fn gen_eid_to_mid_map() -> () {
+//     for i in 0..10 {
+//         for n in 0..12 {
+//             println!("({},{n}) => Ok('{i}'),",i.to_string().as_str().chars().collect::<Vec<char>>()[0] as u8 ^ "ad1va46a7lza".as_bytes()[n] as u8);
+//         }
+//     }
+//     ()
+// }

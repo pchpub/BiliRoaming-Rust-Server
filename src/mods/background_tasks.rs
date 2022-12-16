@@ -1,15 +1,15 @@
-use super::cache::update_cached_playurl;
+use super::cache::{get_cached_user_info, update_cached_playurl, update_user_info_cache};
 use super::ep_info::update_ep_vip_status_cache;
 use super::health::*;
 use super::push::send_report;
 use super::request::async_getwebpage;
-use super::tools::build_random_useragent;
+use super::tools::get_user_mid_from_playurl;
 use super::types::{
-    Area, BackgroundTaskType, BiliRuntime, CacheTask, CacheType, EpInfo, HealthReportType,
-    HealthTask, PlayurlParams, PlayurlParamsStatic, ReqType,
+    Area, BackgroundTaskType, BiliRuntime, CacheTask, CacheType, EType, EpInfo, FakeUA,
+    HealthReportType, HealthTask, PlayurlParams, PlayurlParamsStatic, ReqType, UserInfo,
 };
 use super::upstream_res::*;
-use super::user_info::{get_blacklist_info, get_user_info};
+use chrono::Local;
 use log::{debug, error, info, trace};
 use serde_json::json;
 
@@ -37,6 +37,8 @@ pub async fn update_cached_playurl_background(
             season_id: params.season_id.to_string(),
             build: params.build.to_string(),
             device: params.device.to_string(),
+            mobi_app: params.mobi_app.to_string(),
+            platform: params.platform.to_string(),
             is_app: params.is_app,
             is_tv: params.is_tv,
             is_th: params.is_th,
@@ -65,6 +67,7 @@ pub async fn update_cached_area_background(
     bili_runtime.send_task(background_task_data).await
 }
 
+/// 不采用常规方法更新, 仅限用于未知的错误码下的刷新
 pub async fn update_cached_user_info_background(
     access_key: String,
     bili_runtime: &BiliRuntime<'_>,
@@ -218,22 +221,63 @@ pub async fn background_task_run(
         },
         BackgroundTaskType::Cache(value) => match value {
             CacheTask::UserInfoCacheRefresh(access_key) => {
-                let appkey = "1d8b6e7d45233436";
-                let appsec = "560c52ccd288fed045859ed18bffd973";
-                // let user_agent = "Dalvik/2.1.0 (Linux; U; Android 11; 21091116AC Build/RP1A.200720.011)";
-                let user_agent = build_random_useragent();
-                match get_user_info(&access_key, appkey, appsec, &PlayurlParams {
-                    is_app: true,
-                    is_th: false,
-                    user_agent: &user_agent,
-                    ..Default::default()
-                }, true, &bili_runtime).await {
-                    Ok(new_user_info) => match get_blacklist_info(&new_user_info, bili_runtime).await {
-                        Ok(_) => Ok(()),
-                        Err(value) => Err(format!("[BACKGROUND TASK] UID {} | Refreshing blacklist info failed, ErrMsg: {}", new_user_info.uid, value.to_string())),
-                    },
-                    Err(value) => Err(format!("[BACKGROUND TASK] ACCESS_KEY {} | Refreshing blacklist info failed, ErrMsg: {}", access_key, value.to_string())),
-                }
+                // 不管刷新是否成功
+                let uid = if let Some(value) = get_cached_user_info(&access_key, bili_runtime).await
+                {
+                    value.uid
+                } else {
+                    match get_upstream_bili_playurl_background(
+                        &mut PlayurlParams {
+                            access_key: &access_key,
+                            ep_id: "425578",
+                            area: "hk",
+                            area_num: 2,
+                            ep_need_vip: false,
+                            user_agent: &FakeUA::App.gen(),
+                            ..Default::default()
+                        },
+                        bili_runtime,
+                    )
+                    .await
+                    {
+                        Ok(playurl_string) => {
+                            if let Some(value) = get_user_mid_from_playurl(&playurl_string) {
+                                value
+                            } else {
+                                // 不考虑失败的情况
+                                return Err("[BACKGROUND TASK] | 从playurl正则匹配获取mid失败, 刷新用户信息终止".to_owned());
+                            }
+                        }
+                        Err(err_type) => {
+                            match err_type {
+                                EType::OtherError(_, "上游错误, 刷新失败") => {
+                                    // 这种情况下缓存30min防止请求过于频繁
+                                    let new_user_info = UserInfo {
+                                        code: -500,
+                                        access_key: access_key.to_owned(),
+                                        expire_time: Local::now().timestamp_millis() as u64
+                                            + 10 * 60 * 1000, // 暂时缓存10m,
+                                        ..Default::default()
+                                    };
+                                    update_user_info_cache(&new_user_info, bili_runtime).await;
+                                    return Err("[BACKGROUND TASK] | 上游问题, 刷新用户信息失败"
+                                        .to_string());
+                                }
+                                _ => {
+                                    return Err("[BACKGROUND TASK] | 网络问题, 刷新用户信息失败"
+                                        .to_string())
+                                }
+                            }
+                        }
+                    }
+                };
+                let vip_expire_time =
+                    get_upstream_bili_account_info_vip_due_date(uid, bili_runtime)
+                        .await
+                        .unwrap_or(0);
+                let new_user_info = UserInfo::new(0, &access_key, uid, vip_expire_time);
+                update_user_info_cache(&new_user_info, bili_runtime).await;
+                Ok(())
             }
             CacheTask::PlayurlCacheRefresh(params) => {
                 match get_upstream_bili_playurl_background(&mut params.as_ref(), bili_runtime).await
@@ -283,7 +327,7 @@ pub async fn background_task_run(
                 // // 没弹幕/评论区还不如去看RC-RAWS
                 let bili_user_status_api: &str =
                     "https://api.bilibili.com/pgc/view/web/season/user/status";
-                let user_agent = build_random_useragent();
+                let user_agent = FakeUA::Web.gen();
                 // let user_agent = "Dalvik/2.1.0 (Linux; U; Android 11; 21091116AC Build/RP1A.200720.011)";
                 let area_to_check = [
                     (

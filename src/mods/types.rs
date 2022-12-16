@@ -3,9 +3,11 @@ use super::{
     request::{redis_get, redis_set},
     tools::remove_viponly_clarity,
 };
+use actix_web::HttpRequest;
 use async_channel::{Sender, TrySendError};
-use chrono::{FixedOffset, TimeZone, Utc};
+use chrono::{FixedOffset, Local, TimeZone, Utc};
 use deadpool_redis::Pool;
+use log::error;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, hash::Hash, sync::Arc};
@@ -81,6 +83,10 @@ pub struct BiliConfig {
     pub cn_proxy_accesskey_open: bool,
     pub th_proxy_subtitle_url: String,
     pub th_proxy_subtitle_open: bool,
+    #[serde(default = "default_api_bilibili_com")]
+    pub general_api_bilibili_com_proxy_api: String,
+    #[serde(default = "default_app_bilibili_com")]
+    pub general_app_bilibili_com_proxy_api: String,
     pub aid: u64,
     pub aid_replace_open: bool,
     #[serde(default = "default_hashmap_false")]
@@ -228,6 +234,259 @@ impl<'bili_runtime> BiliRuntime<'bili_runtime> {
                 }
             };
         });
+    }
+}
+
+/// 识别
+pub enum ClientType {
+    Ai4cCreatorAndroid,
+    Android,
+    AndroidB,
+    AndroidBiliThings,
+    AndroidHD,
+    AndroidI,
+    AndroidMallTicket,
+    AndroidOttSdk,
+    AndroidTV,
+    AnguAndroid,
+    BiliLink,
+    BiliScan,
+    BstarA,
+    Invalid(&'static str, &'static str),
+    Ios,
+    // Iphone, //有个不知道能不能用的key对应的是Iphone
+    Web,
+    Unknown,
+}
+impl ClientType {
+    pub fn init(appkey: &str, is_app: bool, is_th: bool, req: &HttpRequest) -> Option<ClientType> {
+        let platform = if let Some(value) = req.headers().get("platform-from-biliroaming") {
+            value.to_str().unwrap_or("")
+        } else {
+            ""
+        };
+        if appkey.is_empty() && platform.is_empty() {
+            return None;
+        }
+        if is_th {
+            Some(ClientType::BstarA)
+        } else {
+            if !is_app {
+                Some(ClientType::Web)
+            } else {
+                if platform.is_empty() {
+                    ClientType::detect_client_type_from_appkey(appkey)
+                } else {
+                    ClientType::detect_client_type_from_platform(platform)
+                }
+            }
+        }
+    }
+    pub fn appkey(&self) -> &'static str {
+        match self {
+            ClientType::Ai4cCreatorAndroid => "9d5889cf67e615cd",
+            ClientType::Android => "1d8b6e7d45233436",
+            ClientType::AndroidB => "07da50c9a0bf829f",
+            ClientType::AndroidBiliThings => "8d23902c1688a798",
+            ClientType::AndroidHD => "dfca71928277209b",
+            ClientType::AndroidI => "bb3101000e232e27",
+            ClientType::AndroidMallTicket => "4c6e1021617d40d9",
+            ClientType::AndroidOttSdk => "c034e8b74130a886",
+            ClientType::AndroidTV => "4409e2ce8ffd12b8",
+            ClientType::AnguAndroid => "50e1328c6a1075a1",
+            ClientType::BiliLink => "37207f2beaebf8d7",
+            ClientType::BiliScan => "9a75abf7de2d8947",
+            ClientType::BstarA => "7d089525d3611b1c",
+            ClientType::Web | ClientType::Ios => "27eb53fc9058f8c3", //web使用ios的appkey
+            ClientType::Invalid(appkey, _) => appkey,
+            ClientType::Unknown => "",
+        }
+    }
+    pub fn appsec(&self) -> &'static str {
+        match self {
+            ClientType::Ai4cCreatorAndroid => "8fd9bb32efea8cef801fd895bef2713d",
+            ClientType::Android => "560c52ccd288fed045859ed18bffd973",
+            ClientType::AndroidB => "25bdede4e1581c836cab73a48790ca6e",
+            ClientType::AndroidBiliThings => "710f0212e62bd499b8d3ac6e1db9302a",
+            ClientType::AndroidHD => "b5475a8825547a4fc26c7d518eaaa02e",
+            ClientType::AndroidI => "36efcfed79309338ced0380abd824ac1",
+            ClientType::AndroidMallTicket => "e559a59044eb2701b7a8628c86aa12ae",
+            ClientType::AndroidOttSdk => "e4e8966b1e71847dc4a3830f2d078523",
+            ClientType::AndroidTV => "59b43e04ad6965f34319062b478f83dd",
+            ClientType::AnguAndroid => "4d35e3dea073433cd24dd14b503d242e",
+            ClientType::BiliLink => "e988e794d4d4b6dd43bc0e89d6e90c43",
+            ClientType::BiliScan => "35ca1c82be6c2c242ecc04d88c735f31",
+            ClientType::BstarA => "acd495b248ec528c2eed1e862d393126",
+            ClientType::Web | ClientType::Ios => "c2ed53a74eeefe3cf99fbd01d8c9c375", //web使用ios的appkey
+            ClientType::Invalid(_, appsec) => appsec,
+            ClientType::Unknown => "",
+            // ClientType::Iphone => "8cb98205e9b2ad3669aad0fce12a4c13",
+        }
+    }
+    // 可能用户请求自带
+    // 需要抓包获得, 等待日后完善
+    // 未知的暂时返回None
+    pub fn mobi_app(&self) -> Option<&'static str> {
+        match self {
+            // ClientType::Ai4cCreatorAndroid => todo!(),
+            ClientType::Android => Some("android"),
+            ClientType::AndroidB => Some("android_b"),
+            // ClientType::AndroidBiliThings => todo!(),
+            // ClientType::AndroidHD => todo!(),
+            ClientType::AndroidI => Some("android_i"),
+            // ClientType::AndroidMallTicket => todo!(),
+            // ClientType::AndroidOttSdk => todo!(),
+            ClientType::AndroidTV => Some("android_tv_yst"), //TV端, 云视听小电视, ver 1.5.4 build 105301
+            // ClientType::AnguAndroid => todo!(),
+            // ClientType::BiliLink => todo!(),
+            // ClientType::BiliScan => todo!(),
+            ClientType::BstarA => Some("bstar_a"),
+            ClientType::Web | ClientType::Ios => Some("iphone"),
+            _ => None,
+        }
+    }
+    pub fn device(&self) -> Option<&'static str> {
+        match self {
+            // ClientType::Ai4cCreatorAndroid => todo!(),
+            ClientType::Android => Some("android"),
+            ClientType::AndroidB => Some("android"),
+            // ClientType::AndroidBiliThings => todo!(),
+            // ClientType::AndroidHD => todo!(),
+            ClientType::AndroidI => Some("android"),
+            // ClientType::AndroidMallTicket => todo!(),
+            // ClientType::AndroidOttSdk => todo!(),
+            // ClientType::AndroidTV => Some("android"),
+            // ClientType::AnguAndroid => todo!(),
+            // ClientType::BiliLink => todo!(),
+            // ClientType::BiliScan => todo!(),
+            ClientType::BstarA => Some("android"),
+            ClientType::Web | ClientType::Ios => Some("iphone"),
+            _ => None,
+        }
+    }
+    pub fn platform(&self) -> Option<&'static str> {
+        match self {
+            // ClientType::Ai4cCreatorAndroid => todo!(),
+            ClientType::Android => Some("android"),
+            ClientType::AndroidB => Some("android"),
+            // ClientType::AndroidBiliThings => todo!(),
+            // ClientType::AndroidHD => todo!(),
+            ClientType::AndroidI => Some("android"),
+            // ClientType::AndroidMallTicket => todo!(),
+            // ClientType::AndroidOttSdk => todo!(),
+            ClientType::AndroidTV => Some("android"), //TV端, 云视听小电视, ver 1.5.4 build 105301
+            // ClientType::AnguAndroid => todo!(),
+            // ClientType::BiliLink => todo!(),
+            // ClientType::BiliScan => todo!(),
+            ClientType::BstarA => Some("android"),
+            ClientType::Web | ClientType::Ios => Some("ios"),
+            _ => None,
+        }
+    }
+    fn detect_client_type_from_platform(platform: &str) -> Option<ClientType> {
+        match platform {
+            "ai4c_creator_android" => Some(ClientType::Ai4cCreatorAndroid),
+            "android" => Some(ClientType::Android),
+            "android_b" => Some(ClientType::AndroidB),
+            "android_bilithings" => Some(ClientType::AndroidBiliThings),
+            "android_hd" => Some(ClientType::AndroidHD),
+            "android_i" => Some(ClientType::AndroidI),
+            "android_mall_ticket" => Some(ClientType::AndroidMallTicket),
+            "android_ott_sdk" => Some(ClientType::AndroidOttSdk),
+            "android_tv" => Some(ClientType::AndroidTV),
+            "angu_android" => Some(ClientType::AnguAndroid),
+            "biliLink" => Some(ClientType::BiliLink),
+            "biliScan" => Some(ClientType::BiliScan),
+            "bstar_a" => Some(ClientType::BstarA),
+            "web" => Some(ClientType::Web),
+            "iphone" => Some(ClientType::Ios),
+            _ => {
+                error!("[PLATFORM] 检测到未知的platform {platform}");
+                None
+            }
+        }
+    }
+    fn detect_client_type_from_appkey(appkey: &str) -> Option<ClientType> {
+        match appkey {
+            "9d5889cf67e615cd" => Some(ClientType::Ai4cCreatorAndroid),
+            "1d8b6e7d45233436" => Some(ClientType::Android),
+            "c1b107428d337928" => Some(ClientType::Invalid(
+                "c1b107428d337928",
+                "ea85624dfcf12d7cc7b2b3a94fac1f2c	",
+            )),
+            "783bbb7264451d82" => Some(ClientType::Invalid(
+                "783bbb7264451d82",
+                "2653583c8873dea268ab9386918b1d65",
+            )),
+            "57263273bc6b67f6" => Some(ClientType::Invalid(
+                "57263273bc6b67f6",
+                "a0488e488d1567960d3a765e8d129f90",
+            )),
+            "07da50c9a0bf829f" => Some(ClientType::AndroidB),
+            "7d336ec01856996b" => Some(ClientType::Invalid(
+                "7d336ec01856996b",
+                "a1ce6983bc89e20a36c37f40c4f1a0dd",
+            )),
+            "178cf125136ca8ea" => Some(ClientType::Invalid(
+                "178cf125136ca8ea",
+                "34381a26236dd1171185c0beb042e1c6",
+            )),
+            "8d23902c1688a798" => Some(ClientType::AndroidBiliThings),
+            "dfca71928277209b" => Some(ClientType::AndroidHD),
+            "bb3101000e232e27" => Some(ClientType::AndroidI),
+            "8e16697a1b4f8121" => Some(ClientType::Invalid(
+                "8e16697a1b4f8121",
+                "f5dd03b752426f2e623d7badb28d190a",
+            )),
+            "ae57252b0c09105d" => Some(ClientType::Invalid(
+                "ae57252b0c09105d",
+                "c75875c596a69eb55bd119e74b07cfe3",
+            )),
+            "4c6e1021617d40d9" => Some(ClientType::AndroidMallTicket),
+            "c034e8b74130a886" => Some(ClientType::AndroidOttSdk),
+            "4409e2ce8ffd12b8" => Some(ClientType::AndroidTV),
+            "50e1328c6a1075a1" => Some(ClientType::AnguAndroid),
+            "37207f2beaebf8d7" => Some(ClientType::BiliLink),
+            "9a75abf7de2d8947" => Some(ClientType::BiliScan),
+            "7d089525d3611b1c" => Some(ClientType::BstarA),
+            "27eb53fc9058f8c3" => Some(ClientType::Ios),
+            "85eb6835b0a1034e" => Some(ClientType::Invalid(
+                "85eb6835b0a1034e",
+                "2ad42749773c441109bdc0191257a664",
+            )),
+            "84956560bc028eb7" => Some(ClientType::Invalid(
+                "84956560bc028eb7",
+                "94aba54af9065f71de72f5508f1cd42e",
+            )),
+            "aae92bc66f3edfab" => Some(ClientType::Invalid(
+                "aae92bc66f3edfab",
+                "af125a0d5279fd576c1b4418a3e8276d",
+            )),
+            "bca7e84c2d947ac6" => Some(ClientType::Invalid(
+                "bca7e84c2d947ac6",
+                "60698ba2f68e01ce44738920a0ffe768",
+            )),
+            "4ebafd7c4951b366" => Some(ClientType::Invalid(
+                "4ebafd7c4951b366",
+                "8cb98205e9b2ad3669aad0fce12a4c13",
+            )),
+            "cc8617fd6961e070" => Some(ClientType::Invalid(
+                "cc8617fd6961e070",
+                "3131924b941aac971e45189f265262be",
+            )),
+            "iVGUTjsxvpLeuDCf" => Some(ClientType::Invalid(
+                "iVGUTjsxvpLeuDCf",
+                "aHRmhWMLkdeMuILqORnYZocwMBpMEOdt",
+            )),
+            "YvirImLGlLANCLvM" => Some(ClientType::Invalid(
+                "YvirImLGlLANCLvM",
+                "JNlZNgfNGKZEpaDTkCdPQVXntXhuiJEM",
+            )),
+            _ => {
+                error!("[APPKEY] 检测到未知的appkey {appkey}");
+                None
+            }
+        }
     }
 }
 
@@ -1406,6 +1665,14 @@ fn default_string() -> String {
     "".to_string()
 }
 
+fn default_api_bilibili_com() -> String {
+    "api.bilibili.com".to_string()
+}
+
+fn default_app_bilibili_com() -> String {
+    "app.bilibili.com".to_string()
+}
+
 pub fn random_string() -> String {
     let rand_sign = rand::thread_rng()
         .sample_iter(&rand::distributions::Alphanumeric)
@@ -1556,6 +1823,79 @@ impl Area {
     }
 }
 
+pub enum FakeUA {
+    Web,      // 网页版, 统一使用Chrome
+    Mobile,   // 移动UA, 移动版Chrome
+    App,      //App的UA, Dalvik开头的类型
+    Bilibili, //Bilibili的UA, 类似Mozilla/5.0 BiliDroid/{6.80.0}{ (bbcallen@gmail.com) os/android model/M2012K11AC mobi_app/android build/6800300 channel/master innerVer/6800310 osVer/12 network/2
+}
+
+impl FakeUA {
+    #[inline]
+    fn gen_random_phone() -> (&'static str, &'static str, &'static str) {
+        let phones = [
+            ("13", "Pixel 6 Pro", "TQ1A.221205.011"),
+            ("13", "SM-S9080", "TP1A.220624.014"),
+            ("13", "2201122C", "TKQ1.220807.001"),
+            ("12", "JEF-AN00", "HUAWEIJEF-AN00"),
+            ("12", "VOG-AL10", "HUAWEIVOG-AL10"),
+            ("12", "ELS-AN00", "HUAWEIELS-AN00"),
+            ("12", "NOH-AN01", "HUAWEINOH-AN01"),
+            ("11", "SKW-A0", "SKYW2203210CN00MR1"),
+            ("11", "21091116AC", "RP1A.200720.011"),
+            ("10", "VOG-AL10", "HUAWEIVOG-AL10"),
+            ("10", "JEF-AN00", "HUAWEIJEF-AN00"),
+            ("10", "VOG-AL10", "HUAWEIVOG-AL10"),
+            ("10", "ELS-AN00", "HUAWEIELS-AN00"),
+            ("9", "BND-AL10", "HONORBND-AL10"),
+            ("9", "ALP-AL00", "HUAWEIALP-AL00"),
+        ];
+        phones[rand::thread_rng().gen_range(0..=14)]
+    }
+    #[inline]
+    pub fn gen(&self) -> String {
+        match self {
+            FakeUA::Web => {
+                // 非常粗暴的做法
+                format!("Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{}.0.0.0 Safari/537.36", rand::thread_rng().gen_range(90..=108))
+            }
+            FakeUA::Mobile => {
+                let phone = FakeUA::gen_random_phone();
+                format!("Mozilla/5.0 (Linux; U; Android {}; {} Build/{}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{}.0.0.0 Mobile Safari/537.36", phone.0, phone.1, phone.2, rand::thread_rng().gen_range(90..=108))
+            } //虽然暂时用不到
+            FakeUA::App => {
+                // 性能考虑才这么写, 虽然只是快一点, 100次循环format!()是7,073 ns/iter (+/- 277), String::with_capacity是2,387 ns/iter (+/- 163).
+                // "Dalvik/2.1.0 (Linux; U; Android 13; Pixel 6 Pro Build/TQ1A.221205.011)"
+                let mut user_agent = String::with_capacity(100);
+                let phone = FakeUA::gen_random_phone();
+                user_agent.push_str("Dalvik/2.1.0 (Linux; U; Android ");
+                user_agent.push_str(phone.0);
+                user_agent.push_str("; ");
+                user_agent.push_str(phone.1);
+                user_agent.push_str(" Build/");
+                user_agent.push_str(phone.2);
+                user_agent.push_str(")");
+                user_agent
+            }
+            FakeUA::Bilibili => {
+                // Mozilla/5.0 BiliDroid/6.80.0 (bbcallen@gmail.com) os/android model/M2012K11AC mobi_app/android build/6800300 channel/master innerVer/6800310 osVer/12 network/2
+                let mut user_agent = String::with_capacity(200);
+                let (android_version, _, phone_model) = FakeUA::gen_random_phone();
+                user_agent.push_str(
+                    "Mozilla/5.0 BiliDroid/6.80.0 (bbcallen@gmail.com) os/android model/",
+                );
+                user_agent.push_str(phone_model);
+                user_agent.push_str(
+                    " mobi_app/android build/6800300 channel/master innerVer/6800310 osVer/",
+                );
+                user_agent.push_str(android_version);
+                user_agent.push_str("network/2");
+                user_agent
+            }
+        }
+    }
+}
+
 /*
 * the following is user related struct & impl
 */
@@ -1591,6 +1931,33 @@ pub struct UserInfo {
 }
 
 impl UserInfo {
+    pub fn new(code: i64, access_key: &str, uid: u64, vip_expire_time: u64) -> UserInfo {
+        let dt = Local::now();
+        let ts = dt.timestamp_millis() as u64;
+        UserInfo {
+            code,
+            access_key: access_key.to_owned(),
+            uid,
+            vip_expire_time,
+            expire_time: {
+                if ts < vip_expire_time && vip_expire_time < ts + 25 * 24 * 60 * 60 * 1000 {
+                    vip_expire_time
+                } else {
+                    ts + 25 * 24 * 60 * 60 * 1000
+                }
+            },
+        }
+    }
+    /// 遇到未预料的错误, 如网络问题/上游-663时可用这个
+    pub fn new_unintended_error(access_key: &str) -> UserInfo {
+        UserInfo {
+            code: -999,
+            access_key: access_key.to_owned(),
+            uid: 0,
+            vip_expire_time: 0,
+            expire_time: Local::now().timestamp_millis() as u64 + 10 * 60 * 1000, //缓存10min
+        }
+    }
     pub fn to_json(&self) -> String {
         serde_json::to_string(&self).unwrap()
         // format!(
@@ -1664,6 +2031,8 @@ pub struct PlayurlParamsStatic {
     pub season_id: String,
     pub build: String,
     pub device: String,
+    pub mobi_app: String,
+    pub platform: String,
     // extra info
     pub is_app: bool,
     pub is_tv: bool,
@@ -1696,6 +2065,8 @@ impl PlayurlParamsStatic {
             season_id: &self.season_id,
             build: &self.build,
             device: &self.device,
+            mobi_app: &self.mobi_app,
+            platform: &self.platform,
             is_app: self.is_app,
             is_tv: self.is_tv,
             is_th: self.is_th,
@@ -1704,6 +2075,7 @@ impl PlayurlParamsStatic {
             area: &self.area,
             area_num: self.area_num,
             user_agent: &self.user_agent,
+            
         }
     }
 }
@@ -1717,6 +2089,8 @@ pub struct PlayurlParams<'playurl_params> {
     pub season_id: &'playurl_params str,
     pub build: &'playurl_params str,
     pub device: &'playurl_params str,
+    pub mobi_app: &'playurl_params str,
+    pub platform: &'playurl_params str,
     // extra info
     pub is_app: bool,
     pub is_tv: bool,
@@ -1758,7 +2132,9 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl> Default
             cid: "",
             season_id: "",
             build: "6800300",
-            device: "android",
+            device: "",
+            mobi_app: "", 
+            platform: "",
             is_app: true,
             is_tv: false,
             is_th: false,
@@ -1767,6 +2143,7 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl> Default
             area: "hk",
             area_num: 2,
             user_agent: "Dalvik/2.1.0 (Linux; U; Android 12; PFEM10 Build/SKQ1.211019.001)",
+            //不清楚iphone的UA
         }
     }
 }
@@ -1817,7 +2194,7 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl>
             "57263273bc6b67f6" => "a0488e488d1567960d3a765e8d129f90", // Android
             "7d336ec01856996b" => "a1ce6983bc89e20a36c37f40c4f1a0dd", // AndroidB
             "85eb6835b0a1034e" => "2ad42749773c441109bdc0191257a664", // unknown // 不能用于获取UserInfo, 会404
-            "84956560bc028eb7" => "94aba54af9065f71de72f5508f1cd42e", // unknown // 不能用于获取UserInfo, 会404
+            "84956560bc028eb7" => "94aba54af9065f71de72f5508f1cd42e", // PC UWP // 不能用于获取UserInfo, 会404
             "8e16697a1b4f8121" => "f5dd03b752426f2e623d7badb28d190a", // AndroidI
             "aae92bc66f3edfab" => "af125a0d5279fd576c1b4418a3e8276d", // PC	投稿工具
             "ae57252b0c09105d" => "c75875c596a69eb55bd119e74b07cfe3", // AndroidI
@@ -2089,9 +2466,9 @@ impl EType {
             EType::UserNonVIPError => {
                 String::from("{\"code\":-10403,\"message\":\"大会员专享限制\"}")
             }
-            EType::UserNotLoginedError => {
-                String::from("{\"code\":-101,\"message\":\"账号未登录\",\"ttl\":1}")
-            }
+            EType::UserNotLoginedError => String::from(
+                "{\"code\":-101,\"message\":\"账号未登录, 若已登录请尝试退出重新登录\"}",
+            ),
             EType::InvalidReq => String::from("{\"code\":-412,\"message\":\"请求被拦截\"}"),
             EType::OtherError(err_code, err_msg) => {
                 format!("{{\"code\":{err_code},\"message\":\"其他错误: {err_msg}\"}}")
@@ -2100,7 +2477,7 @@ impl EType {
                 format!("{{\"code\":{err_code},\"message\":\"其他上游错误: {err_msg}\"}}")
             }
             EType::UserLoginInvalid => String::from(
-                "{{\"code\":-61000,\"message\":\"无效的用户态, 请尝试重新登陆Bilibili\"}}",
+                "{{\"code\":61000,\"message\":\"无效的用户态, 请尝试重新登陆Bilibili\"}}",
             ),
         }
     }
