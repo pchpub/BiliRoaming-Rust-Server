@@ -2030,6 +2030,7 @@ pub struct PlayurlParamsStatic {
     pub cid: String,
     pub season_id: String,
     pub build: String,
+    pub channel: String,
     pub device: String,
     pub mobi_app: String,
     pub platform: String,
@@ -2064,6 +2065,7 @@ impl PlayurlParamsStatic {
             cid: &self.cid,
             season_id: &self.season_id,
             build: &self.build,
+            channel: &self.channel,
             device: &self.device,
             mobi_app: &self.mobi_app,
             platform: &self.platform,
@@ -2075,7 +2077,6 @@ impl PlayurlParamsStatic {
             area: &self.area,
             area_num: self.area_num,
             user_agent: &self.user_agent,
-            
         }
     }
 }
@@ -2088,6 +2089,7 @@ pub struct PlayurlParams<'playurl_params> {
     pub cid: &'playurl_params str,
     pub season_id: &'playurl_params str,
     pub build: &'playurl_params str,
+    pub channel: &'playurl_params str,
     pub device: &'playurl_params str,
     pub mobi_app: &'playurl_params str,
     pub platform: &'playurl_params str,
@@ -2132,8 +2134,9 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl> Default
             cid: "",
             season_id: "",
             build: "6800300",
+            channel: "",
             device: "",
-            mobi_app: "", 
+            mobi_app: "",
             platform: "",
             is_app: true,
             is_tv: false,

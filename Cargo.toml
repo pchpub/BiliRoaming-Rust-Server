@@ -28,6 +28,12 @@ urlencoding = "2.1.2"
 lazy_static = "1.4.0"
 log = "0.4"
 env_logger = "0.10.0"
+tonic = "0.8.3"
+prost = "0.11.3"
+prost-types = "0.11.2"
+
+[build-dependencies]
+tonic-build = "0.8.4"
 
 [profile.fast]
 inherits = "release"
