@@ -20,7 +20,8 @@ jobs:
     if: ${{ !startsWith(github.event.head_commit.message, '[skip ci]') }}
     steps:
     - uses: actions/checkout@v3
-
+    - name: Setup protoc
+      uses: arduino/setup-protoc@v1.1.2
     - name: Build
       run: |
         docker run -i --rm \
