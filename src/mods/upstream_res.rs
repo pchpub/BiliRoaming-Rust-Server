@@ -13,7 +13,7 @@ use super::tools::{
 };
 use super::types::{
     Area, BiliRuntime, EType, EpInfo, FakeUA, HealthData, HealthReportType, PlayurlParams, ReqType,
-    SearchParams, UpstreamReply, UserCerinfo, UserInfo,
+    SearchParams, UpstreamReply, UserCerinfo, UserInfo, ClientType,
 };
 use super::user_info::get_blacklist_info;
 use crate::build_signed_url;
@@ -30,9 +30,10 @@ pub async fn get_upstream_bili_account_info(
     access_key: &str,
     appkey: &str,
     is_app: bool,
+    client_type: &ClientType,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
-    match get_upstream_bili_account_info_app(access_key, appkey, bili_runtime).await {
+    match get_upstream_bili_account_info_app(access_key, appkey, client_type, bili_runtime).await {
         Ok(value) => Ok(value),
         Err(err_type) => {
             // more method get mid
@@ -65,7 +66,8 @@ pub async fn get_upstream_bili_account_info(
 
 async fn get_upstream_bili_account_info_app(
     access_key: &str,
-    appkey: &str,
+    _appkey: &str,
+    client_type: &ClientType,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
     let dt = Local::now();
@@ -73,7 +75,7 @@ async fn get_upstream_bili_account_info_app(
     let ts_min = dt.timestamp() as u64;
     let ts_min_string = ts_min.to_string();
 
-    let (appkey, appsec, mobi_app) = get_mobi_app(appkey);
+    let (appkey, appsec, mobi_app) = get_mobi_app(client_type);
 
     let rand_string_36 = {
         let words: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -241,13 +243,13 @@ async fn get_upstream_bili_account_info_app(
             report_health(health_report_type, bili_runtime).await;
             Err(EType::ServerReqError("APPKEY失效"))
         }
-        -400 => {
-            // 已经指定appkey, 不应当出现此错误
-            error!("[GET USER_INFO][U] AK {} | Get UserInfo failed -400. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {}. Upstream Reply -> {}",
-                access_key, appkey, ts_min, appsec, sign, upstream_raw_resp_json
-            );
-            Err(EType::OtherError(-400, "可能你用的不是手机"))
-        }
+        // -400 => {
+        //     // 已经指定appkey, 不应当出现此错误
+        //     error!("[GET USER_INFO][U] AK {} | Get UserInfo failed -400. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {}. Upstream Reply -> {}",
+        //         access_key, appkey, ts_min, appsec, sign, upstream_raw_resp_json
+        //     );
+        //     Err(EType::OtherError(-400, "可能你用的不是手机"))
+        // }
         -101 => {
             // -101必定是登录失效, 观察发现也只有网页端会这样, 缓存25天
             update_user_info_cache(&UserInfo::new(code, access_key, 0, 0), bili_runtime).await;

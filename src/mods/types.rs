@@ -282,6 +282,30 @@ impl ClientType {
             }
         }
     }
+    pub fn init_for_ak(appkey: &str, is_app: bool, is_th: bool, req: &HttpRequest) -> Option<ClientType>{
+        let platform = if let Some(value) = req.headers().get("platform-from-biliroaming") {
+            value.to_str().unwrap_or("")
+        } else {
+            ""
+        };
+        if appkey.is_empty() && platform.is_empty() {
+            return None;
+        }
+
+        if !is_app {
+            Some(ClientType::Web)
+        } else {
+            if platform.is_empty() {
+                if is_th {
+                    Some(ClientType::Unknown)
+                }else{
+                    ClientType::detect_client_type_from_appkey(appkey)
+                }
+            } else {
+                ClientType::detect_client_type_from_platform(platform)
+            }
+        }
+    }
     pub fn appkey(&self) -> &'static str {
         match self {
             ClientType::Ai4cCreatorAndroid => "9d5889cf67e615cd",

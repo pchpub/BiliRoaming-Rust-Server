@@ -1,6 +1,6 @@
 use super::cache::{get_cached_blacklist_info, get_cached_user_info};
 use super::request::{async_getwebpage, async_postwebpage};
-use super::types::{BiliRuntime, EType, PlayurlParams, UserInfo, UserResignInfo};
+use super::types::{BiliRuntime, EType, PlayurlParams, UserInfo, UserResignInfo, ClientType};
 use super::upstream_res::{get_upstream_bili_account_info, get_upstream_blacklist_info};
 use crate::build_signed_params;
 use chrono::prelude::*;
@@ -12,6 +12,7 @@ pub async fn get_user_info(
     access_key: &str,
     appkey: &str,
     is_app: bool,
+    client_type: &ClientType,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
     match get_cached_user_info(access_key, bili_runtime).await {
@@ -35,7 +36,7 @@ pub async fn get_user_info(
             }
         }
         None => {
-            match get_upstream_bili_account_info(access_key, appkey, is_app, bili_runtime).await {
+            match get_upstream_bili_account_info(access_key, appkey, is_app, client_type, bili_runtime).await {
                 Ok(value) => {
                     debug!(
                     "[GET USER_INFO] UID {} | AK {} | U.VIP {} -> Got AK {}'s user info from upstream",
@@ -275,7 +276,7 @@ pub async fn resign_user_info(
                 .unwrap_or((params.access_key.to_string(), 1));
 
             let resign_user_info =
-                match get_user_info(&new_access_key, params.appkey, params.is_app, bili_runtime).await {
+                match get_user_info(&new_access_key, params.appkey, params.is_app, &ClientType::Unknown, bili_runtime).await {
                     Ok(value) => value,
                     Err(value) => {
                         return Err(value);
