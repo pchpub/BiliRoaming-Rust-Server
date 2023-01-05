@@ -1,12 +1,7 @@
-use super::{
-    request::{download, getwebpage},
-    types::{ClientType, PlayurlType},
-};
+use super::types::{ClientType, PlayurlType};
 use log::{debug, error};
 use pcre2::bytes::Regex;
-use std::path::PathBuf;
-use std::thread;
-use std::{env, u8};
+use std::u8;
 
 #[inline]
 pub fn check_vip_status_from_playurl(
@@ -336,7 +331,8 @@ pub fn get_mobi_app(client_type: &ClientType) -> (&'static str, &'static str, &'
             "b5475a8825547a4fc26c7d518eaaa02e",
             "android_hd",
         ),
-        ClientType::AndroidI => ( // bilibili 国际版
+        ClientType::AndroidI => (
+            // bilibili 国际版
             "ae57252b0c09105d",
             "c75875c596a69eb55bd119e74b07cfe3",
             "android_i",
@@ -361,63 +357,65 @@ pub fn get_mobi_app(client_type: &ClientType) -> (&'static str, &'static str, &'
     }
 }
 
-pub fn update_server<T: std::fmt::Display>(is_auto_close: bool) {
-    thread::spawn(move || {
-        let mut tags = format!("v{}", env!("CARGO_PKG_VERSION"));
-        println!("[Info] 开始检查更新");
-        loop {
-            let releases_date = if let Ok(value) = getwebpage(
-                "https://api.github.com/repos/pchpub/BiliRoaming-Rust-Server/releases/latest"
-                    .to_string(),
-                false,
-                "".to_string(),
-                "BiliRoaming-Rust-Server".to_string(),
-                "".to_owned(),
-                None,
-            ) {
-                value
-            } else {
-                continue;
-            };
-            let releases_json: serde_json::Value = if let Some(value) = releases_date.json() {
-                value
-            } else {
-                continue;
-            };
-            if releases_json["tag_name"].as_str().unwrap() == tags {
-                continue;
-            }
-            for item in releases_json["assets"].as_array().unwrap() {
-                if item["name"].as_str().unwrap() == "biliroaming_rust_server" {
-                    let download_url = item["browser_download_url"].as_str().unwrap();
-                    //println!("{:?}", env::current_exe().unwrap());
-                    match download(
-                        download_url.to_string(),
-                        false,
-                        "".to_string(),
-                        "".to_string(),
-                        env::current_exe().unwrap_or(PathBuf::from(r#"./biliroaming_rust_server"#)),
-                    ) {
-                        Ok(_) => {
-                            if is_auto_close {
-                                println!("BiliRoaming Rust Server 下载完成,已关闭,等待自动重启");
-                                std::process::exit(0); //自动更新是给用systemctl的人用到的,退出程序,这很好
-                            } else {
-                                tags = releases_json["tag_name"].as_str().unwrap().to_string();
-                                println!("BiliRoaming Rust Server 下载完成,请手动重启"); //有的人用systemctl，有的人用screen，退出程序不太好
-                                break;
-                            }
-                        }
-                        Err(_) => {
-                            println!("[Error] 更新服务端失败喵"); //这个喵是自动添加的,本来不打算留的（但留着感觉挺好的
-                        }
-                    }
-                }
-            }
-            thread::sleep(std::time::Duration::from_secs(6 * 60 * 60));
-        }
-    });
-}
+
+// 砍都砍掉了
+// pub async fn update_server<T: std::fmt::Display>(is_auto_close: bool) {
+//     let update_task = tokio::task::spawn(async {
+//         let mut tags = format!("v{}", env!("CARGO_PKG_VERSION"));
+//         println!("[Info] 开始检查更新");
+//         loop {
+//             let releases_date = if let Ok(value) = async_getwebpage(
+//                 "https://api.github.com/repos/pchpub/BiliRoaming-Rust-Server/releases/latest",
+//                 false,
+//                 "",
+//                 "BiliRoaming-Rust-Server",
+//                 "",
+//                 None,
+//             ).await {
+//                 value.resp_content
+//             } else {
+//                 continue;
+//             };
+//             let releases_json: serde_json::Value = if let Ok(value) = serde_json::from_str(&releases_date) {
+//                 value
+//             } else {
+//                 continue;
+//             };
+//             if releases_json["tag_name"].as_str().unwrap() == tags {
+//                 continue;
+//             }
+//             for item in releases_json["assets"].as_array().unwrap() {
+//                 if item["name"].as_str().unwrap() == "biliroaming_rust_server" {
+//                     let download_url = item["browser_download_url"].as_str().unwrap();
+//                     //println!("{:?}", env::current_exe().unwrap());
+//                     match download(
+//                         download_url.to_string(),
+//                         false,
+//                         "".to_string(),
+//                         "".to_string(),
+//                         env::current_exe().unwrap_or(PathBuf::from(r#"./biliroaming_rust_server"#)),
+//                     ) {
+//                         Ok(_) => {
+//                             if is_auto_close {
+//                                 println!("BiliRoaming Rust Server 下载完成,已关闭,等待自动重启");
+//                                 std::process::exit(0); //自动更新是给用systemctl的人用到的,退出程序,这很好
+//                             } else {
+//                                 tags = releases_json["tag_name"].as_str().unwrap().to_string();
+//                                 println!("BiliRoaming Rust Server 下载完成,请手动重启"); //有的人用systemctl，有的人用screen，退出程序不太好
+//                                 break;
+//                             }
+//                         }
+//                         Err(_) => {
+//                             println!("[Error] 更新服务端失败喵"); //这个喵是自动添加的,本来不打算留的（但留着感觉挺好的
+//                         }
+//                     }
+//                 }
+//             }
+//             thread::sleep(std::time::Duration::from_secs(6 * 60 * 60));
+//         }
+//     });
+//     update_task.await;
+// }
 
 pub fn vec_to_string<T: std::fmt::Display>(vec: &Vec<T>, delimiter: &str) -> String {
     match vec.len() {
@@ -602,3 +600,8 @@ pub fn eid_to_mid(eid: &str) -> Result<String, ()> {
 //     }
 //     ()
 // }
+
+pub fn add_mid_to_playurl(playurl_type: PlayurlType, data: &serde_json::Value, mid: &str){
+    // TODO: 修复web播放不正常(应该是因为缺了mid，使得替换upos时403) 在想是不是之前用libcurl br压缩没开的问题
+    todo!()
+}

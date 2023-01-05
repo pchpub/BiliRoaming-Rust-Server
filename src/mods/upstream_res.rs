@@ -19,10 +19,10 @@ use super::user_info::get_blacklist_info;
 use crate::build_signed_url;
 use crate::mods::tools::get_mobi_app;
 use chrono::prelude::*;
-use curl::easy::List;
 use log::{debug, error};
 use qstring::QString;
 use rand::Rng;
+use reqwest::header::HeaderMap;
 use serde_json::json;
 use std::string::String;
 
@@ -110,10 +110,10 @@ async fn get_upstream_bili_account_info_app(
     req_vec.sort_by_key(|v| v.0);
 
     // fix -663 error
-    let mut headers = List::new();
-    headers.append(&format!("x-bili-aurora-eid: {}",mid_to_eid(&format!("{}", rand_num)))).unwrap();
-    headers.append("x-bili-aurora-zone: sh001").unwrap();
-    headers.append("app-key: android64").unwrap();
+    let mut headers = HeaderMap::new();
+    headers.insert("x-bili-aurora-eid",mid_to_eid(&format!("{}", rand_num)).parse().unwrap()).unwrap();
+    headers.append("x-bili-aurora-zone","sh001".parse().unwrap());
+    headers.append("app-key","android64".parse().unwrap());
 
     let api = format!(
         "https://{}/x/v2/account/myinfo",

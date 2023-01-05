@@ -432,7 +432,7 @@ async fn get_accesskey_from_token(
     };
     let getpost_string =
         match async_postwebpage(&url, &content, *proxy_open, proxy_url, user_agent).await {
-            Ok(value) => value,
+            Ok(value) => value.resp_content,
             Err(_) => return None,
         };
     let getpost_json: serde_json::Value = serde_json::from_str(&getpost_string).unwrap();
