@@ -183,12 +183,20 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
         },
         None => false,
     };
+    // detect client accesskey type
+    let client_ak_type =
+    if let Some(value) = ClientType::init_for_ak(params.appkey, params.is_app, params.is_th, req) {
+        value
+    } else {
+        ClientType::Unknown
+    };
 
     // get user_info
     let user_info = match get_user_info(
         params.access_key,
         params.appkey,
         params.is_app,
+        &client_ak_type,
         &bili_runtime,
     )
     .await
@@ -429,13 +437,21 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
     } else {
         ""
     };
-
+    //deteect client accesskey type
+    let client_type =
+        if let Some(value) = ClientType::init_for_ak(params.appkey, params.is_app, params.is_th, req) {
+            value
+        } else {
+            ClientType::Unknown
+        };
+    
     //为了记录accesskey to uid
     let uid = if is_app && (!is_th) {
         match get_user_info(
             params.access_key,
             params.appkey,
             params.is_app,
+            &client_type,
             &bili_runtime,
         )
         .await

@@ -9,11 +9,11 @@ use super::ep_info::get_ep_need_vip;
 use super::health::report_health;
 use super::request::async_getwebpage;
 use super::tools::{
-    check_vip_status_from_playurl, get_user_mid_from_playurl, remove_parameters_playurl,
+    check_vip_status_from_playurl, get_user_mid_from_playurl, remove_parameters_playurl, mid_to_eid,
 };
 use super::types::{
     Area, BiliRuntime, EType, EpInfo, FakeUA, HealthData, HealthReportType, PlayurlParams, ReqType,
-    SearchParams, UpstreamReply, UserCerinfo, UserInfo,
+    SearchParams, UpstreamReply, UserCerinfo, UserInfo, ClientType,
 };
 use super::user_info::get_blacklist_info;
 use crate::build_signed_url;
@@ -30,9 +30,10 @@ pub async fn get_upstream_bili_account_info(
     access_key: &str,
     appkey: &str,
     is_app: bool,
+    client_type: &ClientType,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
-    match get_upstream_bili_account_info_app(access_key, appkey, bili_runtime).await {
+    match get_upstream_bili_account_info_app(access_key, appkey, client_type, bili_runtime).await {
         Ok(value) => Ok(value),
         Err(err_type) => {
             // more method get mid
@@ -65,7 +66,8 @@ pub async fn get_upstream_bili_account_info(
 
 async fn get_upstream_bili_account_info_app(
     access_key: &str,
-    appkey: &str,
+    _appkey: &str,
+    client_type: &ClientType,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
     let dt = Local::now();
@@ -73,7 +75,7 @@ async fn get_upstream_bili_account_info_app(
     let ts_min = dt.timestamp() as u64;
     let ts_min_string = ts_min.to_string();
 
-    let (appkey, appsec, mobi_app) = get_mobi_app(appkey);
+    let (appkey, appsec, mobi_app) = get_mobi_app(client_type);
 
     let rand_string_36 = {
         let words: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -84,6 +86,11 @@ async fn get_upstream_bili_account_info_app(
                 words[idx] as char
             })
             .collect::<String>()
+    };
+
+    let rand_num = {
+        let mut rng = rand::thread_rng();
+        rng.gen_range(0..100000000)
     };
     let mut req_vec = vec![ //以防万一，昨天抓了下包尽可能补全
         ("access_key", access_key),
@@ -104,12 +111,12 @@ async fn get_upstream_bili_account_info_app(
 
     // fix -663 error
     let mut headers = List::new();
-    headers.append("x-bili-aurora-eid: UlMFQVcABlAH").unwrap();
+    headers.append(&format!("x-bili-aurora-eid: {}",mid_to_eid(&format!("{}", rand_num)))).unwrap();
     headers.append("x-bili-aurora-zone: sh001").unwrap();
     headers.append("app-key: android64").unwrap();
 
     let api = format!(
-        "https://{}/x/v2/account/mine",
+        "https://{}/x/v2/account/myinfo",
         bili_runtime.config.general_app_bilibili_com_proxy_api
     );
     let (signed_url, sign) = build_signed_url!(api, req_vec, appsec);
@@ -244,12 +251,6 @@ async fn get_upstream_bili_account_info_app(
         //     Err(EType::OtherError(-400, "可能你用的不是手机"))
         // }
         -101 => {
-            // let output_struct = UserInfo {
-            //     code,
-            //     access_key: access_key.to_owned(),
-            //     expire_time: ts + 1 * 60 * 60 * 1000,
-            //     ..Default::default()
-            // };
             // -101必定是登录失效, 观察发现也只有网页端会这样, 缓存25天
             update_user_info_cache(&UserInfo::new(code, access_key, 0, 0), bili_runtime).await;
             // update_user_info_cache(&output_struct, bili_runtime).await;

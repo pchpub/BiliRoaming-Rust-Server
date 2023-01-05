@@ -1,12 +1,12 @@
 use super::{
     request::{download, getwebpage},
-    types::PlayurlType,
+    types::{ClientType, PlayurlType},
 };
 use log::{debug, error};
 use pcre2::bytes::Regex;
-use std::{env, u8};
 use std::path::PathBuf;
 use std::thread;
+use std::{env, u8};
 
 #[inline]
 pub fn check_vip_status_from_playurl(
@@ -319,66 +319,47 @@ pub async fn remove_viponly_clarity<'a>(
 
 #[inline]
 /// - 返回(`appkey`, `appsec`, `mobi_app`).
-pub fn get_mobi_app(appkey: &str) -> (&'static str, &'static str, &'static str) {
-    match appkey {
-        "1d8b6e7d45233436" => (
+pub fn get_mobi_app(client_type: &ClientType) -> (&'static str, &'static str, &'static str) {
+    match client_type {
+        ClientType::Android => (
             "1d8b6e7d45233436",
             "560c52ccd288fed045859ed18bffd973",
             "android",
         ),
-        "07da50c9a0bf829f" => (
+        ClientType::AndroidB => (
             "07da50c9a0bf829f",
             "25bdede4e1581c836cab73a48790ca6e",
             "android_b",
         ),
-        "dfca71928277209b" => (
+        ClientType::AndroidHD => (
             "dfca71928277209b",
             "b5475a8825547a4fc26c7d518eaaa02e",
             "android_hd",
         ),
-        "bb3101000e232e27" => (
-            "bb3101000e232e27",
-            "36efcfed79309338ced0380abd824ac1",
-            "android_i",
-        ),
-        "178cf125136ca8ea" => (
-            "178cf125136ca8ea",
-            "34381a26236dd1171185c0beb042e1c6",
-            "android_b",
-        ),
-        "27eb53fc9058f8c3" => (
-            "27eb53fc9058f8c3",
-            "c2ed53a74eeefe3cf99fbd01d8c9c375",
-            "iphone", // ios
-        ),
-        "57263273bc6b67f6" => (
-            "57263273bc6b67f6",
-            "a0488e488d1567960d3a765e8d129f90",
-            "android",
-        ),
-        "7d336ec01856996b" => (
-            "7d336ec01856996b",
-            "a1ce6983bc89e20a36c37f40c4f1a0dd",
-            "android_b",
-        ),
-        "ae57252b0c09105d" => (
+        ClientType::AndroidI => ( // bilibili 国际版
             "ae57252b0c09105d",
             "c75875c596a69eb55bd119e74b07cfe3",
             "android_i",
         ),
-        "783bbb7264451d82" => (
-            "783bbb7264451d82",
-            "2653583c8873dea268ab9386918b1d65",
-            "android",
+        ClientType::Ios => (
+            "27eb53fc9058f8c3",
+            "c2ed53a74eeefe3cf99fbd01d8c9c375",
+            "iphone", // ios
         ),
+        ClientType::Web => (
+            "27eb53fc9058f8c3",
+            "c2ed53a74eeefe3cf99fbd01d8c9c375",
+            "iphone", // web 用的ios的appkey
+        ),
+        // ClientType::AndroidTV => todo!(), // 等会儿测试
+        // ClientType::BstarA => todo!(), // 不应该获得BstarA
         _ => (
             "783bbb7264451d82",
             "2653583c8873dea268ab9386918b1d65",
             "android",
-        ), // 默认值, 使用app端appkey
+        ),
     }
 }
-
 
 pub fn update_server<T: std::fmt::Display>(is_auto_close: bool) {
     thread::spawn(move || {
@@ -458,153 +439,153 @@ pub fn vec_to_string<T: std::fmt::Display>(vec: &Vec<T>, delimiter: &str) -> Str
 }
 
 pub fn mid_to_eid(mid: &str) -> String {
-    let mid: Vec<(char,usize)> = mid.chars().zip(0..).collect();
+    let mid: Vec<(char, usize)> = mid.chars().zip(0..).collect();
     let mut eid = Vec::with_capacity(mid.len());
-    for (single_char,index) in &mid {
+    for (single_char, index) in &mid {
         eid.push(*single_char as u8 ^ "ad1va46a7lza".as_bytes()[index % 12] as u8);
     }
     base64::encode(eid)
 }
 
 // 有些api带eid, 这时候就可以获取到mid, 此函数作为后备方案
-pub fn eid_to_mid(eid: &str) -> Result<String,()> {
-    fn mid_and_index_to_mid(mid: &u8,index: &usize) -> Result<char,()> {
+pub fn eid_to_mid(eid: &str) -> Result<String, ()> {
+    fn mid_and_index_to_mid(mid: &u8, index: &usize) -> Result<char, ()> {
         let index = index % 12;
-        match (mid,index) {
-            (81,0) => Ok('0'),
-            (84,1) => Ok('0'),
-            (1,2) => Ok('0'),
-            (70,3) => Ok('0'),
-            (81,4) => Ok('0'),
-            (4,5) => Ok('0'),
-            (6,6) => Ok('0'),
-            (81,7) => Ok('0'),
-            (7,8) => Ok('0'),
-            (92,9) => Ok('0'),
-            (74,10) => Ok('0'),
-            (81,11) => Ok('0'),
-            (80,0) => Ok('1'),
-            (85,1) => Ok('1'),
-            (0,2) => Ok('1'),
-            (71,3) => Ok('1'),
-            (80,4) => Ok('1'),
-            (5,5) => Ok('1'),
-            (7,6) => Ok('1'),
-            (80,7) => Ok('1'),
-            (6,8) => Ok('1'),
-            (93,9) => Ok('1'),
-            (75,10) => Ok('1'),
-            (80,11) => Ok('1'),
-            (83,0) => Ok('2'),
-            (86,1) => Ok('2'),
-            (3,2) => Ok('2'),
-            (68,3) => Ok('2'),
-            (83,4) => Ok('2'),
-            (6,5) => Ok('2'),
-            (4,6) => Ok('2'),
-            (83,7) => Ok('2'),
-            (5,8) => Ok('2'),
-            (94,9) => Ok('2'),
-            (72,10) => Ok('2'),
-            (83,11) => Ok('2'),
-            (82,0) => Ok('3'),
-            (87,1) => Ok('3'),
-            (2,2) => Ok('3'),
-            (69,3) => Ok('3'),
-            (82,4) => Ok('3'),
-            (7,5) => Ok('3'),
-            (5,6) => Ok('3'),
-            (82,7) => Ok('3'),
-            (4,8) => Ok('3'),
-            (95,9) => Ok('3'),
-            (73,10) => Ok('3'),
-            (82,11) => Ok('3'),
-            (85,0) => Ok('4'),
-            (80,1) => Ok('4'),
-            (5,2) => Ok('4'),
-            (66,3) => Ok('4'),
-            (85,4) => Ok('4'),
-            (0,5) => Ok('4'),
-            (2,6) => Ok('4'),
-            (85,7) => Ok('4'),
-            (3,8) => Ok('4'),
-            (88,9) => Ok('4'),
-            (78,10) => Ok('4'),
-            (85,11) => Ok('4'),
-            (84,0) => Ok('5'),
-            (81,1) => Ok('5'),
-            (4,2) => Ok('5'),
-            (67,3) => Ok('5'),
-            (84,4) => Ok('5'),
-            (1,5) => Ok('5'),
-            (3,6) => Ok('5'),
-            (84,7) => Ok('5'),
-            (2,8) => Ok('5'),
-            (89,9) => Ok('5'),
-            (79,10) => Ok('5'),
-            (84,11) => Ok('5'),
-            (87,0) => Ok('6'),
-            (82,1) => Ok('6'),
-            (7,2) => Ok('6'),
-            (64,3) => Ok('6'),
-            (87,4) => Ok('6'),
-            (2,5) => Ok('6'),
-            (0,6) => Ok('6'),
-            (87,7) => Ok('6'),
-            (1,8) => Ok('6'),
-            (90,9) => Ok('6'),
-            (76,10) => Ok('6'),
-            (87,11) => Ok('6'),
-            (86,0) => Ok('7'),
-            (83,1) => Ok('7'),
-            (6,2) => Ok('7'),
-            (65,3) => Ok('7'),
-            (86,4) => Ok('7'),
-            (3,5) => Ok('7'),
-            (1,6) => Ok('7'),
-            (86,7) => Ok('7'),
-            (0,8) => Ok('7'),
-            (91,9) => Ok('7'),
-            (77,10) => Ok('7'),
-            (86,11) => Ok('7'),
-            (89,0) => Ok('8'),
-            (92,1) => Ok('8'),
-            (9,2) => Ok('8'),
-            (78,3) => Ok('8'),
-            (89,4) => Ok('8'),
-            (12,5) => Ok('8'),
-            (14,6) => Ok('8'),
-            (89,7) => Ok('8'),
-            (15,8) => Ok('8'),
-            (84,9) => Ok('8'),
-            (66,10) => Ok('8'),
-            (89,11) => Ok('8'),
-            (88,0) => Ok('9'),
-            (93,1) => Ok('9'),
-            (8,2) => Ok('9'),
-            (79,3) => Ok('9'),
-            (88,4) => Ok('9'),
-            (13,5) => Ok('9'),
-            (15,6) => Ok('9'),
-            (88,7) => Ok('9'),
-            (14,8) => Ok('9'),
-            (85,9) => Ok('9'),
-            (67,10) => Ok('9'),
-            (88,11) => Ok('9'),
-            _ => Err(())
+        match (mid, index) {
+            (81, 0) => Ok('0'),
+            (84, 1) => Ok('0'),
+            (1, 2) => Ok('0'),
+            (70, 3) => Ok('0'),
+            (81, 4) => Ok('0'),
+            (4, 5) => Ok('0'),
+            (6, 6) => Ok('0'),
+            (81, 7) => Ok('0'),
+            (7, 8) => Ok('0'),
+            (92, 9) => Ok('0'),
+            (74, 10) => Ok('0'),
+            (81, 11) => Ok('0'),
+            (80, 0) => Ok('1'),
+            (85, 1) => Ok('1'),
+            (0, 2) => Ok('1'),
+            (71, 3) => Ok('1'),
+            (80, 4) => Ok('1'),
+            (5, 5) => Ok('1'),
+            (7, 6) => Ok('1'),
+            (80, 7) => Ok('1'),
+            (6, 8) => Ok('1'),
+            (93, 9) => Ok('1'),
+            (75, 10) => Ok('1'),
+            (80, 11) => Ok('1'),
+            (83, 0) => Ok('2'),
+            (86, 1) => Ok('2'),
+            (3, 2) => Ok('2'),
+            (68, 3) => Ok('2'),
+            (83, 4) => Ok('2'),
+            (6, 5) => Ok('2'),
+            (4, 6) => Ok('2'),
+            (83, 7) => Ok('2'),
+            (5, 8) => Ok('2'),
+            (94, 9) => Ok('2'),
+            (72, 10) => Ok('2'),
+            (83, 11) => Ok('2'),
+            (82, 0) => Ok('3'),
+            (87, 1) => Ok('3'),
+            (2, 2) => Ok('3'),
+            (69, 3) => Ok('3'),
+            (82, 4) => Ok('3'),
+            (7, 5) => Ok('3'),
+            (5, 6) => Ok('3'),
+            (82, 7) => Ok('3'),
+            (4, 8) => Ok('3'),
+            (95, 9) => Ok('3'),
+            (73, 10) => Ok('3'),
+            (82, 11) => Ok('3'),
+            (85, 0) => Ok('4'),
+            (80, 1) => Ok('4'),
+            (5, 2) => Ok('4'),
+            (66, 3) => Ok('4'),
+            (85, 4) => Ok('4'),
+            (0, 5) => Ok('4'),
+            (2, 6) => Ok('4'),
+            (85, 7) => Ok('4'),
+            (3, 8) => Ok('4'),
+            (88, 9) => Ok('4'),
+            (78, 10) => Ok('4'),
+            (85, 11) => Ok('4'),
+            (84, 0) => Ok('5'),
+            (81, 1) => Ok('5'),
+            (4, 2) => Ok('5'),
+            (67, 3) => Ok('5'),
+            (84, 4) => Ok('5'),
+            (1, 5) => Ok('5'),
+            (3, 6) => Ok('5'),
+            (84, 7) => Ok('5'),
+            (2, 8) => Ok('5'),
+            (89, 9) => Ok('5'),
+            (79, 10) => Ok('5'),
+            (84, 11) => Ok('5'),
+            (87, 0) => Ok('6'),
+            (82, 1) => Ok('6'),
+            (7, 2) => Ok('6'),
+            (64, 3) => Ok('6'),
+            (87, 4) => Ok('6'),
+            (2, 5) => Ok('6'),
+            (0, 6) => Ok('6'),
+            (87, 7) => Ok('6'),
+            (1, 8) => Ok('6'),
+            (90, 9) => Ok('6'),
+            (76, 10) => Ok('6'),
+            (87, 11) => Ok('6'),
+            (86, 0) => Ok('7'),
+            (83, 1) => Ok('7'),
+            (6, 2) => Ok('7'),
+            (65, 3) => Ok('7'),
+            (86, 4) => Ok('7'),
+            (3, 5) => Ok('7'),
+            (1, 6) => Ok('7'),
+            (86, 7) => Ok('7'),
+            (0, 8) => Ok('7'),
+            (91, 9) => Ok('7'),
+            (77, 10) => Ok('7'),
+            (86, 11) => Ok('7'),
+            (89, 0) => Ok('8'),
+            (92, 1) => Ok('8'),
+            (9, 2) => Ok('8'),
+            (78, 3) => Ok('8'),
+            (89, 4) => Ok('8'),
+            (12, 5) => Ok('8'),
+            (14, 6) => Ok('8'),
+            (89, 7) => Ok('8'),
+            (15, 8) => Ok('8'),
+            (84, 9) => Ok('8'),
+            (66, 10) => Ok('8'),
+            (89, 11) => Ok('8'),
+            (88, 0) => Ok('9'),
+            (93, 1) => Ok('9'),
+            (8, 2) => Ok('9'),
+            (79, 3) => Ok('9'),
+            (88, 4) => Ok('9'),
+            (13, 5) => Ok('9'),
+            (15, 6) => Ok('9'),
+            (88, 7) => Ok('9'),
+            (14, 8) => Ok('9'),
+            (85, 9) => Ok('9'),
+            (67, 10) => Ok('9'),
+            (88, 11) => Ok('9'),
+            _ => Err(()),
         }
     }
-    let eid: Vec<(u8,usize)> = if let Ok(value) = base64::decode(eid){
+    let eid: Vec<(u8, usize)> = if let Ok(value) = base64::decode(eid) {
         value.into_iter().zip(0..).collect()
-    }else{
+    } else {
         return Err(());
     };
     let mut mid = String::with_capacity(eid.len());
-    for (single_char,index) in &eid {
+    for (single_char, index) in &eid {
         mid.push({
             if let Ok(value) = mid_and_index_to_mid(single_char, index) {
                 value
-            }else{
+            } else {
                 return Err(());
             }
         });
