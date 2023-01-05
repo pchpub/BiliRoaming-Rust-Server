@@ -22,7 +22,7 @@ use chrono::prelude::*;
 use log::{debug, error};
 use qstring::QString;
 use rand::Rng;
-use reqwest::header::HeaderMap;
+use reqwest::header::{HeaderMap, HeaderValue};
 use serde_json::json;
 use std::string::String;
 
@@ -111,9 +111,9 @@ async fn get_upstream_bili_account_info_app(
 
     // fix -663 error
     let mut headers = HeaderMap::new();
-    headers.insert("x-bili-aurora-eid",mid_to_eid(&format!("{}", rand_num)).parse().unwrap()).unwrap();
-    headers.append("x-bili-aurora-zone","sh001".parse().unwrap());
-    headers.append("app-key","android64".parse().unwrap());
+    headers.insert("x-bili-aurora-eid",HeaderValue::from_bytes(mid_to_eid(&format!("{}", rand_num)).as_bytes()).unwrap()).unwrap();
+    headers.insert("x-bili-aurora-zone",HeaderValue::from_static("sh001"));
+    headers.insert("app-key",HeaderValue::from_static("android64"));
 
     let api = format!(
         "https://{}/x/v2/account/myinfo",
@@ -651,7 +651,7 @@ pub async fn get_upstream_bili_playurl(
             ("ts", &ts_string),
         ];
     } else {
-        query_vec = vec![
+        query_vec = vec![ // web 不正常估计是这缺少参数，先ci跑完（
             ("access_key", &params.access_key[..]),
             ("appkey", params.appkey),
             ("ep_id", params.ep_id),
