@@ -445,7 +445,7 @@ pub fn mid_to_eid(mid: &str) -> String {
     base64::encode(eid)
 }
 
-// 有些api带eid, 这时候就可以获取到mid, 此函数作为后备方案
+/// 有些api带eid, 这时候就可以获取到mid, 此函数作为后备方案
 pub fn eid_to_mid(eid: &str) -> Result<String, ()> {
     fn mid_and_index_to_mid(mid: &u8, index: &usize) -> Result<char, ()> {
         let index = index % 12;

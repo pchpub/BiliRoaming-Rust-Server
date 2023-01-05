@@ -90,7 +90,7 @@ async fn get_upstream_bili_account_info_app(
 
     let rand_num = {
         let mut rng = rand::thread_rng();
-        rng.gen_range(0..100000000)
+        rng.gen_range(1000000..100000000)
     };
     let mut req_vec = vec![ //以防万一，昨天抓了下包尽可能补全
         ("access_key", access_key),
@@ -111,7 +111,7 @@ async fn get_upstream_bili_account_info_app(
 
     // fix -663 error
     let mut headers = HeaderMap::new();
-    headers.insert("x-bili-aurora-eid",HeaderValue::from_bytes(mid_to_eid(&format!("{}", rand_num)).as_bytes()).unwrap()).unwrap();
+    headers.insert("x-bili-aurora-eid",HeaderValue::from_bytes(mid_to_eid(&format!("{}", rand_num)).as_bytes()).unwrap());
     headers.insert("x-bili-aurora-zone",HeaderValue::from_static("sh001"));
     headers.insert("app-key",HeaderValue::from_static("android64"));
 
