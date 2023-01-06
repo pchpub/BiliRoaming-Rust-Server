@@ -113,7 +113,7 @@ async fn get_upstream_bili_account_info_app(
     let mut headers = HeaderMap::new();
     headers.insert("x-bili-aurora-eid",HeaderValue::from_bytes(mid_to_eid(&format!("{}", rand_num)).as_bytes()).unwrap());
     headers.insert("x-bili-aurora-zone",HeaderValue::from_static("sh001"));
-    headers.insert("app-key",HeaderValue::from_static("android64"));
+    // headers.insert("app-key",HeaderValue::from_static("android64"));
 
     let api = format!(
         "https://{}/x/v2/account/myinfo",
@@ -651,11 +651,11 @@ pub async fn get_upstream_bili_playurl(
             ("ts", &ts_string),
         ];
     } else {
-        // &type=&otype=json&fourk=1&bvid=BV1NM4112745&ep_id=680669&fnver=0&fnval=80&session=6a76e56fc034854bf5e27da82e92544c&module=bangumi
         query_vec = vec![ // web 不正常估计是这缺少参数，先ci跑完（
             ("access_key", &params.access_key[..]),
             ("appkey", params.appkey),
             ("ep_id", params.ep_id),
+            ("module","bangumi"),
             ("fnval", "4048"),
             ("fnver", "0"),
             ("fourk", "1"),
