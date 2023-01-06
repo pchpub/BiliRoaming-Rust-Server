@@ -156,6 +156,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
         build_response!(EType::InvalidReq)
     };
     params.cid = query.get("cid").unwrap_or("");
+    params.bvid = query.get("bvid").unwrap_or("");
 
     // detect client_type
     let client_type =
@@ -166,6 +167,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
         };
     // detect other info
     params.build = query.get("build").unwrap_or("6800300");
+    params.session = query.get("session").unwrap_or("");
     params.device = query
         .get("device")
         .unwrap_or(client_type.device().unwrap_or(""));

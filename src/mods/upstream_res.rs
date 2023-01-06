@@ -651,6 +651,7 @@ pub async fn get_upstream_bili_playurl(
             ("ts", &ts_string),
         ];
     } else {
+        // &type=&otype=json&fourk=1&bvid=BV1NM4112745&ep_id=680669&fnver=0&fnval=80&session=6a76e56fc034854bf5e27da82e92544c&module=bangumi
         query_vec = vec![ // web 不正常估计是这缺少参数，先ci跑完（
             ("access_key", &params.access_key[..]),
             ("appkey", params.appkey),
@@ -658,9 +659,14 @@ pub async fn get_upstream_bili_playurl(
             ("fnval", "4048"),
             ("fnver", "0"),
             ("fourk", "1"),
+            ("otype","json"),
             ("qn", "125"),
             ("ts", &ts_string),
+            ("type","")
         ];
+    }
+    if !params.bvid.is_empty() {
+        query_vec.push(("bvid", params.bvid));
     }
     if !params.cid.is_empty() {
         query_vec.push(("cid", params.cid));

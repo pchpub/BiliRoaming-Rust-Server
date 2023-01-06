@@ -1,10 +1,10 @@
+use super::types::{EType, UpstreamRawResp};
 use deadpool_redis::{redis::cmd, Pool};
 use log::debug;
 use reqwest::header::HeaderMap;
 use std::collections::HashMap;
 use std::string::String;
 use std::time::Duration;
-use super::types::{EType, UpstreamRawResp};
 
 // 弃用 curl 原因: 不支持异步, 不支持brotli
 
@@ -220,44 +220,60 @@ pub async fn async_getwebpage(
 ) -> Result<UpstreamRawResp, EType> {
     let mut client_builder = reqwest::Client::builder();
     if proxy_open && proxy_url.len() != 0 {
-        client_builder = client_builder.proxy(
-            if proxy_url.contains("://") {
-                if let Ok(value) = reqwest::Proxy::all(proxy_url) {
-                    value
-                }else{
-                    return Err(EType::ServerReqError("服务器内部代理发生错误"));
-                }
-            }else{
-                if let Ok(value) = reqwest::Proxy::all(format!("socks5://{}", proxy_url)) {
-                    value
-                }else{
-                    return Err(EType::ServerReqError("服务器内部代理发生错误"));
-                }
+        client_builder = client_builder.proxy(if proxy_url.contains("://") {
+            if let Ok(value) = reqwest::Proxy::all(proxy_url) {
+                value
+            } else {
+                return Err(EType::ServerReqError("服务器内部代理发生错误"));
             }
-        );
+        } else {
+            if let Ok(value) = reqwest::Proxy::all(format!("socks5://{}", proxy_url)) {
+                value
+            } else {
+                return Err(EType::ServerReqError("服务器内部代理发生错误"));
+            }
+        });
     }
-    let mut client = if let Ok(value) = client_builder.brotli(true).timeout(Duration::from_secs(20)).user_agent(user_agent).build() {
+    let mut client = if let Ok(value) = client_builder
+        .brotli(true)
+        .gzip(true)
+        .deflate(true)
+        .timeout(Duration::from_secs(20))
+        .user_agent(user_agent)
+        .build()
+    {
         value
-    }else{
+    } else {
         return Err(EType::ServerReqError("Client build failed Step 1"));
-    }.get(url);
+    }
+    .get(url);
     if let Some(value) = headers {
-        client = client.headers(value).header("cookie", cookie);
+        client = client
+            .headers(value)
+            .header("cookie", cookie)
+            .header("Accept-Encoding", "gzip, deflate, br");
     }
     let rsp_raw_data = if let Ok(value) = client.send().await {
         value
-    }else{
+    } else {
         return Err(EType::ServerReqError("Client request failed Step 2"));
     };
-    debug!("[POST WEBPAGE] PROXY {proxy_open} | {proxy_url} -> STATUS CODE: {}",rsp_raw_data.status().as_u16());
+    debug!(
+        "[POST WEBPAGE] PROXY {proxy_open} | {proxy_url} -> STATUS CODE: {}",
+        rsp_raw_data.status().as_u16()
+    );
     match rsp_raw_data.status().as_u16() {
         404 | 429 => return Err(EType::ServerReqError("Client request failed Step 3")),
         _ => (),
     }
-    let rsp_headers: HashMap<String,String> = rsp_raw_data.headers().iter().map(|(k,v)| (k.as_str().to_owned(),v.to_str().unwrap_or("").to_owned())).collect();
+    let rsp_headers: HashMap<String, String> = rsp_raw_data
+        .headers()
+        .iter()
+        .map(|(k, v)| (k.as_str().to_owned(), v.to_str().unwrap_or("").to_owned()))
+        .collect();
     let rsp_body = if let Ok(value) = rsp_raw_data.text().await {
         value
-    }else{
+    } else {
         return Err(EType::ServerReqError("Client request failed Step 4"));
     };
     Ok(UpstreamRawResp::new(rsp_headers, rsp_body))
@@ -272,41 +288,56 @@ pub async fn async_postwebpage(
 ) -> Result<UpstreamRawResp, EType> {
     let mut client_builder = reqwest::Client::builder();
     if proxy_open && proxy_url.len() != 0 {
-        client_builder = client_builder.proxy(
-            if proxy_url.contains("://") {
-                if let Ok(value) = reqwest::Proxy::all(proxy_url) {
-                    value
-                }else{
-                    return Err(EType::ServerReqError("服务器内部代理发生错误"));
-                }
-            }else{
-                if let Ok(value) = reqwest::Proxy::all(format!("socks5://{}", proxy_url)) {
-                    value
-                }else{
-                    return Err(EType::ServerReqError("服务器内部代理发生错误"));
-                }
+        client_builder = client_builder.proxy(if proxy_url.contains("://") {
+            if let Ok(value) = reqwest::Proxy::all(proxy_url) {
+                value
+            } else {
+                return Err(EType::ServerReqError("服务器内部代理发生错误"));
             }
-        );
+        } else {
+            if let Ok(value) = reqwest::Proxy::all(format!("socks5://{}", proxy_url)) {
+                value
+            } else {
+                return Err(EType::ServerReqError("服务器内部代理发生错误"));
+            }
+        });
     }
-    let client = if let Ok(value) = client_builder.brotli(true).timeout(Duration::from_secs(20)).user_agent(user_agent).build() {
+    let client = if let Ok(value) = client_builder
+        .brotli(true)
+        .gzip(true)
+        .deflate(true)
+        .timeout(Duration::from_secs(20))
+        .user_agent(user_agent)
+        .build()
+    {
         value
-    }else{
+    } else {
         return Err(EType::ServerReqError("Client build failed Step 1"));
-    }.post(url).body(content.to_owned());
+    }
+    .post(url)
+    .body(content.to_owned())
+    .header("Accept-Encoding", "gzip, deflate, br");
     let rsp_raw_data = if let Ok(value) = client.send().await {
         value
-    }else{
+    } else {
         return Err(EType::ServerReqError("Client request failed Step 2"));
     };
-    debug!("[POST WEBPAGE] PROXY {proxy_open} | {proxy_url} -> STATUS CODE: {}",rsp_raw_data.status().as_u16());
+    debug!(
+        "[POST WEBPAGE] PROXY {proxy_open} | {proxy_url} -> STATUS CODE: {}",
+        rsp_raw_data.status().as_u16()
+    );
     match rsp_raw_data.status().as_u16() {
         404 | 429 => return Err(EType::ServerReqError("Client request failed Step 3")),
         _ => (),
     }
-    let rsp_headers: HashMap<String,String> = rsp_raw_data.headers().iter().map(|(k,v)| (k.as_str().to_owned(),v.to_str().unwrap_or("").to_owned())).collect();
+    let rsp_headers: HashMap<String, String> = rsp_raw_data
+        .headers()
+        .iter()
+        .map(|(k, v)| (k.as_str().to_owned(), v.to_str().unwrap_or("").to_owned()))
+        .collect();
     let rsp_body = if let Ok(value) = rsp_raw_data.text().await {
         value
-    }else{
+    } else {
         return Err(EType::ServerReqError("Client request failed Step 4"));
     };
     Ok(UpstreamRawResp::new(rsp_headers, rsp_body))

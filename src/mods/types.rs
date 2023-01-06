@@ -2050,6 +2050,7 @@ pub struct PlayurlParamsStatic {
     pub access_key: String,
     pub appkey: String,
     pub appsec: String,
+    pub bvid: String,
     pub ep_id: String,
     pub cid: String,
     pub season_id: String,
@@ -2057,6 +2058,7 @@ pub struct PlayurlParamsStatic {
     pub device: String,
     pub mobi_app: String,
     pub platform: String,
+    pub session: String,
     // extra info
     pub is_app: bool,
     pub is_tv: bool,
@@ -2099,22 +2101,27 @@ impl PlayurlParamsStatic {
             area: &self.area,
             area_num: self.area_num,
             user_agent: &self.user_agent,
+            bvid: &self.bvid,
+            session: &self.session,
             
         }
     }
 }
 // lessen usage of to_string() for better perf
+        // cid=940030727&qn=112&type=&otype=json&fourk=1&bvid=BV1NM4112745&ep_id=680669&fnver=0&fnval=80&session=6a76e56fc034854bf5e27da82e92544c&module=bangumi
 pub struct PlayurlParams<'playurl_params> {
     pub access_key: &'playurl_params str,
     pub appkey: &'playurl_params str,
     pub appsec: &'playurl_params str,
     pub ep_id: &'playurl_params str,
     pub cid: &'playurl_params str,
+    pub bvid: &'playurl_params str,
     pub season_id: &'playurl_params str,
     pub build: &'playurl_params str,
     pub device: &'playurl_params str,
     pub mobi_app: &'playurl_params str,
     pub platform: &'playurl_params str,
+    pub session: &'playurl_params str,
     // extra info
     pub is_app: bool,
     pub is_tv: bool,
@@ -2167,6 +2174,8 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl> Default
             area: "hk",
             area_num: 2,
             user_agent: "Dalvik/2.1.0 (Linux; U; Android 12; PFEM10 Build/SKQ1.211019.001)",
+            bvid: "",
+            session: "",
             //不清楚iphone的UA
         }
     }
