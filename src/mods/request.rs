@@ -259,7 +259,7 @@ pub async fn async_getwebpage(
         return Err(EType::ServerReqError("Client request failed Step 2"));
     };
     debug!(
-        "[POST WEBPAGE] PROXY {proxy_open} | {proxy_url} -> STATUS CODE: {}",
+        "[GET WEBPAGE] PROXY {proxy_open} | {proxy_url} -> STATUS CODE: {}",
         rsp_raw_data.status().as_u16()
     );
     match rsp_raw_data.status().as_u16() {
@@ -276,6 +276,7 @@ pub async fn async_getwebpage(
     } else {
         return Err(EType::ServerReqError("Client request failed Step 4"));
     };
+    debug!("[GET WEBPAGE] URL {} | DATA {}", url, rsp_body);
     Ok(UpstreamRawResp::new(rsp_headers, rsp_body))
 }
 
@@ -316,7 +317,8 @@ pub async fn async_postwebpage(
     }
     .post(url)
     .body(content.to_owned())
-    .header("Accept-Encoding", "gzip, deflate, br");
+    .header("Accept-Encoding", "gzip, deflate, br")
+    .header("Content-Type", "application/x-www-form-urlencoded");
     let rsp_raw_data = if let Ok(value) = client.send().await {
         value
     } else {

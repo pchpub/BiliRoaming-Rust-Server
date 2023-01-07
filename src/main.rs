@@ -136,13 +136,13 @@ lazy_static! {
 
 fn main() -> std::io::Result<()> {
     // 拿来生成signed_url挺方便的 此处测试用
-    // let mut req_params = "access_key=ccd0991e90ab67631b5b644142890733&appkey=783bbb7264451d82&ts=1670929680";
-    // let mut signed_params = format!("{req_params}&sign=");
-    // let mut sign = crypto::md5::Md5::new();
-    // crypto::digest::Digest::input_str(&mut sign, &format!("{req_params}2653583c8873dea268ab9386918b1d65"));
-    // let md5_sign = crypto::digest::Digest::result_str(&mut sign);
-    // signed_params.push_str(&md5_sign);
-    // println!("{signed_params}");
+    let mut req_params = "access_key=c0f90a25d31a0bf2339b8f61f14f12a1&appkey=1d8b6e7d45233436&mobi_app=android&platform=android&s_locale=zh_CN&ts=1670929666";
+    let mut signed_params = format!("{req_params}&sign=");
+    let mut sign = crypto::md5::Md5::new();
+    crypto::digest::Digest::input_str(&mut sign, &format!("{req_params}560c52ccd288fed045859ed18bffd973"));
+    let md5_sign = crypto::digest::Digest::result_str(&mut sign);
+    signed_params.push_str(&md5_sign);
+    println!("{signed_params}");
 
     // init log
     use chrono::Local;
