@@ -38,7 +38,7 @@ pub async fn get_upstream_bili_account_info(
         Err(err_type) => {
             // more method get mid
             if let Some(mid) =
-                get_upstream_bili_account_info_ak_to_mid(access_key, bili_runtime).await
+                get_upstream_bili_account_info_ak_to_mid(access_key, client_type, bili_runtime).await
             {
                 if let Some(vip_expire_time) =
                     get_upstream_bili_account_info_vip_due_date(mid, bili_runtime).await
@@ -399,9 +399,10 @@ pub async fn get_upstream_bili_account_info_vip_due_date(
     }
 }
 
-/// 仅适配粉版客户端, 其他客户端应该需要改动appkey和appsec
+/// 仅适配粉版客户端, 其他客户端未测试
 pub async fn get_upstream_bili_account_info_ak_to_mid(
     access_key: &str,
+    client_type: &ClientType,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Option<u64> {
     let ts_min_string = Local::now().timestamp().to_string();
@@ -412,7 +413,7 @@ pub async fn get_upstream_bili_account_info_ak_to_mid(
     );
     let req_vec = vec![
         ("access_key", access_key),
-        ("appkey", "1d8b6e7d45233436"),
+        ("appkey", client_type.appkey()),
         ("build", "5360000"),
         ("mobi_app", "android"),
         ("platform", "android"),
@@ -448,8 +449,7 @@ pub async fn get_upstream_bili_account_info_ak_to_mid(
         headers
     };
 
-    // 此处写死appkey和appsec
-    let (signed_api, _) = build_signed_url!(api, req_vec, "560c52ccd288fed045859ed18bffd973");
+    let (signed_api, _) = build_signed_url!(api, req_vec, client_type.appsec());
     let upstream_raw_resp = match async_getwebpage(
         &signed_api,
         bili_runtime.config.cn_proxy_accesskey_open,
