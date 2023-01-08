@@ -13,11 +13,11 @@ use super::tools::{
 };
 use super::types::{
     Area, BiliRuntime, ClientType, EType, EpInfo, FakeUA, HealthData, HealthReportType,
-    PlayurlParams, ReqType, SearchParams, UpstreamReply, UserCerinfo, UserInfo,
+    PlayurlParams, ReqType, SearchParams, UniqueId, UpstreamReply, UserCerinfo, UserInfo,
 };
 use super::user_info::get_blacklist_info;
-use crate::build_signed_url;
 use crate::mods::tools::get_mobi_app;
+use crate::{build_signed_url, random_string};
 use chrono::prelude::*;
 use log::{debug, error};
 use qstring::QString;
@@ -38,7 +38,7 @@ pub async fn get_upstream_bili_account_info(
         Err(err_type) => {
             // more method get mid
             if let Some(mid) =
-                get_upstream_bili_account_info_ak_to_mid(access_key, bili_runtime).await
+                get_upstream_bili_account_info_ak_to_mid(access_key, client_type, bili_runtime).await
             {
                 if let Some(vip_expire_time) =
                     get_upstream_bili_account_info_vip_due_date(mid, bili_runtime).await
@@ -399,18 +399,64 @@ pub async fn get_upstream_bili_account_info_vip_due_date(
     }
 }
 
+/// 仅适配粉版客户端, 其他客户端未测试
 pub async fn get_upstream_bili_account_info_ak_to_mid(
     access_key: &str,
+    client_type: &ClientType,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Option<u64> {
-    let api = format!("https://api.bilibili.com/x/member/web/account?access_key={access_key}");
+    let ts_min_string = Local::now().timestamp().to_string();
+
+    let api = format!(
+        "https://{}/x/v2/display/id",
+        bili_runtime.config.general_app_bilibili_com_proxy_api
+    );
+    let req_vec = vec![
+        ("access_key", access_key),
+        ("appkey", client_type.appkey()),
+        ("build", "5360000"),
+        ("mobi_app", "android"),
+        ("platform", "android"),
+        ("ts", &ts_min_string),
+    ];
+
+    let headers = {
+        let fake_buvid = UniqueId::UserInfoOld.buvid();
+        let mut headers = HeaderMap::new();
+        headers.insert("buvid", HeaderValue::from_str(&fake_buvid).unwrap());
+        let fake_display_id = {
+            let mut display_id = String::with_capacity(200);
+            display_id.push_str(&fake_buvid);
+            display_id.push_str("-");
+            display_id.push_str(&ts_min_string);
+            display_id
+        };
+        headers.insert(
+            "display-id",
+            HeaderValue::from_str(&fake_display_id).unwrap(),
+        );
+        // 如: Pg5oWT8NNQJmVTAEeAR4
+        headers.insert(
+            "device-id",
+            HeaderValue::from_str(&{
+                random_string!(
+                    20,
+                    b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+                )
+            })
+            .unwrap(),
+        );
+        headers
+    };
+
+    let (signed_api, _) = build_signed_url!(api, req_vec, client_type.appsec());
     let upstream_raw_resp = match async_getwebpage(
-        &api,
+        &signed_api,
         bili_runtime.config.cn_proxy_accesskey_open,
         &bili_runtime.config.cn_proxy_accesskey_url,
-        &FakeUA::Web.gen(), // 客户端请求UA和普通的不一样
+        "Mozilla/5.0 BiliDroid/5.36.0 (bbcallen@gmail.com)",
         "",
-        None,
+        Some(headers),
     )
     .await
     {
@@ -424,8 +470,11 @@ pub async fn get_upstream_bili_account_info_ak_to_mid(
     let code = upstream_raw_resp_json["code"].as_i64().unwrap_or(-999);
     match code {
         0 => {
-            if let Some(value) = upstream_raw_resp_json["data"]["mid"].as_u64() {
-                Some(value)
+            if let Some(id) = upstream_raw_resp_json["data"]["id"].as_str() {
+                let mid = id.split("-").collect::<Vec<&str>>()[0]
+                    .parse::<u64>()
+                    .unwrap();
+                Some(mid)
             } else {
                 let health_report_type = HealthReportType::Others(HealthData {
                     area_num: 0,
@@ -439,15 +488,15 @@ pub async fn get_upstream_bili_account_info_ak_to_mid(
                     },
                     is_custom: true,
                     custom_message: format!(
-                        "[GET USER_INFO][U][GET MID FUNC] 解析mid为u64失败! 上游返回: {upstream_raw_resp}"
+                        "[GET USER_INFO][U][GET MID FUNC] 解析mid失败, API异常. 上游返回: {upstream_raw_resp}"
                     ),
                 });
                 report_health(health_report_type, bili_runtime).await;
-                error!("[GET MID FUNC] AK {access_key} | 解析mid为u64失败. 上级返回内容 -> {upstream_raw_resp}");
+                error!("[GET MID FUNC] AK {access_key} | 解析mid失败, API异常. 上级返回内容 -> {upstream_raw_resp}");
                 None
             }
         }
-        -101 => {
+        -101 | 61000 => {
             // 用户未登录, 即access_key失效
             error!("[GET MID FUNC] AK {access_key} | 获取mid失败, 用户未登录. 上级返回内容 -> {upstream_raw_resp}");
             Some(0)
@@ -474,7 +523,7 @@ pub async fn get_upstream_bili_account_info_ak_to_mid(
             None
         }
         _ => {
-            error!("[GET MID FUNC] AK {access_key} | 获取mid失败, 未知的错误码. 上级返回内容 -> {upstream_raw_resp}");
+            error!("[GET MID FUNC] AK {access_key} | 获取mid失败, 致命错误. 上级返回内容 -> {upstream_raw_resp}");
             let health_report_type = HealthReportType::Others(HealthData {
                 area_num: 0,
                 is_200_ok: true,
@@ -489,7 +538,7 @@ pub async fn get_upstream_bili_account_info_ak_to_mid(
                 },
                 is_custom: true,
                 custom_message: format!(
-                    "[GET USER_INFO][U][GET MID FUNC] 获取mid失败, 未知的错误码! 上游返回: {upstream_raw_resp}"
+                    "[GET USER_INFO][U][GET MID FUNC] 获取mid失败, 致命错误. 上游返回: {upstream_raw_resp}"
                 ),
             });
             report_health(health_report_type, bili_runtime).await;
@@ -666,7 +715,7 @@ pub async fn get_upstream_bili_playurl(
                 ("fourk", "1"),
                 ("qn", "125"),
                 ("ts", &ts_string),
-                ("drm_tech_type","2"),
+                ("drm_tech_type", "2"),
                 ("support_multi_audio", "true"),
                 ("from_client", "BROWSER"),
             ];
@@ -715,8 +764,13 @@ pub async fn get_upstream_bili_playurl(
     let mut headers = HeaderMap::new();
     headers.insert("accept", "application/json".parse().unwrap());
     if !params.is_th && !params.is_app {
-        headers.insert("origin","https://www.bilibili.com".parse().unwrap());
-        headers.insert("referer", format!("https://www.bilibili.com/bangumi/play/ep{}",params.ep_id).parse().unwrap());
+        headers.insert("origin", "https://www.bilibili.com".parse().unwrap());
+        headers.insert(
+            "referer",
+            format!("https://www.bilibili.com/bangumi/play/ep{}", params.ep_id)
+                .parse()
+                .unwrap(),
+        );
         headers.insert("sec-fetch-dest", "empty".parse().unwrap());
         headers.insert("sec-fetch-mode", "cors".parse().unwrap());
         headers.insert("sec-fetch-site", "same-site".parse().unwrap());
