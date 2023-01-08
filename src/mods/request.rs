@@ -276,7 +276,7 @@ pub async fn async_getwebpage(
     } else {
         return Err(EType::ServerReqError("Client request failed Step 4"));
     };
-    debug!("[GET WEBPAGE] URL {} | DATA {}", url, rsp_body);
+    debug!("[GET WEBPAGE] URL {}", url);
     Ok(UpstreamRawResp::new(rsp_headers, rsp_body))
 }
 
