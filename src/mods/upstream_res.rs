@@ -9,11 +9,11 @@ use super::ep_info::get_ep_need_vip;
 use super::health::report_health;
 use super::request::async_getwebpage;
 use super::tools::{
-    check_vip_status_from_playurl, get_user_mid_from_playurl, remove_parameters_playurl, mid_to_eid,
+    check_vip_status_from_playurl, get_user_mid_from_playurl, mid_to_eid, remove_parameters_playurl,
 };
 use super::types::{
-    Area, BiliRuntime, EType, EpInfo, FakeUA, HealthData, HealthReportType, PlayurlParams, ReqType,
-    SearchParams, UpstreamReply, UserCerinfo, UserInfo, ClientType,
+    Area, BiliRuntime, ClientType, EType, EpInfo, FakeUA, HealthData, HealthReportType,
+    PlayurlParams, ReqType, SearchParams, UpstreamReply, UserCerinfo, UserInfo,
 };
 use super::user_info::get_blacklist_info;
 use crate::build_signed_url;
@@ -111,8 +111,11 @@ async fn get_upstream_bili_account_info_app(
 
     // fix -663 error
     let mut headers = HeaderMap::new();
-    headers.insert("x-bili-aurora-eid",HeaderValue::from_bytes(mid_to_eid(&format!("{}", rand_num)).as_bytes()).unwrap());
-    headers.insert("x-bili-aurora-zone",HeaderValue::from_static("sh001"));
+    headers.insert(
+        "x-bili-aurora-eid",
+        HeaderValue::from_bytes(mid_to_eid(&format!("{}", rand_num)).as_bytes()).unwrap(),
+    );
+    headers.insert("x-bili-aurora-zone", HeaderValue::from_static("sh001"));
     // headers.insert("app-key",HeaderValue::from_static("android64"));
 
     let api = format!(
@@ -494,6 +497,7 @@ pub async fn get_upstream_bili_account_info_ak_to_mid(
         }
     }
 }
+
 pub async fn get_upstream_blacklist_info(
     user_info: &UserInfo,
     bili_runtime: &BiliRuntime<'_>,
@@ -651,19 +655,34 @@ pub async fn get_upstream_bili_playurl(
             ("ts", &ts_string),
         ];
     } else {
-        query_vec = vec![ // web 不正常估计是这缺少参数，先ci跑完（
-            ("access_key", &params.access_key[..]),
-            ("appkey", params.appkey),
-            ("ep_id", params.ep_id),
-            ("module","bangumi"),
-            ("fnval", "4048"),
-            ("fnver", "0"),
-            ("fourk", "1"),
-            ("otype","json"),
-            ("qn", "125"),
-            ("ts", &ts_string),
-            ("type","")
-        ];
+        if params.is_app {
+            query_vec = vec![
+                ("access_key", &params.access_key[..]),
+                ("appkey", params.appkey),
+                ("ep_id", params.ep_id),
+                ("fnval", "4048"),
+                ("fnver", "0"),
+                ("fourk", "1"),
+                ("otype", "json"),
+                ("qn", "125"),
+                ("ts", &ts_string),
+                ("type", ""),
+                ("support_multi_audio", "true"),
+                ("from_client", "BROWSER"),
+            ];
+        } else {
+            query_vec = vec![
+                ("access_key", &params.access_key[..]),
+                ("appkey", params.appkey),
+                ("ep_id", params.ep_id),
+                ("fnval", "4048"),
+                ("fnver", "0"),
+                ("fourk", "1"),
+                ("otype", "json"),
+                ("qn", "125"),
+                ("ts", &ts_string),
+            ];
+        }
     }
     if !params.bvid.is_empty() {
         query_vec.push(("bvid", params.bvid));
@@ -691,6 +710,17 @@ pub async fn get_upstream_bili_playurl(
     query_vec.sort_by_key(|v| v.0);
 
     let (signed_url, _sign) = build_signed_url!(api, query_vec, params.appsec);
+
+    let mut headers = HeaderMap::new();
+    headers.insert("accept", "application/json".parse().unwrap());
+    if !params.is_th && !params.is_app {
+        headers.insert("origin","https://www.bilibili.com".parse().unwrap());
+        headers.insert("referer", format!("https://www.bilibili.com/bangumi/play/ep{}",params.ep_id).parse().unwrap());
+        headers.insert("sec-fetch-dest", "empty".parse().unwrap());
+        headers.insert("sec-fetch-mode", "cors".parse().unwrap());
+        headers.insert("sec-fetch-site", "same-site".parse().unwrap());
+    }
+
     // finish generating req params
     let upstream_raw_resp = match async_getwebpage(
         &signed_url,
@@ -698,7 +728,7 @@ pub async fn get_upstream_bili_playurl(
         proxy_url,
         params.user_agent,
         "",
-        None,
+        Some(headers),
     )
     .await
     {
