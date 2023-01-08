@@ -655,18 +655,18 @@ pub async fn get_upstream_bili_playurl(
             ("ts", &ts_string),
         ];
     } else {
-        if params.is_app {
+        if !params.is_app {
             query_vec = vec![
+                // https://api.bilibili.com/pgc/player/web/playurl?support_multi_audio=true&avid=729079597&cid=837630917&qn=112&fnver=0&fnval=4048&fourk=1&ep_id=653896&session=1d264f76c74866238ea51156dd913420&from_client=BROWSER&drm_tech_type=2
                 ("access_key", &params.access_key[..]),
                 ("appkey", params.appkey),
                 ("ep_id", params.ep_id),
                 ("fnval", "4048"),
                 ("fnver", "0"),
                 ("fourk", "1"),
-                ("otype", "json"),
                 ("qn", "125"),
                 ("ts", &ts_string),
-                ("type", ""),
+                ("drm_tech_type","2"),
                 ("support_multi_audio", "true"),
                 ("from_client", "BROWSER"),
             ];
@@ -684,25 +684,26 @@ pub async fn get_upstream_bili_playurl(
             ];
         }
     }
-    if !params.bvid.is_empty() {
-        query_vec.push(("bvid", params.bvid));
-    }
+    // if !params.bvid.is_empty() {
+    //     query_vec.push(("bvid", params.bvid));
+    // }
     if !params.cid.is_empty() {
         query_vec.push(("cid", params.cid));
     }
-    if !params.build.is_empty() {
-        query_vec.push(("build", params.build));
+    if params.is_app {
+        if !params.build.is_empty() {
+            query_vec.push(("build", params.build));
+        }
+        if !params.device.is_empty() {
+            query_vec.push(("device", params.device));
+        }
+        if !params.mobi_app.is_empty() {
+            query_vec.push(("mobi_app", params.mobi_app));
+        }
+        if !params.platform.is_empty() {
+            query_vec.push(("platform", params.platform));
+        }
     }
-    if !params.device.is_empty() {
-        query_vec.push(("device", params.device));
-    }
-    if !params.mobi_app.is_empty() {
-        query_vec.push(("mobi_app", params.mobi_app));
-    }
-    if !params.platform.is_empty() {
-        query_vec.push(("platform", params.platform));
-    }
-
     if params.is_th {
         query_vec.push(("s_locale", "zh_SG"));
     }
