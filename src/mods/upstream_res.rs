@@ -9,20 +9,20 @@ use super::ep_info::get_ep_need_vip;
 use super::health::report_health;
 use super::request::async_getwebpage;
 use super::tools::{
-    check_vip_status_from_playurl, get_user_mid_from_playurl, remove_parameters_playurl, mid_to_eid,
+    check_vip_status_from_playurl, get_user_mid_from_playurl, mid_to_eid, remove_parameters_playurl,
 };
 use super::types::{
-    Area, BiliRuntime, EType, EpInfo, FakeUA, HealthData, HealthReportType, PlayurlParams, ReqType,
-    SearchParams, UpstreamReply, UserCerinfo, UserInfo, ClientType,
+    Area, BiliRuntime, ClientType, EType, EpInfo, FakeUA, HealthData, HealthReportType,
+    PlayurlParams, ReqType, SearchParams, UpstreamReply, UserCerinfo, UserInfo,
 };
 use super::user_info::get_blacklist_info;
 use crate::build_signed_url;
 use crate::mods::tools::get_mobi_app;
 use chrono::prelude::*;
-use curl::easy::List;
 use log::{debug, error};
 use qstring::QString;
 use rand::Rng;
+use reqwest::header::{HeaderMap, HeaderValue};
 use serde_json::json;
 use std::string::String;
 
@@ -90,7 +90,7 @@ async fn get_upstream_bili_account_info_app(
 
     let rand_num = {
         let mut rng = rand::thread_rng();
-        rng.gen_range(0..100000000)
+        rng.gen_range(1000000..100000000)
     };
     let mut req_vec = vec![ //以防万一，昨天抓了下包尽可能补全
         ("access_key", access_key),
@@ -110,10 +110,13 @@ async fn get_upstream_bili_account_info_app(
     req_vec.sort_by_key(|v| v.0);
 
     // fix -663 error
-    let mut headers = List::new();
-    headers.append(&format!("x-bili-aurora-eid: {}",mid_to_eid(&format!("{}", rand_num)))).unwrap();
-    headers.append("x-bili-aurora-zone: sh001").unwrap();
-    headers.append("app-key: android64").unwrap();
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "x-bili-aurora-eid",
+        HeaderValue::from_bytes(mid_to_eid(&format!("{}", rand_num)).as_bytes()).unwrap(),
+    );
+    headers.insert("x-bili-aurora-zone", HeaderValue::from_static("sh001"));
+    // headers.insert("app-key",HeaderValue::from_static("android64"));
 
     let api = format!(
         "https://{}/x/v2/account/myinfo",
@@ -494,6 +497,7 @@ pub async fn get_upstream_bili_account_info_ak_to_mid(
         }
     }
 }
+
 pub async fn get_upstream_blacklist_info(
     user_info: &UserInfo,
     bili_runtime: &BiliRuntime<'_>,
@@ -651,33 +655,55 @@ pub async fn get_upstream_bili_playurl(
             ("ts", &ts_string),
         ];
     } else {
-        query_vec = vec![
-            ("access_key", &params.access_key[..]),
-            ("appkey", params.appkey),
-            ("ep_id", params.ep_id),
-            ("fnval", "4048"),
-            ("fnver", "0"),
-            ("fourk", "1"),
-            ("qn", "125"),
-            ("ts", &ts_string),
-        ];
+        if !params.is_app {
+            query_vec = vec![
+                // https://api.bilibili.com/pgc/player/web/playurl?support_multi_audio=true&avid=729079597&cid=837630917&qn=112&fnver=0&fnval=4048&fourk=1&ep_id=653896&session=1d264f76c74866238ea51156dd913420&from_client=BROWSER&drm_tech_type=2
+                ("access_key", &params.access_key[..]),
+                ("appkey", params.appkey),
+                ("ep_id", params.ep_id),
+                ("fnval", "4048"),
+                ("fnver", "0"),
+                ("fourk", "1"),
+                ("qn", "125"),
+                ("ts", &ts_string),
+                ("drm_tech_type","2"),
+                ("support_multi_audio", "true"),
+                ("from_client", "BROWSER"),
+            ];
+        } else {
+            query_vec = vec![
+                ("access_key", &params.access_key[..]),
+                ("appkey", params.appkey),
+                ("ep_id", params.ep_id),
+                ("fnval", "4048"),
+                ("fnver", "0"),
+                ("fourk", "1"),
+                ("otype", "json"),
+                ("qn", "125"),
+                ("ts", &ts_string),
+            ];
+        }
     }
+    // if !params.bvid.is_empty() {
+    //     query_vec.push(("bvid", params.bvid));
+    // }
     if !params.cid.is_empty() {
         query_vec.push(("cid", params.cid));
     }
-    if !params.build.is_empty() {
-        query_vec.push(("build", params.build));
+    if params.is_app {
+        if !params.build.is_empty() {
+            query_vec.push(("build", params.build));
+        }
+        if !params.device.is_empty() {
+            query_vec.push(("device", params.device));
+        }
+        if !params.mobi_app.is_empty() {
+            query_vec.push(("mobi_app", params.mobi_app));
+        }
+        if !params.platform.is_empty() {
+            query_vec.push(("platform", params.platform));
+        }
     }
-    if !params.device.is_empty() {
-        query_vec.push(("device", params.device));
-    }
-    if !params.mobi_app.is_empty() {
-        query_vec.push(("mobi_app", params.mobi_app));
-    }
-    if !params.platform.is_empty() {
-        query_vec.push(("platform", params.platform));
-    }
-
     if params.is_th {
         query_vec.push(("s_locale", "zh_SG"));
     }
@@ -685,6 +711,17 @@ pub async fn get_upstream_bili_playurl(
     query_vec.sort_by_key(|v| v.0);
 
     let (signed_url, _sign) = build_signed_url!(api, query_vec, params.appsec);
+
+    let mut headers = HeaderMap::new();
+    headers.insert("accept", "application/json".parse().unwrap());
+    if !params.is_th && !params.is_app {
+        headers.insert("origin","https://www.bilibili.com".parse().unwrap());
+        headers.insert("referer", format!("https://www.bilibili.com/bangumi/play/ep{}",params.ep_id).parse().unwrap());
+        headers.insert("sec-fetch-dest", "empty".parse().unwrap());
+        headers.insert("sec-fetch-mode", "cors".parse().unwrap());
+        headers.insert("sec-fetch-site", "same-site".parse().unwrap());
+    }
+
     // finish generating req params
     let upstream_raw_resp = match async_getwebpage(
         &signed_url,
@@ -692,7 +729,7 @@ pub async fn get_upstream_bili_playurl(
         proxy_url,
         params.user_agent,
         "",
-        None,
+        Some(headers),
     )
     .await
     {

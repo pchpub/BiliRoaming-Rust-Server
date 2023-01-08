@@ -1749,31 +1749,31 @@ fn default_i64() -> i64 {
 }
 
 pub struct UpstreamRawResp {
-    pub resp_header: Vec<u8>, //keep raw code
+    pub resp_header: HashMap<String,String>,
     pub resp_content: String,
 }
 
 impl UpstreamRawResp {
-    pub fn new(resp_content: String, resp_header: Vec<u8>) -> UpstreamRawResp {
+    pub fn new(resp_header: HashMap<String,String>, resp_content: String) -> UpstreamRawResp {
         UpstreamRawResp {
             resp_header,
             resp_content,
         }
     }
-    pub fn init_headers(&self) -> HashMap<String, String> {
-        let mut resp_header: HashMap<String, String> = HashMap::new();
-        let resp_header_raw_string =
-            unsafe { String::from_utf8_unchecked(self.resp_header.clone()) };
-        let mut resp_header_raw_string_vec: Vec<&str> = resp_header_raw_string.split("‡").collect();
-        resp_header_raw_string_vec.pop(); //去掉最后一个
-        for header_item in resp_header_raw_string_vec {
-            let header_item: Vec<&str> = header_item.split(": ").collect();
-            if header_item.len() == 2 {
-                resp_header.insert(header_item[0].to_string(), header_item[1].to_string());
-            }
-        }
-        resp_header
-    }
+    // pub fn init_headers(&self) -> HashMap<String, String> {
+    //     let mut resp_header: HashMap<String, String> = HashMap::new();
+    //     let resp_header_raw_string =
+    //         unsafe { String::from_utf8_unchecked(self.resp_header.clone()) };
+    //     let mut resp_header_raw_string_vec: Vec<&str> = resp_header_raw_string.split("‡").collect();
+    //     resp_header_raw_string_vec.pop(); //去掉最后一个
+    //     for header_item in resp_header_raw_string_vec {
+    //         let header_item: Vec<&str> = header_item.split(": ").collect();
+    //         if header_item.len() == 2 {
+    //             resp_header.insert(header_item[0].to_string(), header_item[1].to_string());
+    //         }
+    //     }
+    //     resp_header
+    // }
     pub fn json(&self) -> Option<serde_json::Value> {
         if let Ok(json_content) = serde_json::from_str(&self.resp_content) {
             Some(json_content)
@@ -1787,8 +1787,8 @@ impl UpstreamRawResp {
     // }
     pub fn read_headers(&self) -> String {
         let mut headers: Vec<String> = Vec::new();
-        let headers_hashmap = self.init_headers();
-        for (key, value) in &headers_hashmap {
+        let headers_hashmap = &self.resp_header;
+        for (key, value) in headers_hashmap {
             headers.push(key.to_owned());
             unsafe {
                 headers.push(String::from_utf8_unchecked(vec![58u8, 32]));
@@ -2050,6 +2050,7 @@ pub struct PlayurlParamsStatic {
     pub access_key: String,
     pub appkey: String,
     pub appsec: String,
+    pub bvid: String,
     pub ep_id: String,
     pub cid: String,
     pub season_id: String,
@@ -2057,6 +2058,7 @@ pub struct PlayurlParamsStatic {
     pub device: String,
     pub mobi_app: String,
     pub platform: String,
+    pub session: String,
     // extra info
     pub is_app: bool,
     pub is_tv: bool,
@@ -2099,22 +2101,27 @@ impl PlayurlParamsStatic {
             area: &self.area,
             area_num: self.area_num,
             user_agent: &self.user_agent,
+            bvid: &self.bvid,
+            session: &self.session,
             
         }
     }
 }
 // lessen usage of to_string() for better perf
+        // cid=940030727&qn=112&type=&otype=json&fourk=1&bvid=BV1NM4112745&ep_id=680669&fnver=0&fnval=80&session=6a76e56fc034854bf5e27da82e92544c&module=bangumi
 pub struct PlayurlParams<'playurl_params> {
     pub access_key: &'playurl_params str,
     pub appkey: &'playurl_params str,
     pub appsec: &'playurl_params str,
     pub ep_id: &'playurl_params str,
     pub cid: &'playurl_params str,
+    pub bvid: &'playurl_params str,
     pub season_id: &'playurl_params str,
     pub build: &'playurl_params str,
     pub device: &'playurl_params str,
     pub mobi_app: &'playurl_params str,
     pub platform: &'playurl_params str,
+    pub session: &'playurl_params str,
     // extra info
     pub is_app: bool,
     pub is_tv: bool,
@@ -2167,6 +2174,8 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl> Default
             area: "hk",
             area_num: 2,
             user_agent: "Dalvik/2.1.0 (Linux; U; Android 12; PFEM10 Build/SKQ1.211019.001)",
+            bvid: "",
+            session: "",
             //不清楚iphone的UA
         }
     }
