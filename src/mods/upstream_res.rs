@@ -576,7 +576,7 @@ pub async fn get_upstream_blacklist_info(
         match async_getwebpage(&format!("{api}{uid}"), false, "", &user_agent, "", None).await {
             Ok(data) => data,
             Err(_) => {
-                error!("[GET USER_CER_INFO][U] 服务器网络问题");
+                error!("[GET USER_CER_INFO][U] 服务器网络问题 URL {}",format!("{api}{uid}"));
                 let health_report_type = HealthReportType::Others(HealthData {
                     area_num: 0,
                     is_200_ok: false,
