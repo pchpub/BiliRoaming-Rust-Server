@@ -2482,12 +2482,16 @@ pub enum UniqueId {
 impl UniqueId {
     #[inline]
     pub fn buvid(&self) -> String {
+        /*
+        // 本来是要算drmId或者androidId的md5的, 暂时不那么做
         let unique_id = self.raw_unique_id(); // 随机生成唯一ID.
-
         let unique_id_md5 = match self {
             UniqueId::PlayurlOld | UniqueId::UserInfoOld => unique_id,
             _ => calc_md5!(unique_id),
         };
+        */
+        // 随机生成唯一ID.
+        let unique_id_md5 = self.raw_unique_id();
         //根据unique_id_md5抽取第2,12,22位, 失败则为000
         // rust没有try catch错误处理机制?
         let unique_id_md5_vc = {
@@ -2563,9 +2567,14 @@ impl UniqueId {
     pub fn raw_unique_id(&self) -> String {
         const CHARSET: &[u8] = b"0123456789abcdef";
         let range = match self {
+            UniqueId::Other(str_len) => *str_len,
+            // 勿删此处, 只是因为都是返回32位才注释
+            /*
             UniqueId::Playurl | UniqueId::Search => {
                 // XX 头的用的是安卓id, 为16位字符串
-                16
+                // 16
+                // 反正都是随机字符串, 直接随机32位
+                32
             }
             UniqueId::UserInfo => {
                 // XU头用的是drmId, 32位字符串
@@ -2575,28 +2584,8 @@ impl UniqueId {
                 // 旧版兼容, 直接返回虚假md5
                 32
             }
-            UniqueId::Other(str_len) => *str_len,
-        };
-        random_string!(range, CHARSET)
-    }
-    #[inline]
-    /// 返回虚假的指定长度随机字符串, 非MD5
-    pub fn raw_unique_id_non_md5(&self) -> String {
-        const CHARSET: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-        let range = match self {
-            UniqueId::Playurl | UniqueId::Search => {
-                // XX 头的用的是安卓id, 为16位字符串
-                16
-            }
-            UniqueId::UserInfo => {
-                // XU头用的是drmId, 32位字符串
-                32
-            }
-            UniqueId::PlayurlOld | UniqueId::UserInfoOld => {
-                // 旧版兼容, 直接返回虚假md5
-                32
-            }
-            UniqueId::Other(str_len) => *str_len,
+            */
+            _ => 32,
         };
         random_string!(range, CHARSET)
     }

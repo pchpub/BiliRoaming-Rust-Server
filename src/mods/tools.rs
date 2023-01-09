@@ -357,7 +357,6 @@ pub fn get_mobi_app(client_type: &ClientType) -> (&'static str, &'static str, &'
     }
 }
 
-
 // 砍都砍掉了
 // pub async fn update_server<T: std::fmt::Display>(is_auto_close: bool) {
 //     let update_task = tokio::task::spawn(async {
