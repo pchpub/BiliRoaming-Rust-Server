@@ -230,6 +230,7 @@ pub async fn background_task_run(
                 } else {
                     match get_upstream_bili_playurl_background(
                         &mut PlayurlParams {
+                            is_app: true,
                             access_key: &access_key,
                             ep_id: "425578",
                             area: "hk",

@@ -3,16 +3,15 @@ use super::cache::{
 };
 use super::health::report_health;
 use super::types::{
-    random_string, Area, BackgroundTaskType, BiliConfig, BiliRuntime, EType, HealthData,
-    HealthReportType, PlayurlParams, SearchParams,
+    random_string, Area, BackgroundTaskType, BiliConfig, BiliRuntime, ClientType, EType,
+    HealthData, HealthReportType, PlayurlParams, SearchParams,
 };
 use super::upstream_res::{
     get_upstream_bili_playurl, get_upstream_bili_search, get_upstream_bili_season,
     get_upstream_bili_subtitle,
 };
 use super::user_info::*;
-use crate::mods::types::ClientType;
-use crate::{build_response, build_result_response};
+use crate::{build_response, build_result_response, calc_md5};
 use actix_web::http::header::ContentType;
 use actix_web::{HttpRequest, HttpResponse};
 use async_channel::Sender;
@@ -124,9 +123,7 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
                 let mut raw_unsign_query_string = String::with_capacity(600);
                 raw_unsign_query_string.push_str(&query_string[..query_string.len() - 38]);
                 raw_unsign_query_string.push_str(params.appsec);
-                let mut new_md5 = Md5::new();
-                new_md5.input_str(&raw_unsign_query_string);
-                new_md5.result_str()
+                calc_md5!(&raw_unsign_query_string)
             } != &query_string[query_string.len() - 32..])
         {
             build_response!(EType::ReqSignError);
@@ -186,8 +183,9 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
         None => false,
     };
     // detect client accesskey type
-    let client_ak_type =
-    if let Some(value) = ClientType::init_for_ak(params.appkey, params.is_app, params.is_th, req) {
+    let client_ak_type = if let Some(value) =
+        ClientType::init_for_ak(params.appkey, params.is_app, params.is_th, req)
+    {
         value
     } else {
         ClientType::Unknown
@@ -440,13 +438,14 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         ""
     };
     //deteect client accesskey type
-    let client_type =
-        if let Some(value) = ClientType::init_for_ak(params.appkey, params.is_app, params.is_th, req) {
-            value
-        } else {
-            ClientType::Unknown
-        };
-    
+    let client_type = if let Some(value) =
+        ClientType::init_for_ak(params.appkey, params.is_app, params.is_th, req)
+    {
+        value
+    } else {
+        ClientType::Unknown
+    };
+
     //为了记录accesskey to uid
     let uid = if is_app && (!is_th) {
         match get_user_info(

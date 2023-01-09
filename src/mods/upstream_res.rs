@@ -9,14 +9,14 @@ use super::ep_info::get_ep_need_vip;
 use super::health::report_health;
 use super::request::async_getwebpage;
 use super::tools::{
-    check_vip_status_from_playurl, get_user_mid_from_playurl, mid_to_eid, remove_parameters_playurl,
+    check_vip_status_from_playurl, get_mobi_app, get_user_mid_from_playurl, mid_to_eid,
+    remove_parameters_playurl,
 };
 use super::types::{
     Area, BiliRuntime, ClientType, EType, EpInfo, FakeUA, HealthData, HealthReportType,
     PlayurlParams, ReqType, SearchParams, UniqueId, UpstreamReply, UserCerinfo, UserInfo,
 };
 use super::user_info::get_blacklist_info;
-use crate::mods::tools::get_mobi_app;
 use crate::{build_signed_url, random_string};
 use chrono::prelude::*;
 use log::{debug, error};
@@ -38,7 +38,8 @@ pub async fn get_upstream_bili_account_info(
         Err(err_type) => {
             // more method get mid
             if let Some(mid) =
-                get_upstream_bili_account_info_ak_to_mid(access_key, client_type, bili_runtime).await
+                get_upstream_bili_account_info_ak_to_mid(access_key, client_type, bili_runtime)
+                    .await
             {
                 if let Some(vip_expire_time) =
                     get_upstream_bili_account_info_vip_due_date(mid, bili_runtime).await
@@ -690,6 +691,7 @@ pub async fn get_upstream_bili_playurl(
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let ts_string = ts.to_string();
+    let fake_buvid = UniqueId::Playurl.buvid();
     let mut query_vec: Vec<(&str, &str)>;
     if params.is_tv {
         query_vec = vec![
@@ -727,7 +729,8 @@ pub async fn get_upstream_bili_playurl(
                 ("fnval", "4048"),
                 ("fnver", "0"),
                 ("fourk", "1"),
-                ("otype", "json"),
+                ("force_host", "2"),
+                ("otype", "json"), // 5.x才有此项
                 ("qn", "125"),
                 ("ts", &ts_string),
             ];
@@ -740,6 +743,7 @@ pub async fn get_upstream_bili_playurl(
         query_vec.push(("cid", params.cid));
     }
     if params.is_app {
+        query_vec.push(("buvid", &fake_buvid));
         if !params.build.is_empty() {
             query_vec.push(("build", params.build));
         }
@@ -973,13 +977,13 @@ pub async fn get_upstream_bili_playurl_background(
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let ts_string = ts.to_string();
+    let fake_buvid = UniqueId::Playurl.buvid();
     let mut query_vec: Vec<(&str, &str)>;
     if params.is_tv {
         query_vec = vec![
             ("access_key", &params.access_key[..]),
             ("appkey", params.appkey),
-            ("build", params.build),
-            ("device", params.device),
+            // ("ep_id", params.ep_id),
             ("fnval", "130"),
             ("fnver", "0"),
             ("fourk", "1"),
@@ -989,19 +993,37 @@ pub async fn get_upstream_bili_playurl_background(
             ("ts", &ts_string),
         ];
     } else {
-        query_vec = vec![
-            ("access_key", &params.access_key[..]),
-            ("appkey", params.appkey),
-            ("build", params.build),
-            ("device", params.device),
-            ("fnval", "4048"),
-            ("fnver", "0"),
-            ("fourk", "1"),
-            ("platform", "android"),
-            ("qn", "125"),
-            ("ts", &ts_string),
-        ];
+        if !params.is_app {
+            query_vec = vec![
+                // https://api.bilibili.com/pgc/player/web/playurl?support_multi_audio=true&avid=729079597&cid=837630917&qn=112&fnver=0&fnval=4048&fourk=1&ep_id=653896&session=1d264f76c74866238ea51156dd913420&from_client=BROWSER&drm_tech_type=2
+                ("access_key", &params.access_key[..]),
+                ("appkey", params.appkey),
+                // ("ep_id", params.ep_id),
+                ("fnval", "4048"),
+                ("fnver", "0"),
+                ("fourk", "1"),
+                ("qn", "125"),
+                ("ts", &ts_string),
+                ("drm_tech_type", "2"),
+                ("support_multi_audio", "true"),
+                ("from_client", "BROWSER"),
+            ];
+        } else {
+            query_vec = vec![
+                ("access_key", &params.access_key[..]),
+                ("appkey", params.appkey),
+                // ("ep_id", params.ep_id),
+                ("fnval", "4048"),
+                ("fnver", "0"),
+                ("fourk", "1"),
+                ("force_host", "2"),
+                ("otype", "json"), // 5.x才有此项
+                ("qn", "125"),
+                ("ts", &ts_string),
+            ];
+        }
     }
+    // 不可能没ep_id吧...
     if params.ep_id.is_empty() {
         return Err(EType::OtherError(-10403, "无EP_ID"));
     } else {
@@ -1009,6 +1031,21 @@ pub async fn get_upstream_bili_playurl_background(
     }
     if !params.cid.is_empty() {
         query_vec.push(("cid", params.cid));
+    }
+    if params.is_app {
+        query_vec.push(("buvid", &fake_buvid));
+        if !params.build.is_empty() {
+            query_vec.push(("build", params.build));
+        }
+        if !params.device.is_empty() {
+            query_vec.push(("device", params.device));
+        }
+        if !params.mobi_app.is_empty() {
+            query_vec.push(("mobi_app", params.mobi_app));
+        }
+        if !params.platform.is_empty() {
+            query_vec.push(("platform", params.platform));
+        }
     }
     if params.is_th {
         query_vec.push(("s_locale", "zh_SG"));
@@ -1018,6 +1055,21 @@ pub async fn get_upstream_bili_playurl_background(
 
     let (signed_url, _sign) = build_signed_url!(api, query_vec, params.appsec);
 
+    let mut headers = HeaderMap::new();
+    headers.insert("accept", "application/json".parse().unwrap());
+    if !params.is_th && !params.is_app {
+        headers.insert("origin", "https://www.bilibili.com".parse().unwrap());
+        headers.insert(
+            "referer",
+            format!("https://www.bilibili.com/bangumi/play/ep{}", params.ep_id)
+                .parse()
+                .unwrap(),
+        );
+        headers.insert("sec-fetch-dest", "empty".parse().unwrap());
+        headers.insert("sec-fetch-mode", "cors".parse().unwrap());
+        headers.insert("sec-fetch-site", "same-site".parse().unwrap());
+    }
+
     // finish generating req params
     let upstream_raw_resp = match async_getwebpage(
         &signed_url,
@@ -1025,7 +1077,7 @@ pub async fn get_upstream_bili_playurl_background(
         proxy_url,
         params.user_agent,
         "",
-        None,
+        Some(headers),
     )
     .await
     {
