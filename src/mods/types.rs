@@ -188,14 +188,14 @@ impl<'bili_runtime> BiliRuntime<'bili_runtime> {
                 // vip用户获取到playurl后刷新缓存, keys[0]就是vip的key, keys[1]就是non-vip的key
                 redis_set(self.redis_pool, &keys[0], value, expire_time).await;
                 // 双保险, 虽然实际上应该只需要`keys.len() > 1`
-                if params.is_vip && !params.ep_need_vip {
-                    let playurl_type = &params.get_playurl_type();
-                    if let Some(value) = remove_viponly_clarity(playurl_type, value).await {
-                        redis_set(self.redis_pool, &keys[1], &value, expire_time)
-                            .await
-                            .unwrap()
-                    }
-                }
+                // if params.is_vip && !params.ep_need_vip {
+                //     let playurl_type = &params.get_playurl_type();
+                //     if let Some(value) = remove_viponly_clarity(playurl_type, value).await {
+                //         redis_set(self.redis_pool, &keys[1], &value, expire_time)
+                //             .await
+                //             .unwrap()
+                //     }
+                // }
             }
             _ => {
                 for key in keys {
