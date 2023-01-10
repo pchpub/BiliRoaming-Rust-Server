@@ -301,7 +301,8 @@ impl ClientType {
         } else {
             if platform.is_empty() {
                 if is_th {
-                    Some(ClientType::Unknown)
+                    // 不应该是Unknown, 未知则默认Android
+                    Some(ClientType::Android)
                 } else {
                     ClientType::detect_client_type_from_appkey(appkey)
                 }
