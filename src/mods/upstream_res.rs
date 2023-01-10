@@ -28,7 +28,7 @@ pub fn get_upstream_bili_account_info_rec<'rec>(
     access_key: &'rec str,
     client_type: &'rec ClientType,
     bili_runtime: &'rec BiliRuntime,
-    is_rec: bool,
+    is_rec: u8,
 ) -> futures::future::BoxFuture<'rec, Result<UserInfo, EType>> {
     futures::FutureExt::boxed(async move {
         let dt = Local::now();
@@ -308,12 +308,47 @@ pub fn get_upstream_bili_account_info_rec<'rec>(
                     .as_str()
                     .unwrap_or("null")
                     .to_owned();
-                if upstream_message == "鉴权失败，请联系账号组" && !is_rec {
+                if upstream_message == "鉴权失败，请联系账号组" {
+                    let client_type_infer = match is_rec {
+                        0 => ClientType::Web,
+                        1 => ClientType::AndroidI,
+                        2 => ClientType::AndroidB,
+                        _ => {
+                            let output_struct = UserInfo {
+                                code,
+                                access_key: access_key.to_owned(),
+                                expire_time: ts + 10 * 60 * 1000, // 暂时缓存10m
+                                ..Default::default()
+                            };
+                            update_user_info_cache(&output_struct, bili_runtime).await;
+                            let health_report_type = HealthReportType::Others(HealthData {
+                                area_num: 0,
+                                is_200_ok: true,
+                                upstream_reply: UpstreamReply {
+                                    code,
+                                    message: upstream_message,
+                                    upstream_header: upstream_raw_resp.read_headers(),
+                                    proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
+                                    proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
+                                },
+                                is_custom: true,
+                                custom_message: format!(
+                                        "[GET USER_INFO][U] -663致命错误, 重试失败. 大概率出现新的appkey. 请提issue处理\nAPPKEY: {}, AK: {}, TS: {}",
+                                        appkey, access_key, ts
+                                    ),
+                            });
+                            report_health(health_report_type, bili_runtime).await;
+                            return Err(EType::OtherError(
+                                -400,
+                                "漫游被大B制裁辽, 请到漫游频道反馈",
+                            ));
+                        }
+                    };
                     if let Ok(new_value) = get_upstream_bili_account_info_rec(
                         access_key,
-                        &ClientType::Web,
+                        &client_type_infer,
                         bili_runtime,
-                        true, // 防止递归黑洞
+                        is_rec + 1, // 防止递归黑洞
                     )
                     .await
                     {
@@ -333,15 +368,15 @@ pub fn get_upstream_bili_account_info_rec<'rec>(
                     is_200_ok: true,
                     upstream_reply: UpstreamReply {
                         code,
-                        message: upstream_message,
+                        message: upstream_message.clone(),
                         upstream_header: upstream_raw_resp.read_headers(),
                         proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
                         proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
                     },
                     is_custom: true,
                     custom_message: format!(
-                            "[GET USER_INFO][U] -663错误, 大概率access_key和appkey不对应. 频繁出现此错误请提issue处理\nAPPKEY: {}, AK: {}, TS: {}",
-                            appkey, access_key, ts
+                            "[GET USER_INFO][U] 未知的-663错误类型! 请提issue处理. Upstream Reply -> {}\nAPPKEY: {}, AK: {}, TS: {}",
+                            upstream_message, appkey, access_key, ts
                         ),
                 });
                 report_health(health_report_type, bili_runtime).await;

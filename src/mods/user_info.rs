@@ -40,7 +40,7 @@ pub async fn get_user_info(
                 access_key,
                 client_type,
                 bili_runtime,
-                false,
+                0,
             )
             .await
             {
