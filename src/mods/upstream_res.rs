@@ -249,8 +249,9 @@ pub fn get_upstream_bili_account_info_rec<'rec>(
             //     );
             //     Err(EType::OtherError(-400, "可能你用的不是手机"))
             // }
-            -101 => {
+            -101 | 61000 => {
                 // -101必定是登录失效, 观察发现也只有网页端会这样, 缓存25天
+                // 61000是因为用了错误的appkey且登录失效
                 update_user_info_cache(&UserInfo::new(code, access_key, 0, 0), bili_runtime).await;
                 // update_user_info_cache(&output_struct, bili_runtime).await;
                 error!(
@@ -259,16 +260,16 @@ pub fn get_upstream_bili_account_info_rec<'rec>(
                 );
                 Err(EType::UserNotLoginedError)
             }
-            61000 => {
-                // 那先看成未登录
-                // 61000是登录失效, 观察发现后续应该无法使用这个accesskey获取到用户信息了, 缓存25天
-                update_user_info_cache(&UserInfo::new(code, access_key, 0, 0), bili_runtime).await;
-                error!(
-                "[GET USER_INFO][U] AK {} | Get UserInfo failed 61000. Maybe AK out of date. Upstream Reply -> {}",
-                access_key, upstream_raw_resp_json
-            );
-                Err(EType::UserLoginInvalid)
-            }
+            // 61000 => {
+            //     // 那先看成未登录
+            //     // 61000是登录失效, 观察发现后续应该无法使用这个accesskey获取到用户信息了, 缓存25天
+            //     update_user_info_cache(&UserInfo::new(code, access_key, 0, 0), bili_runtime).await;
+            //     error!(
+            //     "[GET USER_INFO][U] AK {} | Get UserInfo failed 61000. Maybe AK out of date. Upstream Reply -> {}",
+            //     access_key, upstream_raw_resp_json
+            // );
+            //     Err(EType::UserLoginInvalid)
+            // }
             -412 => {
                 error!(
                     "[GET USER_INFO][U] AK {} | Get UserInfo failed -412. Upstream Reply -> {}",
