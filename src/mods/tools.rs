@@ -1,4 +1,5 @@
 use super::types::{ClientType, PlayurlType};
+use base64::prelude::*;
 use log::{debug, error};
 use pcre2::bytes::Regex;
 use std::u8;
@@ -441,7 +442,7 @@ pub fn mid_to_eid(mid: &str) -> String {
     for (single_char, index) in &mid {
         eid.push(*single_char as u8 ^ "ad1va46a7lza".as_bytes()[index % 12] as u8);
     }
-    base64::encode(eid)
+    BASE64_STANDARD.encode(eid)
 }
 
 /// 有些api带eid, 这时候就可以获取到mid, 此函数作为后备方案
@@ -572,7 +573,7 @@ pub fn eid_to_mid(eid: &str) -> Result<String, ()> {
             _ => Err(()),
         }
     }
-    let eid: Vec<(u8, usize)> = if let Ok(value) = base64::decode(eid) {
+    let eid: Vec<(u8, usize)> = if let Ok(value) = BASE64_STANDARD.decode(eid) {
         value.into_iter().zip(0..).collect()
     } else {
         return Err(());
