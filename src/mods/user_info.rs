@@ -1,7 +1,7 @@
 use super::cache::{get_cached_blacklist_info, get_cached_user_info};
 use super::request::{async_getwebpage, async_postwebpage};
 use super::types::{BiliRuntime, ClientType, EType, PlayurlParams, UserInfo, UserResignInfo};
-use super::upstream_res::{get_upstream_bili_account_info, get_upstream_blacklist_info};
+use super::upstream_res::{get_upstream_bili_account_info_rec, get_upstream_blacklist_info};
 use crate::build_signed_params;
 use chrono::prelude::*;
 use log::{debug, error, info};
@@ -10,8 +10,8 @@ use log::{debug, error, info};
 #[inline]
 pub async fn get_user_info(
     access_key: &str,
-    appkey: &str,
-    is_app: bool,
+    _appkey: &str,
+    _is_app: bool,
     client_type: &ClientType,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
@@ -36,12 +36,11 @@ pub async fn get_user_info(
             }
         }
         None => {
-            match get_upstream_bili_account_info(
+            match get_upstream_bili_account_info_rec(
                 access_key,
-                appkey,
-                is_app,
                 client_type,
                 bili_runtime,
+                false,
             )
             .await
             {

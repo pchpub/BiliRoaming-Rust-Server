@@ -1,7 +1,6 @@
 use super::{
     ep_info::get_ep_need_vip,
     request::{redis_get, redis_set},
-    tools::remove_viponly_clarity,
 };
 use actix_web::HttpRequest;
 use async_channel::{Sender, TrySendError};
@@ -184,7 +183,7 @@ impl<'bili_runtime> BiliRuntime<'bili_runtime> {
         let keys = cache_type.gen_key();
         // let _new_value: &str;
         match cache_type {
-            CacheType::Playurl(params) => {
+            CacheType::Playurl(_params) => {
                 // vip用户获取到playurl后刷新缓存, keys[0]就是vip的key, keys[1]就是non-vip的key
                 redis_set(self.redis_pool, &keys[0], value, expire_time).await;
                 // 双保险, 虽然实际上应该只需要`keys.len() > 1`
