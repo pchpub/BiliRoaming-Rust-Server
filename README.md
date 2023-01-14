@@ -25,11 +25,9 @@
 
 ### 1. 使用一键安装器
 *  `wget -c -t 5 https://github.com/pchpub/biliroaming-rust-server-installer/releases/download/latest/biliroaming-rust-server-installer && sudo ./biliroaming-rust-server-installer` 
-* 按提示操作 默认回车
+* 按提示操作 默认回车 (推荐使用 auto_proxy 并输入 clash 订阅)
 * 使用 Nginx 反代安装器最后给的URL
 * Enjoy~
-## [温馨提示]
-* 推荐使用 auto_proxy 并输入 clash 订阅
 
 ### 2. 使用已编译的二进制文件
 * 下载二进制文件(使用Action编译的较新)
