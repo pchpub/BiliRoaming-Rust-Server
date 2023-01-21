@@ -136,10 +136,10 @@ lazy_static! {
 
 fn main() -> std::io::Result<()> {
     // 拿来生成signed_url挺方便的 此处测试用
-    // let mut req_params = "access_key=ccd0991e90ab67631b5b644142890733&appkey=783bbb7264451d82&ts=1670929680";
+    // let req_params = "access_key=ecffae5ae699fad2653d99120b2f5d11&appkey=27eb53fc9058f8c3&ep_id=508404&fnval=4048&fnver=0&fourk=1&otype=json&qn=112&ts=1673168456811";
     // let mut signed_params = format!("{req_params}&sign=");
     // let mut sign = crypto::md5::Md5::new();
-    // crypto::digest::Digest::input_str(&mut sign, &format!("{req_params}2653583c8873dea268ab9386918b1d65"));
+    // crypto::digest::Digest::input_str(&mut sign, &format!("{req_params}c2ed53a74eeefe3cf99fbd01d8c9c375"));
     // let md5_sign = crypto::digest::Digest::result_str(&mut sign);
     // signed_params.push_str(&md5_sign);
     // println!("{signed_params}");
@@ -171,7 +171,7 @@ fn main() -> std::io::Result<()> {
     //fs::write("config.example.yml", serde_yaml::to_string(&config).unwrap()).unwrap(); //Debug 方便生成示例配置
     let rt = tokio::runtime::Runtime::new().unwrap();
     let server_config: BiliConfig = SERVER_CONFIG.clone();
-    let woker_num = server_config.woker_num;
+    let woker_num = server_config.worker_num;
     let port = server_config.port.clone();
     let bilisender = Arc::clone(&*BILISENDER);
     {

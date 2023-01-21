@@ -47,6 +47,8 @@ pub async fn update_cached_playurl_background(
             area: params.area.to_string(),
             area_num: params.area_num,
             user_agent: params.user_agent.to_string(),
+            bvid: params.bvid.to_string(),
+            session: params.session.to_string(),
         }));
     bili_runtime.send_task(background_task_data).await
 }
@@ -228,6 +230,7 @@ pub async fn background_task_run(
                 } else {
                     match get_upstream_bili_playurl_background(
                         &mut PlayurlParams {
+                            is_app: true,
                             access_key: &access_key,
                             ep_id: "425578",
                             area: "hk",

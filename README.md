@@ -23,7 +23,14 @@
 
 ## [使用说明]
 
-### 1. 使用已编译的二进制文件
+### 1. 使用一键安装器
+*  `wget -c -t 5 https://github.com/pchpub/biliroaming-rust-server-installer/releases/download/v0.1.0/biliroaming-rust-server-installer && chmod 777 biliroaming-r
+ust-server-installer && ./biliroaming-rust-server-installer` 
+* 按提示操作 默认回车 (推荐使用 auto_proxy 并输入 clash 订阅)
+* 使用 Nginx 反代安装器最后给的URL
+* Enjoy~
+
+### 2. 使用已编译的二进制文件
 * 下载二进制文件(使用Action编译的较新)
   * 从[Release](https://github.com/pchpub/BiliRoaming-Rust-Server/releases)中下载二进制文件及 config.json
   * 从[Action](https://github.com/pchpub/BiliRoaming-Rust-Server/actions/workflows/ci.yml)中下载二进制文件,从仓库中下载config.json
@@ -36,7 +43,7 @@
 * 使用 Nginx 反代 `http://127.0.0.1:2662` (端口号可在 config.json 中修改)
 * Enjoy~
 
-### 2. 自行编译二进制文件
+### 3. 自行编译二进制文件
 *  `git clone https://github.com/pchpub/BiliRoaming-Rust-Server.git` 下载源代码
 * 安装 Cargo
   * `apt install cargo` #Ubuntu&Debian
@@ -54,7 +61,7 @@
 * 使用 Nginx 反代 `http://127.0.0.1:2662` (端口号可在 config.json 中修改)
 * Enjoy~
 
-### 3. 使用一键安装脚本
+### 4. 使用一键安装脚本
 *  `curl -sSO https://raw.githubusercontent.com/pchpub/BiliRoaming-Rust-Server/main/install.sh && sudo bash install.sh` 
 * 按提示操作 默认选y（yes）
 * 使用 Nginx 反代 `http://127.0.0.1:2662` (端口号可在 config.json 中修改)

@@ -1,7 +1,7 @@
 use super::cache::{get_cached_blacklist_info, get_cached_user_info};
 use super::request::{async_getwebpage, async_postwebpage};
-use super::types::{BiliRuntime, EType, PlayurlParams, UserInfo, UserResignInfo};
-use super::upstream_res::{get_upstream_bili_account_info, get_upstream_blacklist_info};
+use super::types::{BiliRuntime, ClientType, EType, PlayurlParams, UserInfo, UserResignInfo};
+use super::upstream_res::{get_upstream_bili_account_info_rec, get_upstream_blacklist_info};
 use crate::build_signed_params;
 use chrono::prelude::*;
 use log::{debug, error, info};
@@ -10,8 +10,9 @@ use log::{debug, error, info};
 #[inline]
 pub async fn get_user_info(
     access_key: &str,
-    appkey: &str,
-    is_app: bool,
+    _appkey: &str,
+    _is_app: bool,
+    client_type: &ClientType,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Result<UserInfo, EType> {
     match get_cached_user_info(access_key, bili_runtime).await {
@@ -35,7 +36,14 @@ pub async fn get_user_info(
             }
         }
         None => {
-            match get_upstream_bili_account_info(access_key, appkey, is_app, bili_runtime).await {
+            match get_upstream_bili_account_info_rec(
+                access_key,
+                client_type,
+                bili_runtime,
+                false,
+            )
+            .await
+            {
                 Ok(value) => {
                     debug!(
                     "[GET USER_INFO] UID {} | AK {} | U.VIP {} -> Got AK {}'s user info from upstream",
@@ -274,13 +282,20 @@ pub async fn resign_user_info(
                 .await
                 .unwrap_or((params.access_key.to_string(), 1));
 
-            let resign_user_info =
-                match get_user_info(&new_access_key, params.appkey, params.is_app, bili_runtime).await {
-                    Ok(value) => value,
-                    Err(value) => {
-                        return Err(value);
-                    }
-                };
+            let resign_user_info = match get_user_info(
+                &new_access_key,
+                params.appkey,
+                params.is_app,
+                &ClientType::Unknown,
+                bili_runtime,
+            )
+            .await
+            {
+                Ok(value) => value,
+                Err(value) => {
+                    return Err(value);
+                }
+            };
 
             if !params.is_vip && resign_user_info.is_vip() {
                 // 用户不是大会员且resign accesskey是大会员时才需要替换, 否则会因为请求过多导致黑号(已经有个人的测速的key寄了)
@@ -431,9 +446,13 @@ async fn get_accesskey_from_token(
     };
     let getpost_string =
         match async_postwebpage(&url, &content, *proxy_open, proxy_url, user_agent).await {
-            Ok(value) => value,
+            Ok(value) => value.resp_content,
             Err(_) => return None,
         };
+    debug!(
+        "[GET AK FROM TOKEN] url {} | content {} | rspdata = {}",
+        url, content, getpost_string
+    );
     let getpost_json: serde_json::Value = serde_json::from_str(&getpost_string).unwrap();
     let resign_info = UserResignInfo {
         // area_num: sub_area_num as i32,

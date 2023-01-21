@@ -1,7 +1,6 @@
 use super::{
     ep_info::get_ep_need_vip,
     request::{redis_get, redis_set},
-    tools::remove_viponly_clarity,
 };
 use actix_web::HttpRequest;
 use async_channel::{Sender, TrySendError};
@@ -20,12 +19,13 @@ use urlencoding::encode;
 pub struct BiliConfig {
     #[serde(default = "config_version")]
     pub config_version: u16,
-    #[serde(default = "default_false")]
-    pub auto_update: bool,
-    #[serde(default = "default_true")]
-    pub auto_close: bool,
+    // #[serde(default = "default_false")]
+    // pub auto_update: bool,
+    // #[serde(default = "default_true")]
+    // pub auto_close: bool,
     pub redis: String,
-    pub woker_num: usize,
+    #[serde(default = "default_usize_4")]
+    pub worker_num: usize,
     pub port: u16,
     #[serde(default = "default_false")]
     pub limit_biliroaming_version_open: bool,
@@ -184,18 +184,18 @@ impl<'bili_runtime> BiliRuntime<'bili_runtime> {
         let keys = cache_type.gen_key();
         // let _new_value: &str;
         match cache_type {
-            CacheType::Playurl(params) => {
+            CacheType::Playurl(_params) => {
                 // vip用户获取到playurl后刷新缓存, keys[0]就是vip的key, keys[1]就是non-vip的key
                 redis_set(self.redis_pool, &keys[0], value, expire_time).await;
                 // 双保险, 虽然实际上应该只需要`keys.len() > 1`
-                if params.is_vip && !params.ep_need_vip {
-                    let playurl_type = &params.get_playurl_type();
-                    if let Some(value) = remove_viponly_clarity(playurl_type, value).await {
-                        redis_set(self.redis_pool, &keys[1], &value, expire_time)
-                            .await
-                            .unwrap()
-                    }
-                }
+                // if params.is_vip && !params.ep_need_vip {
+                //     let playurl_type = &params.get_playurl_type();
+                //     if let Some(value) = remove_viponly_clarity(playurl_type, value).await {
+                //         redis_set(self.redis_pool, &keys[1], &value, expire_time)
+                //             .await
+                //             .unwrap()
+                //     }
+                // }
             }
             _ => {
                 for key in keys {
@@ -279,6 +279,36 @@ impl ClientType {
                 } else {
                     ClientType::detect_client_type_from_platform(platform)
                 }
+            }
+        }
+    }
+    pub fn init_for_ak(
+        appkey: &str,
+        is_app: bool,
+        is_th: bool,
+        req: &HttpRequest,
+    ) -> Option<ClientType> {
+        let platform = if let Some(value) = req.headers().get("platform-from-biliroaming") {
+            value.to_str().unwrap_or("")
+        } else {
+            ""
+        };
+        if appkey.is_empty() && platform.is_empty() {
+            return None;
+        }
+
+        if !is_app {
+            Some(ClientType::Web)
+        } else {
+            if platform.is_empty() {
+                if is_th {
+                    // 不应该是Unknown, 未知则默认Android
+                    Some(ClientType::Android)
+                } else {
+                    ClientType::detect_client_type_from_appkey(appkey)
+                }
+            } else {
+                ClientType::detect_client_type_from_platform(platform)
             }
         }
     }
@@ -845,6 +875,30 @@ macro_rules! build_signed_params {
         let md5_sign = crypto::digest::Digest::result_str(&mut sign);
         signed_params.push_str(&md5_sign);
         (signed_params, md5_sign)
+    }};
+}
+
+#[macro_export]
+macro_rules! calc_md5 {
+    ($input_str: expr) => {{
+        let mut md5_instance = crypto::md5::Md5::new();
+        crypto::digest::Digest::input_str(&mut md5_instance, &($input_str));
+        crypto::digest::Digest::result_str(&mut md5_instance)
+    }};
+}
+
+#[macro_export]
+/// + 随机字符串
+/// + 用例: `random_string!(range, charset)`
+macro_rules! random_string {
+    ($range: expr, $charset: expr) => {{
+        let mut rng = rand::thread_rng();
+        (0..$range)
+            .map(|_| {
+                let idx = rand::Rng::gen_range(&mut rng, 0..$charset.len());
+                $charset[idx] as char
+            })
+            .collect::<String>()
     }};
 }
 
@@ -1653,13 +1707,17 @@ fn config_version() -> u16 {
     3
 }
 
+fn default_usize_4() -> usize {
+    4
+}
+
 fn default_false() -> bool {
     false
 }
 
-fn default_true() -> bool {
-    true
-}
+// fn default_true() -> bool {
+//     true
+// }
 
 fn default_string() -> String {
     "".to_string()
@@ -1725,31 +1783,31 @@ fn default_i64() -> i64 {
 }
 
 pub struct UpstreamRawResp {
-    pub resp_header: Vec<u8>, //keep raw code
+    pub resp_header: HashMap<String, String>,
     pub resp_content: String,
 }
 
 impl UpstreamRawResp {
-    pub fn new(resp_content: String, resp_header: Vec<u8>) -> UpstreamRawResp {
+    pub fn new(resp_header: HashMap<String, String>, resp_content: String) -> UpstreamRawResp {
         UpstreamRawResp {
             resp_header,
             resp_content,
         }
     }
-    pub fn init_headers(&self) -> HashMap<String, String> {
-        let mut resp_header: HashMap<String, String> = HashMap::new();
-        let resp_header_raw_string =
-            unsafe { String::from_utf8_unchecked(self.resp_header.clone()) };
-        let mut resp_header_raw_string_vec: Vec<&str> = resp_header_raw_string.split("‡").collect();
-        resp_header_raw_string_vec.pop(); //去掉最后一个
-        for header_item in resp_header_raw_string_vec {
-            let header_item: Vec<&str> = header_item.split(": ").collect();
-            if header_item.len() == 2 {
-                resp_header.insert(header_item[0].to_string(), header_item[1].to_string());
-            }
-        }
-        resp_header
-    }
+    // pub fn init_headers(&self) -> HashMap<String, String> {
+    //     let mut resp_header: HashMap<String, String> = HashMap::new();
+    //     let resp_header_raw_string =
+    //         unsafe { String::from_utf8_unchecked(self.resp_header.clone()) };
+    //     let mut resp_header_raw_string_vec: Vec<&str> = resp_header_raw_string.split("‡").collect();
+    //     resp_header_raw_string_vec.pop(); //去掉最后一个
+    //     for header_item in resp_header_raw_string_vec {
+    //         let header_item: Vec<&str> = header_item.split(": ").collect();
+    //         if header_item.len() == 2 {
+    //             resp_header.insert(header_item[0].to_string(), header_item[1].to_string());
+    //         }
+    //     }
+    //     resp_header
+    // }
     pub fn json(&self) -> Option<serde_json::Value> {
         if let Ok(json_content) = serde_json::from_str(&self.resp_content) {
             Some(json_content)
@@ -1763,8 +1821,8 @@ impl UpstreamRawResp {
     // }
     pub fn read_headers(&self) -> String {
         let mut headers: Vec<String> = Vec::new();
-        let headers_hashmap = self.init_headers();
-        for (key, value) in &headers_hashmap {
+        let headers_hashmap = &self.resp_header;
+        for (key, value) in headers_hashmap {
             headers.push(key.to_owned());
             unsafe {
                 headers.push(String::from_utf8_unchecked(vec![58u8, 32]));
@@ -2026,6 +2084,7 @@ pub struct PlayurlParamsStatic {
     pub access_key: String,
     pub appkey: String,
     pub appsec: String,
+    pub bvid: String,
     pub ep_id: String,
     pub cid: String,
     pub season_id: String,
@@ -2033,6 +2092,7 @@ pub struct PlayurlParamsStatic {
     pub device: String,
     pub mobi_app: String,
     pub platform: String,
+    pub session: String,
     // extra info
     pub is_app: bool,
     pub is_tv: bool,
@@ -2075,22 +2135,26 @@ impl PlayurlParamsStatic {
             area: &self.area,
             area_num: self.area_num,
             user_agent: &self.user_agent,
-            
+            bvid: &self.bvid,
+            session: &self.session,
         }
     }
 }
 // lessen usage of to_string() for better perf
+// cid=940030727&qn=112&type=&otype=json&fourk=1&bvid=BV1NM4112745&ep_id=680669&fnver=0&fnval=80&session=6a76e56fc034854bf5e27da82e92544c&module=bangumi
 pub struct PlayurlParams<'playurl_params> {
     pub access_key: &'playurl_params str,
     pub appkey: &'playurl_params str,
     pub appsec: &'playurl_params str,
     pub ep_id: &'playurl_params str,
     pub cid: &'playurl_params str,
+    pub bvid: &'playurl_params str,
     pub season_id: &'playurl_params str,
     pub build: &'playurl_params str,
     pub device: &'playurl_params str,
     pub mobi_app: &'playurl_params str,
     pub platform: &'playurl_params str,
+    pub session: &'playurl_params str,
     // extra info
     pub is_app: bool,
     pub is_tv: bool,
@@ -2133,7 +2197,7 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl> Default
             season_id: "",
             build: "6800300",
             device: "",
-            mobi_app: "", 
+            mobi_app: "",
             platform: "",
             is_app: true,
             is_tv: false,
@@ -2143,6 +2207,8 @@ impl<'bili_playurl_params: 'playurl_params_impl, 'playurl_params_impl> Default
             area: "hk",
             area_num: 2,
             user_agent: "Dalvik/2.1.0 (Linux; U; Android 12; PFEM10 Build/SKQ1.211019.001)",
+            bvid: "",
+            session: "",
             //不清楚iphone的UA
         }
     }
@@ -2408,6 +2474,127 @@ pub struct Log {
     pub ep_health_log: HashMap<u8, bool>,
 }
 
+// 唯一身份识别
+pub enum UniqueId {
+    Playurl,
+    PlayurlOld,
+    Search,
+    UserInfo,
+    UserInfoOld,
+    Other(i32),
+}
+
+impl UniqueId {
+    #[inline]
+    pub fn buvid(&self) -> String {
+        /*
+        // 本来是要算drmId或者androidId的md5的, 暂时不那么做
+        let unique_id = self.raw_unique_id(); // 随机生成唯一ID.
+        let unique_id_md5 = match self {
+            UniqueId::PlayurlOld | UniqueId::UserInfoOld => unique_id,
+            _ => calc_md5!(unique_id),
+        };
+        */
+        // 随机生成唯一ID.
+        let unique_id_md5 = self.raw_unique_id();
+        //根据unique_id_md5抽取第2,12,22位, 失败则为000
+        // rust没有try catch错误处理机制?
+        let unique_id_md5_vc = {
+            let steps = || -> Option<String> {
+                let unique_id_md5_bytes = unique_id_md5.as_bytes();
+                if unique_id_md5_bytes.len() < 22 {
+                    return None;
+                }
+                let d2_bytes = vec![
+                    unique_id_md5_bytes[2],
+                    unique_id_md5_bytes[12],
+                    unique_id_md5_bytes[22],
+                ];
+                if let Ok(value) = String::from_utf8(d2_bytes.to_vec()) {
+                    Some(value)
+                } else {
+                    None
+                }
+            };
+            steps().unwrap_or(String::from("000"))
+        };
+        // 合成
+        let mut final_str_vec = vec![];
+
+        final_str_vec.push(self.prefix());
+        final_str_vec.push(&unique_id_md5_vc);
+        final_str_vec.push(&unique_id_md5);
+        final_str_vec.join("").to_ascii_uppercase()
+    }
+    // #[inline]
+    // /// 生成硬件指纹, 可用于fp_local及fp_remote. 用于获取用户信息
+    // /// 获取fp时需要buvid_local, XU作为prefix的
+    // pub fn gen_fp(&self, _client_info: &ClientInfo) -> String {
+    //     match self {
+    //         UniqueId::Playurl | UniqueId::Search => {
+    //             let mut fp_raw = String::with_capacity(100);
+    //             fp_raw.push_str(&UniqueId::Other(32).raw_unique_id());
+    //             fp_raw.push_str(&chrono::Local::now().format("%Y%m%d%H%M%S").to_string());
+    //             fp_raw.push_str(&UniqueId::Other(16).raw_unique_id());
+    //             let mut veri_code = 0;
+    //             let fp_raw_sub_str = fp_raw
+    //                 .as_bytes()
+    //                 .chunks(2)
+    //                 .map(|s| unsafe { ::std::str::from_utf8_unchecked(s) })
+    //                 .collect::<Vec<_>>();
+    //             for i in 0..({
+    //                 if fp_raw.len() < 62 {
+    //                     fp_raw.len() - fp_raw.len() % 2 // 取偶数
+    //                 } else {
+    //                     62
+    //                 }
+    //             } / 2)
+    //             {
+    //                 veri_code += i32::from_str_radix(fp_raw_sub_str[i], 16).unwrap_or(0);
+    //             }
+    //             fp_raw.push_str(&format!("{:0>2x}", ((veri_code % 256) as i8)));
+    //             fp_raw
+    //         }
+    //         _ => return "".to_string(),
+    //     }
+    // }
+    #[inline]
+    fn prefix(&self) -> &'static str {
+        match self {
+            UniqueId::Playurl | UniqueId::Search => "XX",
+            UniqueId::UserInfo => "XU",
+            UniqueId::PlayurlOld | UniqueId::UserInfoOld => "XY",
+            _ => "",
+        }
+    }
+    #[inline]
+    /// 返回虚假的指定长度随机字符串, 32位即md5, 全小写字母
+    pub fn raw_unique_id(&self) -> String {
+        const CHARSET: &[u8] = b"0123456789abcdef";
+        let range = match self {
+            UniqueId::Other(str_len) => *str_len,
+            // 勿删此处, 只是因为都是返回32位才注释
+            /*
+            UniqueId::Playurl | UniqueId::Search => {
+                // XX 头的用的是安卓id, 为16位字符串
+                // 16
+                // 反正都是随机字符串, 直接随机32位
+                32
+            }
+            UniqueId::UserInfo => {
+                // XU头用的是drmId, 32位字符串
+                32
+            }
+            UniqueId::PlayurlOld | UniqueId::UserInfoOld => {
+                // 旧版兼容, 直接返回虚假md5
+                32
+            }
+            */
+            _ => 32,
+        };
+        random_string!(range, CHARSET)
+    }
+}
 pub enum EType {
     ServerGeneral,                    //兜底错误
     ServerNetworkError(&'static str), //服务器网络错误

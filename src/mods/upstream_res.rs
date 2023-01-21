@@ -12,356 +12,381 @@ use super::tools::{
     check_vip_status_from_playurl, get_user_mid_from_playurl, remove_parameters_playurl,
 };
 use super::types::{
-    Area, BiliRuntime, EType, EpInfo, FakeUA, HealthData, HealthReportType, PlayurlParams, ReqType,
-    SearchParams, UpstreamReply, UserCerinfo, UserInfo,
+    Area, BiliRuntime, ClientType, EType, EpInfo, FakeUA, HealthData, HealthReportType,
+    PlayurlParams, ReqType, SearchParams, UniqueId, UpstreamReply, UserCerinfo, UserInfo,
 };
 use super::user_info::get_blacklist_info;
-use crate::build_signed_url;
-use crate::mods::tools::get_mobi_app;
+use crate::{build_signed_url, random_string};
 use chrono::prelude::*;
-use curl::easy::List;
-use log::{debug, error};
+use log::{debug, error, info};
 use qstring::QString;
-use rand::Rng;
+use reqwest::header::{HeaderMap, HeaderValue};
 use serde_json::json;
 use std::string::String;
 
-pub async fn get_upstream_bili_account_info(
-    access_key: &str,
-    appkey: &str,
-    is_app: bool,
-    bili_runtime: &BiliRuntime<'_>,
-) -> Result<UserInfo, EType> {
-    match get_upstream_bili_account_info_app(access_key, appkey, bili_runtime).await {
-        Ok(value) => Ok(value),
-        Err(err_type) => {
-            // more method get mid
-            if let Some(mid) =
-                get_upstream_bili_account_info_ak_to_mid(access_key, bili_runtime).await
-            {
-                if let Some(vip_expire_time) =
-                    get_upstream_bili_account_info_vip_due_date(mid, bili_runtime).await
-                {
-                    return Ok(UserInfo::new(0, access_key, mid, vip_expire_time));
-                }
+pub fn get_upstream_bili_account_info_rec<'rec>(
+    access_key: &'rec str,
+    client_type: &'rec ClientType,
+    bili_runtime: &'rec BiliRuntime,
+    is_rec: bool,
+) -> futures::future::BoxFuture<'rec, Result<UserInfo, EType>> {
+    futures::FutureExt::boxed(async move {
+        let dt = Local::now();
+        let ts = dt.timestamp_millis() as u64;
+        let ts_min = dt.timestamp() as u64;
+        let ts_min_string = ts_min.to_string();
+        // 必要信息
+        let appkey = client_type.appkey();
+        let appsec = client_type.appsec();
+
+        // 降级至build 5360000
+        // let rand_num = {
+        //     let mut rng = rand::thread_rng();
+        //     rng.gen_range(1000000..100000000)
+        // };
+
+        let mut req_vec = vec![ //以防万一，昨天抓了下包尽可能补全
+            ("access_key", access_key),
+            ("appkey", appkey),
+            ("build", "5360000"),
+            // ("buvid", &fake_buvid),
+            // ("c_locale", "zh_CN"),
+            // ("channel", "master"),
+            // ("disable_rcmd", "0"),
+            // ("local_id",&rand_string_36),
+            ("mobi_app",client_type.mobi_app().unwrap_or_else(|| {
+                error!("[GET USER_INFO][U] AK {access_key} | Detect invalid req, try default mobi_app 'android'");
+                "android"
+            })),
+            ("platform", client_type.platform().unwrap_or_else(|| {
+                error!("[GET USER_INFO][U] AK {access_key} | Detect invalid req, try default platform 'android'");
+                "android"
+            })),
+            // ("s_locale","zh_CN"),
+            // ("statistics","%7B%22appId%22%3A1%2C%22platform%22%3A3%2C%22version%22%3A%226.80.0%22%2C%22abtest%22%3A%22%22%7D"),
+            ("ts", &ts_min_string),
+        ];
+        req_vec.sort_by_key(|v| v.0);
+
+        // fix -663 error
+        // let mut headers = HeaderMap::new();
+        // headers.insert(
+        //     "x-bili-aurora-eid",
+        //     HeaderValue::from_bytes(mid_to_eid(&format!("{}", rand_num)).as_bytes()).unwrap(),
+        // );
+        // headers.insert("x-bili-aurora-zone", HeaderValue::from_static("sh001"));
+        // headers.insert("app-key",HeaderValue::from_static("android64"));
+
+        let headers = {
+            let fake_buvid = UniqueId::UserInfoOld.buvid();
+            let mut headers = HeaderMap::new();
+            headers.insert("buvid", HeaderValue::from_str(&fake_buvid).unwrap());
+            let fake_display_id = {
+                let mut display_id = String::with_capacity(100);
+                display_id.push_str("0-");
+                display_id.push_str(&ts_min_string);
+                display_id
             };
-            match err_type {
-                // web端可能appkey不可用?
-                EType::ServerReqError("-663错误, 被鼠鼠制裁了, 请稍后重试") => {
-                    if !is_app {
-                        let new_user_info = UserInfo::new_unintended_error(access_key);
-                        update_user_info_cache(&new_user_info, bili_runtime).await;
-                        Ok(new_user_info)
-                    } else {
-                        // app端再次出现-663就是寄
-                        Err(err_type)
-                    }
+            headers.insert(
+                "display-id",
+                HeaderValue::from_str(&fake_display_id).unwrap(),
+            );
+            // 如: Pg5oWT8NNQJmVTAEeAR4
+            headers.insert(
+                "device-id",
+                HeaderValue::from_str(&{
+                    random_string!(
+                        20,
+                        b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+                    )
+                })
+                .unwrap(),
+            );
+            headers
+        };
+
+        let api = format!(
+            "https://{}/x/v2/account/myinfo",
+            bili_runtime.config.general_app_bilibili_com_proxy_api
+        );
+        let (signed_url, sign) = build_signed_url!(api, req_vec, appsec);
+        let upstream_raw_resp = match async_getwebpage(
+            &signed_url,
+            bili_runtime.config.cn_proxy_accesskey_open,
+            &bili_runtime.config.cn_proxy_accesskey_url,
+            // &FakeUA::Bilibili.gen(),
+            "Mozilla/5.0 BiliDroid/5.36.0 (bbcallen@gmail.com)", // 旧版客户端请求UA固定此值
+            "",
+            Some(headers),
+        )
+        .await
+        {
+            Ok(data) => data,
+            Err(_) => {
+                error!(
+                "[GET USER_INFO][U] AK {} | Req failed. Network Problems. RAW QUERY -> TS {} Use Proxy {} - {}",
+                access_key, ts_min, bili_runtime.config.cn_proxy_accesskey_open, &bili_runtime.config.cn_proxy_accesskey_url,
+            );
+                {
+                    let health_report_type = HealthReportType::Others(HealthData {
+                        area_num: 0,
+                        is_200_ok: false,
+                        upstream_reply: UpstreamReply {
+                            proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
+                            proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
+                            ..Default::default()
+                        },
+                        is_custom: true,
+                        custom_message: "[GET USERINFO][U] 致命错误! 获取用户信息失败!".to_owned(),
+                    });
+                    report_health(health_report_type, bili_runtime).await;
                 }
-                _ => Err(err_type),
+
+                let new_user_info = UserInfo::new_unintended_error(access_key);
+                update_user_info_cache(&new_user_info, bili_runtime).await;
+                return Ok(new_user_info);
             }
-        }
-    }
-}
+        };
 
-async fn get_upstream_bili_account_info_app(
-    access_key: &str,
-    appkey: &str,
-    bili_runtime: &BiliRuntime<'_>,
-) -> Result<UserInfo, EType> {
-    let dt = Local::now();
-    let ts = dt.timestamp_millis() as u64;
-    let ts_min = dt.timestamp() as u64;
-    let ts_min_string = ts_min.to_string();
-
-    let (appkey, appsec, mobi_app) = get_mobi_app(appkey);
-
-    let rand_string_36 = {
-        let words: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-        let mut rng = rand::thread_rng();
-        (0..36)
-            .map(|_| {
-                let idx = rng.gen_range(0..words.len());
-                words[idx] as char
-            })
-            .collect::<String>()
-    };
-    let mut req_vec = vec![ //以防万一，昨天抓了下包尽可能补全
-        ("access_key", access_key),
-        ("appkey", appkey),
-        ("build", "6800300"),
-        ("buvid", &rand_string_36),
-        ("c_locale", "zh_CN"),
-        ("channel", "master"),
-        ("disable_rcmd", "0"),
-        ("local_id",&rand_string_36),
-        ("mobi_app",mobi_app),
-        ("platform", "android"),
-        ("s_locale","zh_CN"),
-        ("statistics","%7B%22appId%22%3A1%2C%22platform%22%3A3%2C%22version%22%3A%226.80.0%22%2C%22abtest%22%3A%22%22%7D"),
-        ("ts", &ts_min_string),
-    ];
-    req_vec.sort_by_key(|v| v.0);
-
-    // fix -663 error
-    let mut headers = List::new();
-    headers.append("x-bili-aurora-eid: UlMFQVcABlAH").unwrap();
-    headers.append("x-bili-aurora-zone: sh001").unwrap();
-    headers.append("app-key: android64").unwrap();
-
-    let api = format!(
-        "https://{}/x/v2/account/mine",
-        bili_runtime.config.general_app_bilibili_com_proxy_api
-    );
-    let (signed_url, sign) = build_signed_url!(api, req_vec, appsec);
-    let upstream_raw_resp = match async_getwebpage(
-        &signed_url,
-        bili_runtime.config.cn_proxy_accesskey_open,
-        &bili_runtime.config.cn_proxy_accesskey_url,
-        &FakeUA::Bilibili.gen(), // 客户端请求UA和普通的不一样
-        "",
-        Some(headers),
-    )
-    .await
-    {
-        Ok(data) => data,
-        Err(_) => {
-            error!(
-                "[GET USER_INFO][U] AK {} | Req failed. Network Problems. RAW QUERY -> APPKEY {} TS {} APPSEC {} Use Proxy {} - {}",
-                access_key, appkey, ts_min, appsec, bili_runtime.config.cn_proxy_accesskey_open, &bili_runtime.config.cn_proxy_accesskey_url,
+        let upstream_raw_resp_json = upstream_raw_resp
+            .json()
+            .unwrap_or(json!({"code": -500, "message": "[SERVER] 解析上游JSON错误"}));
+        let code = if let Some(value) = upstream_raw_resp_json["code"].as_i64() {
+            value
+        } else {
+            debug!(
+                "[GET USER_INFO][U] AK {} | Parsing Upstream reply failed, Upstream Reply -> {}",
+                access_key, upstream_raw_resp
             );
             let health_report_type = HealthReportType::Others(HealthData {
                 area_num: 0,
-                is_200_ok: false,
+                is_200_ok: true,
                 upstream_reply: UpstreamReply {
+                    upstream_header: upstream_raw_resp.read_headers(),
                     proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
                     proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
                     ..Default::default()
                 },
                 is_custom: true,
-                custom_message: "[GET USERINFO][U] 致命错误! 获取用户信息失败!".to_owned(),
+                custom_message: format!(
+                    "致命错误! 解析用户信息失败!\n上游返回: {upstream_raw_resp}"
+                ),
             });
             report_health(health_report_type, bili_runtime).await;
-            let new_user_info = UserInfo::new_unintended_error(access_key);
-            update_user_info_cache(&new_user_info, bili_runtime).await;
-            return Ok(new_user_info);
-        }
-    };
+            return Err(EType::ServerReqError("解析用户信息失败"));
+        };
 
-    let upstream_raw_resp_json = upstream_raw_resp
-        .json()
-        .unwrap_or(json!({"code": -500, "message": "[SERVER] 解析上游JSON错误"}));
-    let code = if let Some(value) = upstream_raw_resp_json["code"].as_i64() {
-        value
-    } else {
-        debug!(
-            "[GET USER_INFO][U] AK {} | Parsing Upstream reply failed, Upstream Reply -> {}",
-            access_key, upstream_raw_resp
-        );
-        let health_report_type = HealthReportType::Others(HealthData {
-            area_num: 0,
-            is_200_ok: true,
-            upstream_reply: UpstreamReply {
-                upstream_header: upstream_raw_resp.read_headers(),
-                proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
-                proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
-                ..Default::default()
-            },
-            is_custom: true,
-            custom_message: format!("致命错误! 解析用户信息失败!\n上游返回: {upstream_raw_resp}"),
-        });
-        report_health(health_report_type, bili_runtime).await;
-        return Err(EType::ServerReqError("解析用户信息失败"));
-    };
-
-    match code {
-        0 => {
-            if upstream_raw_resp_json["data"]["mid"].as_u64().unwrap_or(0) == 0 {
-                // accesskey失效时mid为0, 缓存25d
+        match code {
+            0 => {
+                if upstream_raw_resp_json["data"]["mid"].as_u64().unwrap_or(0) == 0 {
+                    // accesskey失效时mid为0, 缓存25d
+                    update_user_info_cache(&UserInfo::new(code, access_key, 0, 0), bili_runtime)
+                        .await;
+                    error!(
+                        "[GET USER_INFO][U] AK {} | Get UserInfo failed -101. Upstream Reply -> {}",
+                        access_key, upstream_raw_resp_json
+                    );
+                    Err(EType::UserNotLoginedError)
+                } else {
+                    let vip_expire_time = upstream_raw_resp_json["data"]["vip"]["due_date"]
+                        .as_u64()
+                        .unwrap();
+                    let output_struct = UserInfo {
+                        code: 0,
+                        access_key: String::from(access_key),
+                        uid: upstream_raw_resp_json["data"]["mid"].as_u64().unwrap(),
+                        vip_expire_time,
+                        expire_time: {
+                            if ts < vip_expire_time
+                                && vip_expire_time < ts + 25 * 24 * 60 * 60 * 1000
+                            {
+                                vip_expire_time
+                            } else {
+                                ts + 25 * 24 * 60 * 60 * 1000
+                            }
+                        }, //用户状态25天强制更新
+                    };
+                    update_user_info_cache(&output_struct, bili_runtime).await;
+                    Ok(output_struct)
+                }
+            }
+            -3 => {
+                // 不应该出现签名错误, 除非B站更改签名算法
+                error!("[GET USER_INFO][U] AK {} | Get UserInfo failed -3. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {:?}. Upstream Reply -> {}",
+                    access_key, appkey, ts_min, appsec, sign, upstream_raw_resp_json
+                );
+                Ok(UserInfo::new_unintended_error(access_key))
+            }
+            -400 | -404 => {
+                error!("[GET USER_INFO][U] AK {} -> Get UserInfo failed. Invalid APPKEY -> APPKEY {} | TS {} | APPSEC {}. Upstream Reply -> {}",
+                        access_key, appkey, ts_min, appsec, upstream_raw_resp
+                    );
+                let health_report_type = HealthReportType::Others(HealthData {
+                area_num: 0,
+                is_200_ok: true,
+                upstream_reply: UpstreamReply {
+                    code,
+                    message: upstream_raw_resp_json["message"]
+                        .as_str()
+                        .unwrap_or("null")
+                        .to_owned(),
+                    upstream_header: upstream_raw_resp.read_headers(),
+                    proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
+                    proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
+                },
+                is_custom: true,
+                custom_message: format!(
+                        "[GET USER_INFO][U] 致命错误: 不能用于获取用户信息的APPKEY {appkey} - APPSEC {appsec}"
+                    ),
+                });
+                report_health(health_report_type, bili_runtime).await;
+                Err(EType::ServerReqError("APPKEY失效"))
+            }
+            // -400 => {
+            //     // 已经指定appkey, 不应当出现此错误
+            //     error!("[GET USER_INFO][U] AK {} | Get UserInfo failed -400. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {}. Upstream Reply -> {}",
+            //         access_key, appkey, ts_min, appsec, sign, upstream_raw_resp_json
+            //     );
+            //     Err(EType::OtherError(-400, "可能你用的不是手机"))
+            // }
+            -101 | 61000 => {
+                // -101必定是登录失效, 观察发现也只有网页端会这样, 缓存25天
+                // 61000是因为用了错误的appkey且登录失效
                 update_user_info_cache(&UserInfo::new(code, access_key, 0, 0), bili_runtime).await;
+                // update_user_info_cache(&output_struct, bili_runtime).await;
                 error!(
                     "[GET USER_INFO][U] AK {} | Get UserInfo failed -101. Upstream Reply -> {}",
                     access_key, upstream_raw_resp_json
                 );
                 Err(EType::UserNotLoginedError)
-            } else {
-                let vip_expire_time = upstream_raw_resp_json["data"]["vip"]["due_date"]
-                    .as_u64()
-                    .unwrap();
+            }
+            // 61000 => {
+            //     // 那先看成未登录
+            //     // 61000是登录失效, 观察发现后续应该无法使用这个accesskey获取到用户信息了, 缓存25天
+            //     update_user_info_cache(&UserInfo::new(code, access_key, 0, 0), bili_runtime).await;
+            //     error!(
+            //     "[GET USER_INFO][U] AK {} | Get UserInfo failed 61000. Maybe AK out of date. Upstream Reply -> {}",
+            //     access_key, upstream_raw_resp_json
+            // );
+            //     Err(EType::UserLoginInvalid)
+            // }
+            -412 => {
+                error!(
+                    "[GET USER_INFO][U] AK {} | Get UserInfo failed -412. Upstream Reply -> {}",
+                    access_key, upstream_raw_resp_json
+                );
+                let health_report_type = HealthReportType::Others(HealthData {
+                    area_num: 0,
+                    is_200_ok: true,
+                    upstream_reply: UpstreamReply {
+                        code: -412,
+                        message: upstream_raw_resp_json["message"]
+                            .as_str()
+                            .unwrap_or("null")
+                            .to_owned(),
+                        upstream_header: upstream_raw_resp.read_headers(),
+                        proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
+                        proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
+                    },
+                    is_custom: true,
+                    custom_message: format!(
+                        "[GET USER_INFO][U] 致命错误! 机子-412喵! 上游返回: {upstream_raw_resp}"
+                    ),
+                });
+                report_health(health_report_type, bili_runtime).await;
+                Err(EType::ServerFatalError)
+            }
+            -663 => {
+                // 已知的-663错误的原因
+                // 1. access_key和appkey不对应, message为"鉴权失败，请联系账号组"
+                // 2. api已经弃用, meassage为"-663"
+                error!(
+                    "[GET USER_INFO][U] AK {} | Get UserInfo failed -663. Using appkey: {}. Upstream Reply -> {}",
+                    access_key, appkey, upstream_raw_resp_json
+                );
+                let upstream_message = upstream_raw_resp_json["message"]
+                    .as_str()
+                    .unwrap_or("null")
+                    .to_owned();
+                if upstream_message == "鉴权失败，请联系账号组" && !is_rec {
+                    if let Ok(new_value) = get_upstream_bili_account_info_rec(
+                        access_key,
+                        &ClientType::Web,
+                        bili_runtime,
+                        true, // 防止递归黑洞
+                    )
+                    .await
+                    {
+                        info!("[GET USER_INFO][U] AK {access_key} | AK异常, 疑似Web脚本生成, 重试成功.");
+                        return Ok(new_value);
+                    }
+                }
                 let output_struct = UserInfo {
-                    code: 0,
-                    access_key: String::from(access_key),
-                    uid: upstream_raw_resp_json["data"]["mid"].as_u64().unwrap(),
-                    vip_expire_time,
-                    expire_time: {
-                        if ts < vip_expire_time && vip_expire_time < ts + 25 * 24 * 60 * 60 * 1000 {
-                            vip_expire_time
-                        } else {
-                            ts + 25 * 24 * 60 * 60 * 1000
-                        }
-                    }, //用户状态25天强制更新
+                    code,
+                    access_key: access_key.to_owned(),
+                    expire_time: ts + 10 * 60 * 1000, // 暂时缓存10m
+                    ..Default::default()
                 };
                 update_user_info_cache(&output_struct, bili_runtime).await;
-                Ok(output_struct)
+                let health_report_type = HealthReportType::Others(HealthData {
+                    area_num: 0,
+                    is_200_ok: true,
+                    upstream_reply: UpstreamReply {
+                        code,
+                        message: upstream_message,
+                        upstream_header: upstream_raw_resp.read_headers(),
+                        proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
+                        proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
+                    },
+                    is_custom: true,
+                    custom_message: format!(
+                            "[GET USER_INFO][U] -663错误, 大概率access_key和appkey不对应. 频繁出现此错误请提issue处理\nAPPKEY: {}, AK: {}, TS: {}",
+                            appkey, access_key, ts
+                        ),
+                });
+                report_health(health_report_type, bili_runtime).await;
+                // Err(EType::ServerReqError("-663错误, 请检查access_key是否由对应appkey生成"))
+                Err(EType::OtherUpstreamError(
+                    -663,
+                    "-663, 请稍后重试".to_owned(),
+                ))
+            }
+            _ => {
+                error!("[GET USER_INFO][U] AK {} -> Get UserInfo failed. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {:?}. Upstream Reply -> {}",
+                access_key, appkey, ts_min, appsec, sign, upstream_raw_resp_json
+            );
+                error!("[GET USER_INFO][U] URL {}", signed_url);
+                // 不采用常规方法更新, 仅限用于未知的错误码下的刷新
+                update_cached_user_info_background(access_key.to_owned(), bili_runtime).await;
+                let health_report_type = HealthReportType::Others(HealthData {
+                    area_num: 0,
+                    is_200_ok: true,
+                    upstream_reply: UpstreamReply {
+                        code,
+                        message: upstream_raw_resp_json["message"]
+                            .as_str()
+                            .unwrap_or("null")
+                            .to_owned(),
+                        upstream_header: upstream_raw_resp.read_headers(),
+                        proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
+                        proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
+                    },
+                    is_custom: true,
+                    custom_message: format!(
+                        "[GET USER_INFO][U] 致命错误! 未知的错误码! 上游返回: {upstream_raw_resp}"
+                    ),
+                });
+                report_health(health_report_type, bili_runtime).await;
+                Err(EType::OtherUpstreamError(
+                    code,
+                    upstream_raw_resp_json["message"]
+                        .as_str()
+                        .unwrap_or("NULL")
+                        .to_string(),
+                ))
             }
         }
-        -3 => {
-            // 不应该出现签名错误, 除非B站更改签名算法
-            error!("[GET USER_INFO][U] AK {} | Get UserInfo failed -3. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {:?}. Upstream Reply -> {}",
-                access_key, appkey, ts_min, appsec, sign, upstream_raw_resp_json
-            );
-            Ok(UserInfo::new_unintended_error(access_key))
-        }
-        -400 | -404 => {
-            error!("[GET USER_INFO][U] AK {} -> Get UserInfo failed. Invalid APPKEY -> APPKEY {} | TS {} | APPSEC {}. Upstream Reply -> {}",
-                        access_key, appkey, ts_min, appsec, upstream_raw_resp
-                    );
-            let health_report_type = HealthReportType::Others(HealthData {
-                area_num: 0,
-                is_200_ok: true,
-                upstream_reply: UpstreamReply {
-                    code,
-                    message: upstream_raw_resp_json["message"]
-                        .as_str()
-                        .unwrap_or("null")
-                        .to_owned(),
-                    upstream_header: upstream_raw_resp.read_headers(),
-                    proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
-                    proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
-                },
-                is_custom: true,
-                custom_message: format!(
-                    "[GET USER_INFO][U] 致命错误: 不能用于获取用户信息的APPKEY {appkey} - APPSEC {appsec}"
-                ),
-            });
-            report_health(health_report_type, bili_runtime).await;
-            Err(EType::ServerReqError("APPKEY失效"))
-        }
-        // -400 => {
-        //     // 已经指定appkey, 不应当出现此错误
-        //     error!("[GET USER_INFO][U] AK {} | Get UserInfo failed -400. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {}. Upstream Reply -> {}",
-        //         access_key, appkey, ts_min, appsec, sign, upstream_raw_resp_json
-        //     );
-        //     Err(EType::OtherError(-400, "可能你用的不是手机"))
-        // }
-        -101 => {
-            // let output_struct = UserInfo {
-            //     code,
-            //     access_key: access_key.to_owned(),
-            //     expire_time: ts + 1 * 60 * 60 * 1000,
-            //     ..Default::default()
-            // };
-            // -101必定是登录失效, 观察发现也只有网页端会这样, 缓存25天
-            update_user_info_cache(&UserInfo::new(code, access_key, 0, 0), bili_runtime).await;
-            // update_user_info_cache(&output_struct, bili_runtime).await;
-            error!(
-                "[GET USER_INFO][U] AK {} | Get UserInfo failed -101. Upstream Reply -> {}",
-                access_key, upstream_raw_resp_json
-            );
-            Err(EType::UserNotLoginedError)
-        }
-        61000 => {
-            // 那先看成未登录
-            // 61000是登录失效, 观察发现后续应该无法使用这个accesskey获取到用户信息了, 缓存25天
-            update_user_info_cache(&UserInfo::new(code, access_key, 0, 0), bili_runtime).await;
-            error!(
-                "[GET USER_INFO][U] AK {} | Get UserInfo failed 61000. Maybe AK out of date. Upstream Reply -> {}",
-                access_key, upstream_raw_resp_json
-            );
-            Err(EType::UserLoginInvalid)
-        }
-        -412 => {
-            error!(
-                "[GET USER_INFO][U] AK {} | Get UserInfo failed -412. Upstream Reply -> {}",
-                access_key, upstream_raw_resp_json
-            );
-            let health_report_type = HealthReportType::Others(HealthData {
-                area_num: 0,
-                is_200_ok: true,
-                upstream_reply: UpstreamReply {
-                    code: -412,
-                    message: upstream_raw_resp_json["message"]
-                        .as_str()
-                        .unwrap_or("null")
-                        .to_owned(),
-                    upstream_header: upstream_raw_resp.read_headers(),
-                    proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
-                    proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
-                },
-                is_custom: true,
-                custom_message: format!(
-                    "[GET USER_INFO][U] 致命错误! 机子-412喵! 上游返回: {upstream_raw_resp}"
-                ),
-            });
-            report_health(health_report_type, bili_runtime).await;
-            Err(EType::ServerFatalError)
-        }
-        -663 => {
-            // app端的-663不应该.
-            error!(
-                "[GET USER_INFO][U] AK {} | Get UserInfo failed -663. Upstream Reply -> {}",
-                access_key, upstream_raw_resp_json
-            );
-            let output_struct = UserInfo {
-                code,
-                access_key: access_key.to_owned(),
-                expire_time: ts + 10 * 60 * 1000, // 暂时缓存10m
-                ..Default::default()
-            };
-            update_user_info_cache(&output_struct, bili_runtime).await;
-            let health_report_type = HealthReportType::Others(HealthData {
-                area_num: 0,
-                is_200_ok: true,
-                upstream_reply: UpstreamReply {
-                    code,
-                    message: upstream_raw_resp_json["message"].as_str().unwrap_or("null").to_owned(),
-                    upstream_header: upstream_raw_resp.read_headers(),
-                    proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
-                    proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
-                },
-                is_custom: true,
-                custom_message: format!(
-                    "[GET USER_INFO][U] 致命错误: 上游返回-663! 正在尝试修复\nDevice: {}, APPKEY: {}, AK: {}, TS: {}",
-                    mobi_app, appkey, access_key, ts
-                ),
-            });
-            report_health(health_report_type, bili_runtime).await;
-            Err(EType::ServerReqError("-663错误, 被鼠鼠制裁了, 请稍后重试"))
-        }
-        _ => {
-            error!("[GET USER_INFO][U] AK {} -> Get UserInfo failed. REQ Params -> APPKEY {} | TS {} | APPSEC {} | SIGN {:?}. Upstream Reply -> {}",
-                access_key, appkey, ts_min, appsec, sign, upstream_raw_resp_json
-            );
-            error!("[GET USER_INFO][U] URL {}", signed_url);
-            // 不采用常规方法更新, 仅限用于未知的错误码下的刷新
-            update_cached_user_info_background(access_key.to_owned(), bili_runtime).await;
-            let health_report_type = HealthReportType::Others(HealthData {
-                area_num: 0,
-                is_200_ok: true,
-                upstream_reply: UpstreamReply {
-                    code,
-                    message: upstream_raw_resp_json["message"]
-                        .as_str()
-                        .unwrap_or("null")
-                        .to_owned(),
-                    upstream_header: upstream_raw_resp.read_headers(),
-                    proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
-                    proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
-                },
-                is_custom: true,
-                custom_message: format!(
-                    "[GET USER_INFO][U] 致命错误! 未知的错误码! 上游返回: {upstream_raw_resp}"
-                ),
-            });
-            report_health(health_report_type, bili_runtime).await;
-            Err(EType::OtherUpstreamError(
-                code,
-                upstream_raw_resp_json["message"]
-                    .as_str()
-                    .unwrap_or("NULL")
-                    .to_string(),
-            ))
-        }
-    }
+    })
 }
 
 pub async fn get_upstream_bili_account_info_vip_due_date(
@@ -395,18 +420,66 @@ pub async fn get_upstream_bili_account_info_vip_due_date(
     }
 }
 
+/// 仅适配粉版客户端, 其他客户端未测试
+/// 需要使用此法刷新的, 大概率是web端的key
 pub async fn get_upstream_bili_account_info_ak_to_mid(
     access_key: &str,
+    client_type: &ClientType,
     bili_runtime: &BiliRuntime<'_>,
 ) -> Option<u64> {
-    let api = format!("https://api.bilibili.com/x/member/web/account?access_key={access_key}");
+    let ts_min_string = Local::now().timestamp().to_string();
+    let appkey = client_type.appkey();
+    let appsec = client_type.appsec();
+
+    let api = format!(
+        "https://{}/x/v2/display/id",
+        bili_runtime.config.general_app_bilibili_com_proxy_api
+    );
+    let req_vec = vec![
+        ("access_key", access_key),
+        ("appkey", appkey),
+        ("build", "5360000"),
+        ("mobi_app", "android"),
+        ("platform", "android"),
+        ("ts", &ts_min_string),
+    ];
+
+    let headers = {
+        let fake_buvid = UniqueId::UserInfoOld.buvid();
+        let mut headers = HeaderMap::new();
+        headers.insert("buvid", HeaderValue::from_str(&fake_buvid).unwrap());
+        let fake_display_id = {
+            let mut display_id = String::with_capacity(100);
+            display_id.push_str("0-");
+            display_id.push_str(&ts_min_string);
+            display_id
+        };
+        headers.insert(
+            "display-id",
+            HeaderValue::from_str(&fake_display_id).unwrap(),
+        );
+        // 如: Pg5oWT8NNQJmVTAEeAR4
+        headers.insert(
+            "device-id",
+            HeaderValue::from_str(&{
+                random_string!(
+                    20,
+                    b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+                )
+            })
+            .unwrap(),
+        );
+        headers
+    };
+
+    let (signed_api, _) = build_signed_url!(api, req_vec, appsec);
     let upstream_raw_resp = match async_getwebpage(
-        &api,
+        &signed_api,
         bili_runtime.config.cn_proxy_accesskey_open,
         &bili_runtime.config.cn_proxy_accesskey_url,
-        &FakeUA::Web.gen(), // 客户端请求UA和普通的不一样
+        "Mozilla/5.0 BiliDroid/5.36.0 (bbcallen@gmail.com)",
         "",
-        None,
+        Some(headers),
     )
     .await
     {
@@ -420,8 +493,16 @@ pub async fn get_upstream_bili_account_info_ak_to_mid(
     let code = upstream_raw_resp_json["code"].as_i64().unwrap_or(-999);
     match code {
         0 => {
-            if let Some(value) = upstream_raw_resp_json["data"]["mid"].as_u64() {
-                Some(value)
+            if let Some(id) = upstream_raw_resp_json["data"]["id"].as_str() {
+                let mid = id
+                    .split("-")
+                    .map(|split_part| split_part.parse::<i64>().unwrap_or(0))
+                    .collect::<Vec<i64>>();
+                if mid[0] > 0 {
+                    Some(mid[0] as u64)
+                } else {
+                    None
+                }
             } else {
                 let health_report_type = HealthReportType::Others(HealthData {
                     area_num: 0,
@@ -435,15 +516,15 @@ pub async fn get_upstream_bili_account_info_ak_to_mid(
                     },
                     is_custom: true,
                     custom_message: format!(
-                        "[GET USER_INFO][U][GET MID FUNC] 解析mid为u64失败! 上游返回: {upstream_raw_resp}"
+                        "[GET USER_INFO][U][GET MID FUNC] 解析mid失败, API异常. 上游返回: {upstream_raw_resp}"
                     ),
                 });
                 report_health(health_report_type, bili_runtime).await;
-                error!("[GET MID FUNC] AK {access_key} | 解析mid为u64失败. 上级返回内容 -> {upstream_raw_resp}");
+                error!("[GET MID FUNC] AK {access_key} | 解析mid失败, API异常. 上级返回内容 -> {upstream_raw_resp}");
                 None
             }
         }
-        -101 => {
+        -101 | 61000 => {
             // 用户未登录, 即access_key失效
             error!("[GET MID FUNC] AK {access_key} | 获取mid失败, 用户未登录. 上级返回内容 -> {upstream_raw_resp}");
             Some(0)
@@ -470,7 +551,7 @@ pub async fn get_upstream_bili_account_info_ak_to_mid(
             None
         }
         _ => {
-            error!("[GET MID FUNC] AK {access_key} | 获取mid失败, 未知的错误码. 上级返回内容 -> {upstream_raw_resp}");
+            error!("[GET MID FUNC] AK {access_key} | 获取mid失败, 致命错误. 上级返回内容 -> {upstream_raw_resp}");
             let health_report_type = HealthReportType::Others(HealthData {
                 area_num: 0,
                 is_200_ok: true,
@@ -485,7 +566,7 @@ pub async fn get_upstream_bili_account_info_ak_to_mid(
                 },
                 is_custom: true,
                 custom_message: format!(
-                    "[GET USER_INFO][U][GET MID FUNC] 获取mid失败, 未知的错误码! 上游返回: {upstream_raw_resp}"
+                    "[GET USER_INFO][U][GET MID FUNC] 获取mid失败, 致命错误. 上游返回: {upstream_raw_resp}"
                 ),
             });
             report_health(health_report_type, bili_runtime).await;
@@ -493,6 +574,7 @@ pub async fn get_upstream_bili_account_info_ak_to_mid(
         }
     }
 }
+
 pub async fn get_upstream_blacklist_info(
     user_info: &UserInfo,
     bili_runtime: &BiliRuntime<'_>,
@@ -521,7 +603,10 @@ pub async fn get_upstream_blacklist_info(
         match async_getwebpage(&format!("{api}{uid}"), false, "", &user_agent, "", None).await {
             Ok(data) => data,
             Err(_) => {
-                error!("[GET USER_CER_INFO][U] 服务器网络问题");
+                error!(
+                    "[GET USER_CER_INFO][U] 服务器网络问题 URL {}",
+                    format!("{api}{uid}")
+                );
                 let health_report_type = HealthReportType::Others(HealthData {
                     area_num: 0,
                     is_200_ok: false,
@@ -636,6 +721,7 @@ pub async fn get_upstream_bili_playurl(
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let ts_string = ts.to_string();
+    let fake_buvid = UniqueId::Playurl.buvid();
     let mut query_vec: Vec<(&str, &str)>;
     if params.is_tv {
         query_vec = vec![
@@ -650,33 +736,57 @@ pub async fn get_upstream_bili_playurl(
             ("ts", &ts_string),
         ];
     } else {
-        query_vec = vec![
-            ("access_key", &params.access_key[..]),
-            ("appkey", params.appkey),
-            ("ep_id", params.ep_id),
-            ("fnval", "4048"),
-            ("fnver", "0"),
-            ("fourk", "1"),
-            ("qn", "125"),
-            ("ts", &ts_string),
-        ];
+        if !params.is_app {
+            query_vec = vec![
+                // https://api.bilibili.com/pgc/player/web/playurl?support_multi_audio=true&avid=729079597&cid=837630917&qn=112&fnver=0&fnval=4048&fourk=1&ep_id=653896&session=1d264f76c74866238ea51156dd913420&from_client=BROWSER&drm_tech_type=2
+                ("access_key", &params.access_key[..]),
+                ("appkey", params.appkey),
+                ("ep_id", params.ep_id),
+                ("fnval", "4048"),
+                ("fnver", "0"),
+                ("fourk", "1"),
+                ("qn", "125"),
+                ("ts", &ts_string),
+                ("drm_tech_type", "2"),
+                ("support_multi_audio", "true"),
+                ("from_client", "BROWSER"),
+            ];
+        } else {
+            query_vec = vec![
+                ("access_key", &params.access_key[..]),
+                ("appkey", params.appkey),
+                ("ep_id", params.ep_id),
+                ("fnval", "4048"),
+                ("fnver", "0"),
+                ("fourk", "1"),
+                ("force_host", "2"),
+                ("otype", "json"), // 5.x才有此项
+                ("qn", "125"),
+                ("ts", &ts_string),
+            ];
+        }
     }
+    // if !params.bvid.is_empty() {
+    //     query_vec.push(("bvid", params.bvid));
+    // }
     if !params.cid.is_empty() {
         query_vec.push(("cid", params.cid));
     }
-    if !params.build.is_empty() {
-        query_vec.push(("build", params.build));
+    if params.is_app {
+        query_vec.push(("buvid", &fake_buvid));
+        if !params.build.is_empty() {
+            query_vec.push(("build", params.build));
+        }
+        if !params.device.is_empty() {
+            query_vec.push(("device", params.device));
+        }
+        if !params.mobi_app.is_empty() {
+            query_vec.push(("mobi_app", params.mobi_app));
+        }
+        if !params.platform.is_empty() {
+            query_vec.push(("platform", params.platform));
+        }
     }
-    if !params.device.is_empty() {
-        query_vec.push(("device", params.device));
-    }
-    if !params.mobi_app.is_empty() {
-        query_vec.push(("mobi_app", params.mobi_app));
-    }
-    if !params.platform.is_empty() {
-        query_vec.push(("platform", params.platform));
-    }
-
     if params.is_th {
         query_vec.push(("s_locale", "zh_SG"));
     }
@@ -684,6 +794,22 @@ pub async fn get_upstream_bili_playurl(
     query_vec.sort_by_key(|v| v.0);
 
     let (signed_url, _sign) = build_signed_url!(api, query_vec, params.appsec);
+
+    let mut headers = HeaderMap::new();
+    headers.insert("accept", "application/json".parse().unwrap());
+    if !params.is_th && !params.is_app {
+        headers.insert("origin", "https://www.bilibili.com".parse().unwrap());
+        headers.insert(
+            "referer",
+            format!("https://www.bilibili.com/bangumi/play/ep{}", params.ep_id)
+                .parse()
+                .unwrap(),
+        );
+        headers.insert("sec-fetch-dest", "empty".parse().unwrap());
+        headers.insert("sec-fetch-mode", "cors".parse().unwrap());
+        headers.insert("sec-fetch-site", "same-site".parse().unwrap());
+    }
+
     // finish generating req params
     let upstream_raw_resp = match async_getwebpage(
         &signed_url,
@@ -691,7 +817,7 @@ pub async fn get_upstream_bili_playurl(
         proxy_url,
         params.user_agent,
         "",
-        None,
+        Some(headers),
     )
     .await
     {
@@ -881,13 +1007,13 @@ pub async fn get_upstream_bili_playurl_background(
     let dt = Local::now();
     let ts = dt.timestamp_millis() as u64;
     let ts_string = ts.to_string();
+    let fake_buvid = UniqueId::Playurl.buvid();
     let mut query_vec: Vec<(&str, &str)>;
     if params.is_tv {
         query_vec = vec![
             ("access_key", &params.access_key[..]),
             ("appkey", params.appkey),
-            ("build", params.build),
-            ("device", params.device),
+            // ("ep_id", params.ep_id),
             ("fnval", "130"),
             ("fnver", "0"),
             ("fourk", "1"),
@@ -897,19 +1023,37 @@ pub async fn get_upstream_bili_playurl_background(
             ("ts", &ts_string),
         ];
     } else {
-        query_vec = vec![
-            ("access_key", &params.access_key[..]),
-            ("appkey", params.appkey),
-            ("build", params.build),
-            ("device", params.device),
-            ("fnval", "4048"),
-            ("fnver", "0"),
-            ("fourk", "1"),
-            ("platform", "android"),
-            ("qn", "125"),
-            ("ts", &ts_string),
-        ];
+        if !params.is_app {
+            query_vec = vec![
+                // https://api.bilibili.com/pgc/player/web/playurl?support_multi_audio=true&avid=729079597&cid=837630917&qn=112&fnver=0&fnval=4048&fourk=1&ep_id=653896&session=1d264f76c74866238ea51156dd913420&from_client=BROWSER&drm_tech_type=2
+                ("access_key", &params.access_key[..]),
+                ("appkey", params.appkey),
+                // ("ep_id", params.ep_id),
+                ("fnval", "4048"),
+                ("fnver", "0"),
+                ("fourk", "1"),
+                ("qn", "125"),
+                ("ts", &ts_string),
+                ("drm_tech_type", "2"),
+                ("support_multi_audio", "true"),
+                ("from_client", "BROWSER"),
+            ];
+        } else {
+            query_vec = vec![
+                ("access_key", &params.access_key[..]),
+                ("appkey", params.appkey),
+                // ("ep_id", params.ep_id),
+                ("fnval", "4048"),
+                ("fnver", "0"),
+                ("fourk", "1"),
+                ("force_host", "2"),
+                ("otype", "json"), // 5.x才有此项
+                ("qn", "125"),
+                ("ts", &ts_string),
+            ];
+        }
     }
+    // 不可能没ep_id吧...
     if params.ep_id.is_empty() {
         return Err(EType::OtherError(-10403, "无EP_ID"));
     } else {
@@ -917,6 +1061,21 @@ pub async fn get_upstream_bili_playurl_background(
     }
     if !params.cid.is_empty() {
         query_vec.push(("cid", params.cid));
+    }
+    if params.is_app {
+        query_vec.push(("buvid", &fake_buvid));
+        if !params.build.is_empty() {
+            query_vec.push(("build", params.build));
+        }
+        if !params.device.is_empty() {
+            query_vec.push(("device", params.device));
+        }
+        if !params.mobi_app.is_empty() {
+            query_vec.push(("mobi_app", params.mobi_app));
+        }
+        if !params.platform.is_empty() {
+            query_vec.push(("platform", params.platform));
+        }
     }
     if params.is_th {
         query_vec.push(("s_locale", "zh_SG"));
@@ -926,6 +1085,21 @@ pub async fn get_upstream_bili_playurl_background(
 
     let (signed_url, _sign) = build_signed_url!(api, query_vec, params.appsec);
 
+    let mut headers = HeaderMap::new();
+    headers.insert("accept", "application/json".parse().unwrap());
+    if !params.is_th && !params.is_app {
+        headers.insert("origin", "https://www.bilibili.com".parse().unwrap());
+        headers.insert(
+            "referer",
+            format!("https://www.bilibili.com/bangumi/play/ep{}", params.ep_id)
+                .parse()
+                .unwrap(),
+        );
+        headers.insert("sec-fetch-dest", "empty".parse().unwrap());
+        headers.insert("sec-fetch-mode", "cors".parse().unwrap());
+        headers.insert("sec-fetch-site", "same-site".parse().unwrap());
+    }
+
     // finish generating req params
     let upstream_raw_resp = match async_getwebpage(
         &signed_url,
@@ -933,7 +1107,7 @@ pub async fn get_upstream_bili_playurl_background(
         proxy_url,
         params.user_agent,
         "",
-        None,
+        Some(headers),
     )
     .await
     {
