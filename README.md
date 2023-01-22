@@ -24,8 +24,7 @@
 ## [使用说明]
 
 ### 1. 使用一键安装器
-*  `wget -c -t 5 https://github.com/pchpub/biliroaming-rust-server-installer/releases/download/v0.1.0/biliroaming-rust-server-installer && chmod 777 biliroaming-r
-ust-server-installer && ./biliroaming-rust-server-installer` 
+*  `wget -c -t 5 https://github.com/pchpub/biliroaming-rust-server-installer/releases/download/v0.1.0/biliroaming-rust-server-installer && chmod 777 biliroaming-rust-server-installer && ./biliroaming-rust-server-installer` 
 * 按提示操作 默认回车 (推荐使用 auto_proxy 并输入 clash 订阅)
 * 使用 Nginx 反代安装器最后给的URL
 * Enjoy~
