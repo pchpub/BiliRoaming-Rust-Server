@@ -410,16 +410,18 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
     params.access_key = match query.get("access_key") {
         Option::Some(key) => {
             let key = key;
-            if !params.is_app {
-                ""
-            } else if key.len() == 0 {
+            if key.len() == 0 {
                 build_response!(EType::UserNotLoginedError);
             } else {
                 key
             }
         }
         _ => {
-            build_response!(EType::UserNotLoginedError);
+            if !params.is_app || params.is_th {
+                ""
+            } else {
+                build_response!(EType::UserNotLoginedError);
+            }
         }
     };
 
