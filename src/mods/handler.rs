@@ -393,7 +393,7 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
 
     // verify req sign
     // TODO: add ignore sign err
-    if is_app || is_th {
+    if is_app && !is_th {
         let mut raw_unsign_query_string = String::with_capacity(600);
         raw_unsign_query_string.push_str(&query_string[..query_string.len() - 38]);
         raw_unsign_query_string.push_str(params.appsec);
