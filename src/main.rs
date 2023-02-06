@@ -171,7 +171,7 @@ fn main() -> std::io::Result<()> {
     //fs::write("config.example.yml", serde_yaml::to_string(&config).unwrap()).unwrap(); //Debug 方便生成示例配置
     let rt = tokio::runtime::Runtime::new().unwrap();
     let server_config: BiliConfig = SERVER_CONFIG.clone();
-    let woker_num = server_config.worker_num;
+    let woker_num = server_config.woker_num;
     let port = server_config.port.clone();
     let bilisender = Arc::clone(&*BILISENDER);
     {

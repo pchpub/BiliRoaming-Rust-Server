@@ -353,11 +353,11 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
 
     // detect client_type
     let client_type =
-    if let Some(value) = ClientType::init(params.appkey, params.is_app, params.is_th, req) {
-        value
-    } else {
-        build_response!(EType::InvalidReq)
-    };
+        if let Some(value) = ClientType::init(params.appkey, params.is_app, params.is_th, req) {
+            value
+        } else {
+            build_response!(EType::InvalidReq)
+        };
 
     // detect user's appkey
     params.appkey = query.get("appkey").unwrap_or_else(|| {
@@ -410,7 +410,9 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
     params.access_key = match query.get("access_key") {
         Option::Some(key) => {
             let key = key;
-            if key.len() == 0 {
+            if !params.is_app {
+                ""
+            } else if key.len() == 0 {
                 build_response!(EType::UserNotLoginedError);
             } else {
                 key
@@ -464,12 +466,18 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         ""
     };
     //deteect client accesskey type
-    let client_type = if let Some(value) =
-        ClientType::init_for_ak(params.appkey, params.is_app, params.is_th, req)
-    {
-        value
-    } else {
-        ClientType::Unknown
+    let client_type = {
+        if !params.is_app {
+            ClientType::Unknown
+        } else {
+            if let Some(value) =
+                ClientType::init_for_ak(params.appkey, params.is_app, params.is_th, req)
+            {
+                value
+            } else {
+                ClientType::Unknown
+            }
+        }
     };
 
     //为了记录accesskey to uid
