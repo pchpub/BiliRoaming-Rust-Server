@@ -351,6 +351,14 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         }
     }
 
+    // detect client_type
+    let client_type =
+    if let Some(value) = ClientType::init(params.appkey, params.is_app, params.is_th, req) {
+        value
+    } else {
+        build_response!(EType::InvalidReq)
+    };
+
     // detect user's appkey
     params.appkey = query.get("appkey").unwrap_or_else(|| {
         if params.is_app {
@@ -378,6 +386,10 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         .await;
         build_response!(-412, "未知设备");
     };
+
+    // rewrite appkey
+    // 哔哩哔哩国际版客户端发的请求中的appkey是国内版的（不换会导致-663）
+    params.appkey = client_type.appkey();
 
     // verify req sign
     // TODO: add ignore sign err
@@ -407,6 +419,20 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         _ => {
             build_response!(EType::UserNotLoginedError);
         }
+    };
+
+    params.device = query
+        .get("device")
+        .unwrap_or(client_type.device().unwrap_or("android"));
+    params.mobi_app = client_type.mobi_app().unwrap_or("android");
+    params.platform = client_type.platform().unwrap_or("android");
+
+    params.is_tv = match query.get("fnval") {
+        Some(value) => match value {
+            "130" | "0" | "2" => true,
+            _ => false,
+        },
+        None => false,
     };
     params.build = query.get("build").unwrap_or("6800300");
     params.device =

@@ -2300,6 +2300,7 @@ pub enum PlayurlType {
 /*
 * the following is search related struct & impl
 */
+// android_i : https://app.bilibili.com/x/v2/search/type?access_key=7072c50323a2bd38***b83a547d18c12&appkey=bb3101000e232e27&build=2060010&c_locale=zh_CN&channel=master&fnval=16&fnver=0&fourk=1&highlight=1&keyword=test3&lang=hans&locale=zh_CN&mobi_app=android_i&platform=android&pn=1&ps=20&qn=0&s_locale=zh_CN&statistics=%7B%22appId%22%3A1%2C%22platform%22%3A3%2C%22version%22%3A%222.6.0%22%2C%22abtest%22%3A%22%22%7D&ts=1674189582&type=7&sign=d80d723ed488b6c168ed0e99ed3b4208
 pub struct SearchParams<'search_params> {
     pub access_key: &'search_params str,
     pub appkey: &'search_params str,
@@ -2311,6 +2312,8 @@ pub struct SearchParams<'search_params> {
     pub fnval: &'search_params str,
     pub statistics: &'search_params str,
     pub keyword: &'search_params str,
+    pub mobi_app: &'search_params str,
+    pub platform: &'search_params str,
     // extra info
     pub is_app: bool,
     pub is_tv: bool,
@@ -2351,6 +2354,8 @@ impl<'search_params: 'search_params_impl, 'search_params_impl> Default
             fnval: "",
             statistics: "",
             keyword: "Bilibili",
+            mobi_app: "android",
+            platform: "android",
             is_app: true,
             is_tv: false,
             is_th: false,

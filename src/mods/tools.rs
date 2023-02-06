@@ -436,13 +436,20 @@ pub fn vec_to_string<T: std::fmt::Display>(vec: &Vec<T>, delimiter: &str) -> Str
     }
 }
 
-pub fn mid_to_eid(mid: &str) -> String {
-    let mid: Vec<(char, usize)> = mid.chars().zip(0..).collect();
-    let mut eid = Vec::with_capacity(mid.len());
-    for (single_char, index) in &mid {
-        eid.push(*single_char as u8 ^ "ad1va46a7lza".as_bytes()[index % 12] as u8);
+// x-bili-aurora-eid
+#[inline]
+pub fn gen_aurora_eid(mid: &str) -> String {
+    // 需要使用mid进行生成, 生成逻辑
+    let mut result_byte = vec![];
+    let mid_byte = mid.as_bytes();
+    for i in 0..mid_byte.len() {
+        result_byte.push(mid_byte[i] ^ (b"ad1va46a7lza"[i % 12]))
     }
-    BASE64_STANDARD.encode(eid)
+    let final_string = base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD_NO_PAD,
+        result_byte,
+    );
+    final_string
 }
 
 /// 有些api带eid, 这时候就可以获取到mid, 此函数作为后备方案
