@@ -3,7 +3,7 @@
   "auto_update": false,
   "auto_close": true,
   "redis": "redis://:password@host:6379",
-  "woker_num": 8,
+  "worker_num": 8,
   "port": 2662,
   "limit_biliroaming_version_open": false,
   "limit_biliroaming_version_min": 64,
