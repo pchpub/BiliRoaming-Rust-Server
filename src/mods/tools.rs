@@ -2,6 +2,7 @@ use super::types::{ClientType, PlayurlType};
 use base64::prelude::*;
 use log::{debug, error};
 use pcre2::bytes::Regex;
+use rand::Rng;
 use std::u8;
 
 #[inline]
@@ -612,3 +613,13 @@ pub fn eid_to_mid(eid: &str) -> Result<String, ()> {
 //     // TODO: 修复web播放不正常(应该是因为缺了mid，使得替换upos时403) 在想是不是之前用libcurl br压缩没开的问题
 //     todo!()
 // }
+
+pub fn spawn_random_accesskey(len: usize) -> String {
+    let mut rng = rand::thread_rng();
+    let dist = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'a', 'b', 'c', 'd', 'e', 'f'];
+    let mut secret = String::new();
+    for _ in 0..len {
+        secret.push(dist[rng.gen_range(0..16)]);
+    }
+    secret
+}

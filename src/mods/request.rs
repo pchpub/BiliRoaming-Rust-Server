@@ -252,6 +252,10 @@ pub async fn async_getwebpage(
             .headers(value)
             .header("cookie", cookie)
             .header("Accept-Encoding", "gzip, deflate, br");
+    }else{
+        client = client
+            .header("cookie", cookie)
+            .header("Accept-Encoding", "gzip, deflate, br");
     }
     let rsp_raw_data = if let Ok(value) = client.send().await {
         value

@@ -353,11 +353,11 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
 
     // detect client_type
     let client_type =
-    if let Some(value) = ClientType::init(params.appkey, params.is_app, params.is_th, req) {
-        value
-    } else {
-        build_response!(EType::InvalidReq)
-    };
+        if let Some(value) = ClientType::init(params.appkey, params.is_app, params.is_th, req) {
+            value
+        } else {
+            build_response!(EType::InvalidReq)
+        };
 
     // detect user's appkey
     params.appkey = query.get("appkey").unwrap_or_else(|| {
@@ -393,7 +393,7 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
 
     // verify req sign
     // TODO: add ignore sign err
-    if is_app || is_th {
+    if is_app && !is_th {
         let mut raw_unsign_query_string = String::with_capacity(600);
         raw_unsign_query_string.push_str(&query_string[..query_string.len() - 38]);
         raw_unsign_query_string.push_str(params.appsec);
@@ -417,7 +417,11 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
             }
         }
         _ => {
-            build_response!(EType::UserNotLoginedError);
+            if !params.is_app || params.is_th {
+                ""
+            } else {
+                build_response!(EType::UserNotLoginedError);
+            }
         }
     };
 
@@ -464,12 +468,18 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
         ""
     };
     //deteect client accesskey type
-    let client_type = if let Some(value) =
-        ClientType::init_for_ak(params.appkey, params.is_app, params.is_th, req)
-    {
-        value
-    } else {
-        ClientType::Unknown
+    let client_type = {
+        if !params.is_app {
+            ClientType::Unknown
+        } else {
+            if let Some(value) =
+                ClientType::init_for_ak(params.appkey, params.is_app, params.is_th, req)
+            {
+                value
+            } else {
+                ClientType::Unknown
+            }
+        }
     };
 
     //为了记录accesskey to uid

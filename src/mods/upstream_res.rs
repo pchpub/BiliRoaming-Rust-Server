@@ -1316,7 +1316,11 @@ pub async fn get_upstream_bili_search(
 
     query_vec.sort_by_key(|v| v.0.clone());
 
-    let (signed_url, _sign) = build_signed_url!(api, query_vec, params.appsec);
+    let signed_url =  if !params.is_app {
+        format!("{}?{}", api, raw_query)
+    }else{
+        build_signed_url!(api, query_vec, params.appsec).0
+    };
 
     match async_getwebpage(
         &signed_url,

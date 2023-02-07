@@ -19,13 +19,12 @@ use urlencoding::encode;
 pub struct BiliConfig {
     #[serde(default = "config_version")]
     pub config_version: u16,
-    // #[serde(default = "default_false")]
-    // pub auto_update: bool,
-    // #[serde(default = "default_true")]
-    // pub auto_close: bool,
+    #[serde(default = "default_false")]
+    pub auto_update: bool,
+    #[serde(default = "default_true")]
+    pub auto_close: bool,
     pub redis: String,
-    #[serde(default = "default_usize_4")]
-    pub worker_num: usize,
+    pub woker_num: usize,
     pub port: u16,
     #[serde(default = "default_false")]
     pub limit_biliroaming_version_open: bool,
@@ -1707,17 +1706,13 @@ fn config_version() -> u16 {
     3
 }
 
-fn default_usize_4() -> usize {
-    4
-}
-
 fn default_false() -> bool {
     false
 }
 
-// fn default_true() -> bool {
-//     true
-// }
+fn default_true() -> bool {
+    true
+}
 
 fn default_string() -> String {
     "".to_string()
