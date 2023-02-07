@@ -24,7 +24,7 @@ pub struct BiliConfig {
     #[serde(default = "default_true")]
     pub auto_close: bool,
     pub redis: String,
-    pub woker_num: usize,
+    pub worker_num: usize,
     pub port: u16,
     #[serde(default = "default_false")]
     pub limit_biliroaming_version_open: bool,
