@@ -19,11 +19,16 @@ use urlencoding::encode;
 pub struct BiliConfig {
     #[serde(default = "config_version")]
     pub config_version: u16,
-    #[serde(default = "default_false")]
-    pub https_support: bool,
     pub redis: String,
     pub worker_num: usize,
-    pub port: u16,
+    #[serde(default = "default_http_port")]
+    pub http_port: u16,
+    #[serde(default = "default_https_port")]
+    pub https_port: u16,
+    #[serde(default = "default_false")]
+    pub https_support: bool,
+    #[serde(default = "default_false")]
+    pub http2https_support: bool,
     #[serde(default = "default_false")]
     pub limit_biliroaming_version_open: bool,
     #[serde(default = "default_min_version")]
@@ -1773,6 +1778,14 @@ fn default_u64() -> u64 {
 
 fn default_i64() -> i64 {
     0
+}
+
+fn default_http_port() -> u16 {
+    80
+}
+
+fn default_https_port() -> u16 {
+    443
 }
 
 pub struct UpstreamRawResp {

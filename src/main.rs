@@ -125,6 +125,28 @@ async fn api_accesskey(req: HttpRequest) -> impl Responder {
     handle_api_access_key_request(&req).await
 }
 
+async fn http2https_handler(req: HttpRequest) -> impl Responder {
+    let https_port = req
+        .app_data::<u16>()
+        .unwrap();
+    let uri = req.uri();
+    let host = if let Some(host) = uri.host() {
+        host
+    } else {
+        error!("无法获取host");
+        ""
+    };
+    let path_and_query = if let Some(value) = uri.path_and_query(){
+        value.as_str()
+    }else{
+        "/"
+    };
+
+    HttpResponse::Found()
+        .insert_header(("Location", format!("https://{}:{}{}", host, https_port, path_and_query)))
+        .body("")
+}
+
 lazy_static! {
     pub static ref SERVER_CONFIG: BiliConfig = init_config();
     pub static ref REDIS_POOL: Pool = Config::from_url(&SERVER_CONFIG.redis)
@@ -173,7 +195,8 @@ fn main() -> std::io::Result<()> {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let server_config: BiliConfig = SERVER_CONFIG.clone();
     let woker_num = server_config.worker_num;
-    let port = server_config.port.clone();
+    let http_port = server_config.http_port.clone();
+    let https_port = server_config.https_port.clone();
     let bilisender = Arc::clone(&*BILISENDER);
     {
         let bili_runtime = BiliRuntime::new(&*SERVER_CONFIG, &*REDIS_POOL, &*BILISENDER);
@@ -220,13 +243,17 @@ fn main() -> std::io::Result<()> {
         .unwrap();
 
     let ssl_config: Option<rustls::ServerConfig>;
+    let use_https: bool;
     if server_config.https_support {
         ssl_config = if let Ok(value) = load_ssl() {
+            use_https = true;
             Some(value)
         }else{
+            use_https = false;
             None
         };
     }else{
+        use_https = false;
         ssl_config = None;
     }
 
@@ -252,13 +279,30 @@ fn main() -> std::io::Result<()> {
     });
 
     let web_main = if let Some(value) = ssl_config {
-        web_main.bind_rustls(("0.0.0.0",port), value)
+        web_main
+            .bind_rustls(("::",https_port), value).unwrap()
     }else{
-        web_main.bind(("0.0.0.0", port))
+        web_main
+            .bind(("::", http_port)).unwrap()
     }
-    .unwrap()
     .workers(woker_num)
     .keep_alive(Duration::from_secs(20))
     .run();
-    rt.block_on(async { join!(web_background, web_main).1 })
+
+    let http2https = HttpServer::new(move || {
+        App::new()
+            .app_data(https_port)
+            .default_service(web::route().to(http2https_handler))
+    });
+
+    if use_https && SERVER_CONFIG.http2https_support {
+        let http2https = http2https
+            .bind(("::", http_port)).unwrap()
+            .workers(woker_num)
+            .keep_alive(Duration::from_secs(20))
+            .run();
+        rt.block_on(async { join!(web_background, web_main, http2https).1 })
+    }else{
+        rt.block_on(async { join!(web_background, web_main).1 })
+    }
 }
