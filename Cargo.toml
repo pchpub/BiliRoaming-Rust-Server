@@ -2,12 +2,10 @@
 name = "biliroaming_rust_server"
 version = "0.3.2"
 edition = "2021"
-#author = "P CH"
 
 [dependencies]
 chrono = "0.4.23"
-# curl = {version = "0.4.44",features = ["http2"]}
-actix-web = "4.2.1"
+actix-web = {version = "4.2.1", features = ["rustls"]}
 actix-files = "0.6.2"
 qstring = "0.7.2"
 rust-crypto = "0.2.36"
@@ -28,7 +26,9 @@ urlencoding = "2.1.2"
 lazy_static = "1.4.0"
 log = "0.4"
 env_logger = "0.10.0"
-reqwest = {version = "0.11.13",features = ["socks","brotli","gzip","deflate"]}
+reqwest = {version = "0.11.14",features = ["socks","brotli","gzip","deflate","rustls-tls"]}
+rustls = "0.20.8"
+rustls-pemfile = "1.0.2"
 
 [profile.fast]
 inherits = "release"

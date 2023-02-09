@@ -20,9 +20,7 @@ pub struct BiliConfig {
     #[serde(default = "config_version")]
     pub config_version: u16,
     #[serde(default = "default_false")]
-    pub auto_update: bool,
-    #[serde(default = "default_true")]
-    pub auto_close: bool,
+    pub https_support: bool,
     pub redis: String,
     pub worker_num: usize,
     pub port: u16,
@@ -1710,9 +1708,9 @@ fn default_false() -> bool {
     false
 }
 
-fn default_true() -> bool {
-    true
-}
+// fn default_true() -> bool {
+//     true
+// }
 
 fn default_string() -> String {
     "".to_string()

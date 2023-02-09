@@ -10,17 +10,18 @@ use biliroaming_rust_server::mods::handler::{
     handle_th_season_request, handle_th_subtitle_request,
 };
 use biliroaming_rust_server::mods::rate_limit::BiliUserToken;
+use biliroaming_rust_server::mods::tools::load_ssl;
 use biliroaming_rust_server::mods::types::{BackgroundTaskType, BiliConfig, BiliRuntime};
 use deadpool_redis::{Config, Pool, Runtime};
 use futures::join;
 use lazy_static::lazy_static;
 use log::{debug, error, info};
-use std::fs;
 use std::sync::Arc;
+use std::time::Duration;
 
 #[get("/")]
 async fn hello() -> impl Responder {
-    match fs::read_to_string("./web/index.html") {
+    match tokio::fs::read_to_string("./web/index.html").await {
         Ok(value) => {
             return HttpResponse::Ok()
                 .content_type(ContentType::html())
@@ -218,6 +219,17 @@ fn main() -> std::io::Result<()> {
         .finish()
         .unwrap();
 
+    let ssl_config: Option<rustls::ServerConfig>;
+    if server_config.https_support {
+        ssl_config = if let Ok(value) = load_ssl() {
+            Some(value)
+        }else{
+            None
+        };
+    }else{
+        ssl_config = None;
+    }
+
     let web_main = HttpServer::new(move || {
         let rediscfg = Config::from_url(&server_config.redis);
         let pool = rediscfg.create_pool(Some(Runtime::Tokio1)).unwrap();
@@ -237,11 +249,16 @@ fn main() -> std::io::Result<()> {
             .service(donate)
             .service(Files::new("/", "./web/").index_file("index.html"))
             .default_service(web::route().to(web_default))
-    })
-    .bind(("0.0.0.0", port))
+    });
+
+    let web_main = if let Some(value) = ssl_config {
+        web_main.bind_rustls(format!("0.0.0.0:{}",port), value)
+    }else{
+        web_main.bind(("0.0.0.0", port))
+    }
     .unwrap()
     .workers(woker_num)
-    .keep_alive(None)
+    .keep_alive(Duration::from_secs(20))
     .run();
     rt.block_on(async { join!(web_background, web_main).1 })
 }
