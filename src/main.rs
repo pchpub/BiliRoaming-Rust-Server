@@ -252,7 +252,7 @@ fn main() -> std::io::Result<()> {
     });
 
     let web_main = if let Some(value) = ssl_config {
-        web_main.bind_rustls(format!("0.0.0.0:{}",port), value)
+        web_main.bind_rustls(("0.0.0.0",port), value)
     }else{
         web_main.bind(("0.0.0.0", port))
     }
