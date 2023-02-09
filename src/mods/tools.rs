@@ -638,3 +638,47 @@ pub fn load_ssl() -> Result<rustls::ServerConfig, Box<dyn std::error::Error>> {
 
     Ok(config)
 }
+
+pub async fn update_config_file() -> Result<bool,Box<dyn std::error::Error>> {
+    use tokio::fs;
+    use std::path::Path;
+
+    async fn read_config_json() -> Result<serde_json::Value,Box<dyn std::error::Error>> {
+        let config = fs::read_to_string("config.json").await?;
+        let config: serde_json::Value = serde_json::from_str(&config)?;
+        Ok(config)
+    }
+
+    async fn read_config_yaml() -> Result<serde_yaml::Value,Box<dyn std::error::Error>> {
+        let config = fs::read_to_string("config.yaml").await?;
+        let config: serde_yaml::Value = serde_yaml::from_str(&config)?;
+        Ok(config)
+    }
+
+    let mut is_updated: bool = false;
+
+    if Path::new("config.json").exists() {
+        let mut config = read_config_json().await?;
+        if config["config_version"].as_i64().unwrap_or(3) == 3 {
+            config["http_port"] = config["port"].clone();
+            config["config_version"] = serde_json::Value::from(4);
+            config["worker_num"] = config["woker_num"].clone();
+            is_updated = true;
+        }
+        if is_updated {
+            fs::write("config.json", serde_json::to_string_pretty(&config)?).await?;
+        }
+    } else if Path::new("config.yaml").exists() {
+        let mut config = read_config_yaml().await?;
+        if config["config_version"].as_i64().unwrap_or(3) == 3 {
+            config["http_port"] = config["port"].clone();
+            config["config_version"] = serde_yaml::Value::from(4);
+            config["worker_num"] = config["woker_num"].clone();
+            is_updated = true;
+        }
+        if is_updated {
+            fs::write("config.yaml", serde_yaml::to_string(&config)?).await?;
+        }
+    }
+    Ok(is_updated)
+}

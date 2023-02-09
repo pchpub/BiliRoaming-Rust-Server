@@ -10,7 +10,7 @@ use biliroaming_rust_server::mods::handler::{
     handle_th_season_request, handle_th_subtitle_request,
 };
 use biliroaming_rust_server::mods::rate_limit::BiliUserToken;
-use biliroaming_rust_server::mods::tools::load_ssl;
+use biliroaming_rust_server::mods::tools::{load_ssl, update_config_file};
 use biliroaming_rust_server::mods::types::{BackgroundTaskType, BiliConfig, BiliRuntime};
 use deadpool_redis::{Config, Pool, Runtime};
 use futures::join;
@@ -170,6 +170,7 @@ fn main() -> std::io::Result<()> {
     // init log
     use chrono::Local;
     use std::io::Write;
+    let rt = tokio::runtime::Runtime::new().unwrap();
     let env = env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info");
     env_logger::Builder::from_env(env)
         .format(|buf, record| {
@@ -192,7 +193,16 @@ fn main() -> std::io::Result<()> {
     .unwrap();
     // //init server_config => BiliConfig
     //fs::write("config.example.yml", serde_yaml::to_string(&config).unwrap()).unwrap(); //Debug 方便生成示例配置
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    {
+        // check before load configuration
+        if let Ok(is_updated) = rt.block_on(update_config_file()) {
+            if is_updated {
+                info!("配置文件自动更新成功");
+            }
+        }else{
+            error!("配置文件更新失败");
+        }
+    }  
     let server_config: BiliConfig = SERVER_CONFIG.clone();
     let woker_num = server_config.worker_num;
     let http_port = server_config.http_port.clone();

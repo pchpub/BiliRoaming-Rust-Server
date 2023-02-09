@@ -1706,7 +1706,7 @@ impl ReportHealthData {
 * the following is general types
 */
 fn config_version() -> u16 {
-    3
+    4
 }
 
 fn default_false() -> bool {
