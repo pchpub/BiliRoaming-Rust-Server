@@ -1,0 +1,38 @@
+on:
+  push:
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Build
+      run: |
+        docker run -i --rm \
+        -v $PWD:/workdir \
+        -v ~/.cargo/git:/root/.cargo/git \
+        -v ~/.cargo/registry:/root/.cargo/registry \
+        registry.gitlab.com/rust_musl_docker/image:stable-latest \
+        cargo build --profile=fast -vv --target=x86_64-unknown-linux-musl
+    - name: Rename config file
+      run: |
+        cp config.example.json config.json
+    - name: Delete old release assets
+      uses: mknejp/delete-release-assets@v1
+      with:
+        token: ${{ github.token }}
+        tag: alpha-releases
+        assets: |
+          biliroaming_rust_server
+          config.json
+          *.zip
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: |
+          ./target/x86_64-unknown-linux-musl/fast/biliroaming_rust_server
+          ./config.json
