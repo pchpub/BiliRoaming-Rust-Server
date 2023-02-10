@@ -1,7 +1,7 @@
 use actix_files::Files;
 use actix_governor::{Governor, GovernorConfigBuilder};
 use actix_web::http::header::ContentType;
-use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::{get, middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use async_channel::{Receiver, Sender};
 use biliroaming_rust_server::mods::background_tasks::*;
 use biliroaming_rust_server::mods::config::{init_config, prepare_before_start};
@@ -126,9 +126,7 @@ async fn api_accesskey(req: HttpRequest) -> impl Responder {
 }
 
 async fn http2https_handler(req: HttpRequest) -> impl Responder {
-    let https_port = req
-        .app_data::<u16>()
-        .unwrap();
+    let https_port = req.app_data::<u16>().unwrap();
     let uri = req.uri();
     let host = match req.headers().get("Host") {
         Some(host) => host.to_str().unwrap(),
@@ -137,7 +135,7 @@ async fn http2https_handler(req: HttpRequest) -> impl Responder {
             _ => {
                 error!("无法获取host");
                 ""
-            },
+            }
         },
     };
     let host = {
@@ -148,14 +146,17 @@ async fn http2https_handler(req: HttpRequest) -> impl Responder {
         }
     };
 
-    let path_and_query = if let Some(value) = uri.path_and_query(){
+    let path_and_query = if let Some(value) = uri.path_and_query() {
         value.as_str()
-    }else{
+    } else {
         "/"
     };
 
     HttpResponse::MovedPermanently() // 301 redirect
-        .insert_header(("Location", format!("https://{}:{}{}", host, https_port, path_and_query)))
+        .insert_header((
+            "Location",
+            format!("https://{}:{}{}", host, https_port, path_and_query),
+        ))
         .body("")
 }
 
@@ -211,10 +212,10 @@ fn main() -> std::io::Result<()> {
             if is_updated {
                 info!("配置文件自动更新成功");
             }
-        }else{
+        } else {
             error!("配置文件更新失败");
         }
-    }  
+    }
     let server_config: BiliConfig = SERVER_CONFIG.clone();
     let woker_num = server_config.worker_num;
     let http_port = server_config.http_port.clone();
@@ -270,61 +271,111 @@ fn main() -> std::io::Result<()> {
         ssl_config = if let Ok(value) = load_ssl() {
             use_https = true;
             Some(value)
-        }else{
+        } else {
             use_https = false;
             None
         };
-    }else{
+    } else {
         use_https = false;
         ssl_config = None;
     }
 
-    let web_main = HttpServer::new(move || {
-        let rediscfg = Config::from_url(&server_config.redis);
-        let pool = rediscfg.create_pool(Some(Runtime::Tokio1)).unwrap();
-        App::new()
-            .app_data((pool, server_config.clone(), bilisender.clone()))
-            .wrap(Governor::new(&rate_limit_conf))
-            .service(hello)
-            .service(zhplayurl_app)
-            .service(zhplayurl_web)
-            .service(thplayurl_app)
-            .service(zhsearch_app)
-            .service(zhsearch_web)
-            .service(thsearch_app)
-            .service(thseason_app)
-            .service(thsubtitle_web)
-            .service(api_accesskey)
-            .service(donate)
-            .service(Files::new("/", "./web/").index_file("index.html"))
-            .default_service(web::route().to(web_default))
-    });
-
-    let web_main = if let Some(value) = ssl_config {
-        web_main
-            .bind_rustls(("0.0.0.0",https_port), value).unwrap()
-    }else{
-        web_main
-            .bind(("0.0.0.0", http_port)).unwrap()
-    }
-    .workers(woker_num)
-    .keep_alive(Duration::from_secs(20))
-    .run();
-
-    let http2https = HttpServer::new(move || {
-        App::new()
-            .app_data(https_port)
-            .default_service(web::route().to(http2https_handler))
-    });
-
     if use_https && SERVER_CONFIG.http2https_support {
-        let http2https = http2https
-            .bind(("0.0.0.0", http_port)).unwrap()
-            .workers(woker_num)
-            .keep_alive(Duration::from_secs(20))
-            .run();
+        let web_main = HttpServer::new(move || {
+            let rediscfg = Config::from_url(&server_config.redis);
+            let pool = rediscfg.create_pool(Some(Runtime::Tokio1)).unwrap();
+            App::new()
+                .app_data((pool, server_config.clone(), bilisender.clone()))
+                .wrap(Governor::new(&rate_limit_conf))
+                .wrap(middleware::Compress::default())
+                .service(hello)
+                .service(zhplayurl_app)
+                .service(zhplayurl_web)
+                .service(thplayurl_app)
+                .service(zhsearch_app)
+                .service(zhsearch_web)
+                .service(thsearch_app)
+                .service(thseason_app)
+                .service(thsubtitle_web)
+                .service(api_accesskey)
+                .service(donate)
+                .service(Files::new("/", "./web/").index_file("index.html"))
+                .default_service(web::route().to(web_default))
+        })
+        .bind_rustls(("0.0.0.0", https_port), ssl_config.unwrap())
+        .unwrap()
+        .workers(woker_num)
+        .keep_alive(Duration::from_secs(20))
+        .run();
+
+        let http2https = HttpServer::new(move || {
+            App::new()
+                .app_data(https_port)
+                .default_service(web::route().to(http2https_handler))
+        })
+        .bind(("0.0.0.0", http_port))
+        .unwrap()
+        .workers(woker_num)
+        .keep_alive(Duration::from_secs(20))
+        .run();
+
         rt.block_on(async { join!(web_background, web_main, http2https).1 })
-    }else{
+    } else if use_https {
+        let web_main = HttpServer::new(move || {
+            let rediscfg = Config::from_url(&server_config.redis);
+            let pool = rediscfg.create_pool(Some(Runtime::Tokio1)).unwrap();
+            App::new()
+                .app_data((pool, server_config.clone(), bilisender.clone()))
+                .wrap(Governor::new(&rate_limit_conf))
+                .wrap(middleware::Compress::default())
+                .service(hello)
+                .service(zhplayurl_app)
+                .service(zhplayurl_web)
+                .service(thplayurl_app)
+                .service(zhsearch_app)
+                .service(zhsearch_web)
+                .service(thsearch_app)
+                .service(thseason_app)
+                .service(thsubtitle_web)
+                .service(api_accesskey)
+                .service(donate)
+                .service(Files::new("/", "./web/").index_file("index.html"))
+                .default_service(web::route().to(web_default))
+        })
+        .bind_rustls(("0.0.0.0", https_port), ssl_config.unwrap())
+        .unwrap()
+        .workers(woker_num)
+        .keep_alive(Duration::from_secs(20))
+        .run();
+
+        rt.block_on(async { join!(web_background, web_main).1 })
+    } else {
+        let web_main = HttpServer::new(move || {
+            let rediscfg = Config::from_url(&server_config.redis);
+            let pool = rediscfg.create_pool(Some(Runtime::Tokio1)).unwrap();
+            App::new()
+                .app_data((pool, server_config.clone(), bilisender.clone()))
+                .wrap(Governor::new(&rate_limit_conf))
+                .service(hello)
+                .service(zhplayurl_app)
+                .service(zhplayurl_web)
+                .service(thplayurl_app)
+                .service(zhsearch_app)
+                .service(zhsearch_web)
+                .service(thsearch_app)
+                .service(thseason_app)
+                .service(thsubtitle_web)
+                .service(api_accesskey)
+                .service(donate)
+                .service(Files::new("/", "./web/").index_file("index.html"))
+                .default_service(web::route().to(web_default))
+        })
+        .bind(("0.0.0.0", http_port))
+        .unwrap()
+        .workers(woker_num)
+        .keep_alive(Duration::from_secs(20))
+        .run();
+
         rt.block_on(async { join!(web_background, web_main).1 })
     }
 }
