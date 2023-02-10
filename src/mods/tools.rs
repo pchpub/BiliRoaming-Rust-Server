@@ -628,6 +628,8 @@ pub fn load_ssl() -> Result<rustls::ServerConfig, Box<dyn std::error::Error>> {
         .map(|key| PrivateKey(key))
         .collect::<Vec<PrivateKey>>();
 
+    debug!("{:?}",keys);
+
     let config = ServerConfig::builder()
         .with_safe_default_cipher_suites()
         .with_safe_default_kx_groups()
@@ -659,7 +661,7 @@ pub async fn update_config_file() -> Result<bool,Box<dyn std::error::Error>> {
 
     if Path::new("config.json").exists() {
         let mut config = read_config_json().await?;
-        if config["config_version"].as_i64().unwrap_or(3) == 3 {
+        if config["config_version"].as_i64().unwrap_or(3) <= 3 {
             config["http_port"] = config["port"].clone();
             config["config_version"] = serde_json::Value::from(4);
             config["worker_num"] = config["woker_num"].clone();
@@ -670,7 +672,7 @@ pub async fn update_config_file() -> Result<bool,Box<dyn std::error::Error>> {
         }
     } else if Path::new("config.yaml").exists() {
         let mut config = read_config_yaml().await?;
-        if config["config_version"].as_i64().unwrap_or(3) == 3 {
+        if config["config_version"].as_i64().unwrap_or(3) <= 3 {
             config["http_port"] = config["port"].clone();
             config["config_version"] = serde_yaml::Value::from(4);
             config["worker_num"] = config["woker_num"].clone();

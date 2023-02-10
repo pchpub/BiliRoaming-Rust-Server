@@ -130,19 +130,31 @@ async fn http2https_handler(req: HttpRequest) -> impl Responder {
         .app_data::<u16>()
         .unwrap();
     let uri = req.uri();
-    let host = if let Some(host) = uri.host() {
-        host
-    } else {
-        error!("无法获取host");
-        ""
+    let host = match req.headers().get("Host") {
+        Some(host) => host.to_str().unwrap(),
+        _ => match req.headers().get("authority") {
+            Some(host) => host.to_str().unwrap(),
+            _ => {
+                error!("无法获取host");
+                ""
+            },
+        },
     };
+    let host = {
+        if host.contains(":") {
+            host.split(":").collect::<Vec<&str>>()[0]
+        } else {
+            host
+        }
+    };
+
     let path_and_query = if let Some(value) = uri.path_and_query(){
         value.as_str()
     }else{
         "/"
     };
 
-    HttpResponse::Found()
+    HttpResponse::MovedPermanently() // 301 redirect
         .insert_header(("Location", format!("https://{}:{}{}", host, https_port, path_and_query)))
         .body("")
 }
@@ -290,10 +302,10 @@ fn main() -> std::io::Result<()> {
 
     let web_main = if let Some(value) = ssl_config {
         web_main
-            .bind_rustls(("::",https_port), value).unwrap()
+            .bind_rustls(("0.0.0.0",https_port), value).unwrap()
     }else{
         web_main
-            .bind(("::", http_port)).unwrap()
+            .bind(("0.0.0.0", http_port)).unwrap()
     }
     .workers(woker_num)
     .keep_alive(Duration::from_secs(20))
@@ -307,7 +319,7 @@ fn main() -> std::io::Result<()> {
 
     if use_https && SERVER_CONFIG.http2https_support {
         let http2https = http2https
-            .bind(("::", http_port)).unwrap()
+            .bind(("0.0.0.0", http_port)).unwrap()
             .workers(woker_num)
             .keep_alive(Duration::from_secs(20))
             .run();
