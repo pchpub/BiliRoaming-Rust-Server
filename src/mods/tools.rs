@@ -623,7 +623,7 @@ pub fn load_ssl() -> Result<rustls::ServerConfig, Box<dyn std::error::Error>> {
         .into_iter()
         .map(|cert| Certificate(cert))
         .collect::<Vec<Certificate>>();
-    let mut keys = rustls_pemfile::rsa_private_keys(&mut private_key_file)?
+    let mut keys = rustls_pemfile::ec_private_keys(&mut private_key_file)?
         .into_iter()
         .map(|key| PrivateKey(key))
         .collect::<Vec<PrivateKey>>();
