@@ -25,9 +25,10 @@
 ## [使用说明]
 
 ### 1. 使用一键安装器
+* 将域名解析至您的服务器
 *  `wget -c -t 5 https://github.com/pchpub/biliroaming-rust-server-installer/releases/download/v0.1.0/biliroaming-rust-server-installer && chmod 777 biliroaming-rust-server-installer && ./biliroaming-rust-server-installer` 
 * 按提示操作 默认回车 (推荐使用 auto_proxy 并输入 clash 订阅)
-* 使用 Nginx 反代安装器最后给的URL
+* (如果没开启自动https)使用 Nginx 反代安装器最后给的URL/(开启了自动https)不用安装nginx, 直接使用
 * Enjoy~
 
 ### 2. 使用已编译的二进制文件
