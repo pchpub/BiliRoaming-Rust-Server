@@ -9,6 +9,7 @@
 * support auto_update
 * read the cfg from json
 * health check
+* https support
 * 向后兼容
 
 ## [TODO] 
@@ -19,7 +20,6 @@
 * ~~/pgc/view/web/season?~~ web脚本已弃用
 * web panel
 * local search
-* https support
 * to be faster
 
 ## [使用说明]
