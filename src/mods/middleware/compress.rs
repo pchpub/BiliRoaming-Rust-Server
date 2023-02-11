@@ -52,14 +52,18 @@ where
                         .to_str()
                         .unwrap()
                         .split(';')
+                        .map(|value| value.trim())
                         .collect::<Vec<&str>>();
                     if temp.len() == 1 {
                         temp.push({
                             match temp[0] {
-                                "br" => &"4",
+                                "br" => &"5",
+                                "zstd" => &"4",
                                 "gzip" => &"3",
                                 "deflate" => &"2",
-                                _ => &"1",
+                                "identity" => &"1",
+                                "*" => &"1",
+                                _ => &"0",
                             }
                         });
                     }
@@ -73,10 +77,15 @@ where
                 .iter()
                 .map(|header_value| header_value[0])
                 .collect::<Vec<_>>();
-            *headers.get_mut("Accept-Encoding").unwrap() =
-                accept_encodings.join(",").parse().unwrap();
+            if accept_encodings.len() >= 2 {
+                *headers.get_mut("Accept-Encoding").unwrap() =
+                    accept_encodings.join(",").parse().unwrap();
+            } else if accept_encodings.len() == 0 {
+                headers.remove("Accept-Encoding");
+            } else if accept_encodings[0] == "*" {
+                *headers.get_mut("Accept-Encoding").unwrap() = "br".parse().unwrap();
+            }
         }
-
         let fut = self.service.call(req);
         Box::pin(async move {
             let res = fut.await?;
