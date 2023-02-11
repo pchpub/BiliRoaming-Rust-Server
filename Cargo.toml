@@ -1,11 +1,11 @@
 [package]
 name = "biliroaming_rust_server"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2021"
 
 [dependencies]
 chrono = "0.4.23"
-actix-web = {version = "4.2.1", features = ["rustls"]}
+actix-web = {version = "4.2.1", features = ["rustls","compress-brotli","compress-gzip","compress-zstd"]}
 actix-files = "0.6.2"
 qstring = "0.7.2"
 rust-crypto = "0.2.36"

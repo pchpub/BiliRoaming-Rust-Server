@@ -4,13 +4,14 @@ use actix_web::http::header::ContentType;
 use actix_web::{get, middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use async_channel::{Receiver, Sender};
 use biliroaming_rust_server::mods::background_tasks::*;
-use biliroaming_rust_server::mods::config::{init_config, prepare_before_start};
+use biliroaming_rust_server::mods::config::{init_biliconfig, prepare_before_start};
 use biliroaming_rust_server::mods::handler::{
     errorurl_reg, handle_api_access_key_request, handle_playurl_request, handle_search_request,
     handle_th_season_request, handle_th_subtitle_request,
 };
+use biliroaming_rust_server::mods::middleware::compress::ChangeCompressPriority;
 use biliroaming_rust_server::mods::rate_limit::BiliUserToken;
-use biliroaming_rust_server::mods::tools::{load_ssl, update_config_file};
+use biliroaming_rust_server::mods::config::{load_sslconfig, update_biliconfig};
 use biliroaming_rust_server::mods::types::{BackgroundTaskType, BiliConfig, BiliRuntime};
 use deadpool_redis::{Config, Pool, Runtime};
 use futures::join;
@@ -161,7 +162,7 @@ async fn http2https_handler(req: HttpRequest) -> impl Responder {
 }
 
 lazy_static! {
-    pub static ref SERVER_CONFIG: BiliConfig = init_config();
+    pub static ref SERVER_CONFIG: BiliConfig = init_biliconfig();
     pub static ref REDIS_POOL: Pool = Config::from_url(&SERVER_CONFIG.redis)
         .create_pool(Some(Runtime::Tokio1))
         .unwrap();
@@ -208,7 +209,7 @@ fn main() -> std::io::Result<()> {
     //fs::write("config.example.yml", serde_yaml::to_string(&config).unwrap()).unwrap(); //Debug 方便生成示例配置
     {
         // check before load configuration
-        if let Ok(is_updated) = rt.block_on(update_config_file()) {
+        if let Ok(is_updated) = rt.block_on(update_biliconfig()) {
             if is_updated {
                 info!("配置文件自动更新成功");
             }
@@ -268,7 +269,7 @@ fn main() -> std::io::Result<()> {
     let ssl_config: Option<rustls::ServerConfig>;
     let use_https: bool;
     if server_config.https_support {
-        ssl_config = if let Ok(value) = load_ssl() {
+        ssl_config = if let Ok(value) = load_sslconfig() {
             use_https = true;
             Some(value)
         } else {
@@ -287,6 +288,7 @@ fn main() -> std::io::Result<()> {
             App::new()
                 .app_data((pool, server_config.clone(), bilisender.clone()))
                 .wrap(Governor::new(&rate_limit_conf))
+                .wrap(ChangeCompressPriority)
                 .wrap(middleware::Compress::default())
                 .service(hello)
                 .service(zhplayurl_app)
@@ -327,6 +329,7 @@ fn main() -> std::io::Result<()> {
             App::new()
                 .app_data((pool, server_config.clone(), bilisender.clone()))
                 .wrap(Governor::new(&rate_limit_conf))
+                .wrap(ChangeCompressPriority)
                 .wrap(middleware::Compress::default())
                 .service(hello)
                 .service(zhplayurl_app)

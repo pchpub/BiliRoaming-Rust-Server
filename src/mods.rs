@@ -11,3 +11,4 @@ pub mod tools;
 pub mod types;
 pub mod upstream_res;
 pub mod user_info;
+pub mod middleware;
