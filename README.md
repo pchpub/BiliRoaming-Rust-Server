@@ -9,6 +9,7 @@
 * support auto_update
 * read the cfg from json
 * health check
+* https support
 * 向后兼容
 
 ## [TODO] 

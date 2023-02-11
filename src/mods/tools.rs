@@ -599,27 +599,15 @@ pub fn eid_to_mid(eid: &str) -> Result<String, ()> {
     Ok(mid)
 }
 
-// 用来生成代码段挺方便的 仅供测试
-// pub fn gen_eid_to_mid_map() -> () {
-//     for i in 0..10 {
-//         for n in 0..12 {
-//             println!("({},{n}) => Ok('{i}'),",i.to_string().as_str().chars().collect::<Vec<char>>()[0] as u8 ^ "ad1va46a7lza".as_bytes()[n] as u8);
-//         }
-//     }
-//     ()
-// }
-
-// pub fn add_mid_to_playurl(playurl_type: PlayurlType, data: &serde_json::Value, mid: &str){
-//     // TODO: 修复web播放不正常(应该是因为缺了mid，使得替换upos时403) 在想是不是之前用libcurl br压缩没开的问题
-//     todo!()
-// }
-
 pub fn spawn_random_accesskey(len: usize) -> String {
     let mut rng = rand::thread_rng();
-    let dist = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'a', 'b', 'c', 'd', 'e', 'f'];
+    let dist = [
+        '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'a', 'b', 'c', 'd', 'e', 'f',
+    ];
     let mut secret = String::new();
     for _ in 0..len {
         secret.push(dist[rng.gen_range(0..16)]);
     }
     secret
 }
+

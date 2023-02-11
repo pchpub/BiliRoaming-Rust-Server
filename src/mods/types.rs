@@ -19,13 +19,16 @@ use urlencoding::encode;
 pub struct BiliConfig {
     #[serde(default = "config_version")]
     pub config_version: u16,
-    #[serde(default = "default_false")]
-    pub auto_update: bool,
-    #[serde(default = "default_true")]
-    pub auto_close: bool,
     pub redis: String,
     pub worker_num: usize,
-    pub port: u16,
+    #[serde(default = "default_http_port")]
+    pub http_port: u16,
+    #[serde(default = "default_https_port")]
+    pub https_port: u16,
+    #[serde(default = "default_false")]
+    pub https_support: bool,
+    #[serde(default = "default_false")]
+    pub http2https_support: bool,
     #[serde(default = "default_false")]
     pub limit_biliroaming_version_open: bool,
     #[serde(default = "default_min_version")]
@@ -1703,16 +1706,16 @@ impl ReportHealthData {
 * the following is general types
 */
 fn config_version() -> u16 {
-    3
+    4
 }
 
 fn default_false() -> bool {
     false
 }
 
-fn default_true() -> bool {
-    true
-}
+// fn default_true() -> bool {
+//     true
+// }
 
 fn default_string() -> String {
     "".to_string()
@@ -1775,6 +1778,14 @@ fn default_u64() -> u64 {
 
 fn default_i64() -> i64 {
     0
+}
+
+fn default_http_port() -> u16 {
+    80
+}
+
+fn default_https_port() -> u16 {
+    443
 }
 
 pub struct UpstreamRawResp {

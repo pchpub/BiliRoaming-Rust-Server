@@ -3,8 +3,10 @@ use std::{
     path::Path,
 };
 
+use log::debug;
+
 use super::types::{BiliConfig, BiliRuntime};
-pub fn init_config() -> BiliConfig {
+pub fn init_biliconfig() -> BiliConfig {
     let mut config_type: Option<&str> = None;
     let config_suffix = ["json", "yml"];
     for suffix in config_suffix {
@@ -78,44 +80,6 @@ fn load_biliconfig(config_type: Option<&str>) -> Result<BiliConfig, String> {
     Ok(config)
 }
 
-//A method to update config （算了，牺牲点兼容性好了，就不加了
-// pub fn old_config_update<'a>(config_type: Option<&str>,config_file: &File,config: &'a mut BiliConfig) -> Result<&'a BiliConfig, ()> {
-//     let config_version: u16;
-//     match config_type.unwrap() {
-//         "json" => {
-//             let config: serde_json::Value;
-//             config = serde_json::from_reader(config_file).unwrap();
-//             match  config.get("config_version") {//判断下是不是老的配置
-//                 Some(value) => {
-//                     config_version = value.as_i64().unwrap_or(1) as u16;
-//                 },
-//                 None => {
-//                     config_version = 1;
-//                 },
-//             }
-//         },
-//         "yml" => {
-//             let config: serde_yaml::Value;
-//             config = serde_yaml::from_reader(config_file).unwrap();
-//             match  config.get("config_version") {//判断下是不是老的配置
-//                 Some(value) => {
-//                     config_version = value.as_i64().unwrap_or(1) as u16;
-//                 },
-//                 None => {
-//                     config_version = 1;
-//                 },
-//             }
-//         },
-//         _ => {
-//             return Err(());
-//         }
-//     }
-//     if config_version == 1 {
-//         // config.report_config =
-//     }
-//     Err(())
-// }
-
 pub async fn prepare_before_start(bili_runtime: BiliRuntime<'_>) {
     // set resign_info
     if bili_runtime.config.cn_resign_info.access_key != "".to_owned() {
@@ -125,4 +89,76 @@ pub async fn prepare_before_start(bili_runtime: BiliRuntime<'_>) {
     if bili_runtime.config.th_resign_info.access_key != "".to_owned() {
         bili_runtime.redis_set("a41101", &bili_runtime.config.th_resign_info.to_json(), 0).await;
     }
+}
+
+pub fn load_sslconfig() -> Result<rustls::ServerConfig, Box<dyn std::error::Error>> {
+    use rustls::{Certificate, PrivateKey, ServerConfig};
+    use std::io::BufReader;
+
+    let mut cert_file = BufReader::new(File::open("certificates/fullchain.pem")?);
+    let mut private_key_file = BufReader::new(File::open("certificates/privkey.pem")?);
+
+    let cert_chain = rustls_pemfile::certs(&mut cert_file)?
+        .into_iter()
+        .map(|cert| Certificate(cert))
+        .collect::<Vec<Certificate>>();
+    let mut keys = rustls_pemfile::ec_private_keys(&mut private_key_file)?
+        .into_iter()
+        .map(|key| PrivateKey(key))
+        .collect::<Vec<PrivateKey>>();
+
+    debug!("{:?}",keys);
+
+    let config = ServerConfig::builder()
+        .with_safe_default_cipher_suites()
+        .with_safe_default_kx_groups()
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(cert_chain, keys.remove(0))?;
+
+    Ok(config)
+}
+
+pub async fn update_biliconfig() -> Result<bool,Box<dyn std::error::Error>> {
+    use tokio::fs;
+
+    async fn read_config_json() -> Result<serde_json::Value,Box<dyn std::error::Error>> {
+        let config = fs::read_to_string("config.json").await?;
+        let config: serde_json::Value = serde_json::from_str(&config)?;
+        Ok(config)
+    }
+
+    async fn read_config_yaml() -> Result<serde_yaml::Value,Box<dyn std::error::Error>> {
+        let config = fs::read_to_string("config.yaml").await?;
+        let config: serde_yaml::Value = serde_yaml::from_str(&config)?;
+        Ok(config)
+    }
+
+    let mut is_updated: bool = false;
+
+    if Path::new("config.json").exists() {
+        let mut config = read_config_json().await?;
+        if config["config_version"].as_i64().unwrap_or(3) <= 3 {
+            config["http_port"] = config["port"].clone();
+            config["config_version"] = serde_json::Value::from(4);
+            config["worker_num"] = config["woker_num"].clone();
+            is_updated = true;
+        }
+        if is_updated {
+            fs::write("config.json", serde_json::to_string_pretty(&config)?).await?;
+        }
+    } else if Path::new("config.yaml").exists() {
+        let mut config = read_config_yaml().await?;
+        if config["config_version"].as_i64().unwrap_or(3) <= 3 {
+            config["http_port"] = config["port"].clone();
+            config["config_version"] = serde_yaml::Value::from(4);
+            config["worker_num"] = config["woker_num"].clone();
+            is_updated = true;
+        }
+        if is_updated {
+            fs::write("config.yaml", serde_yaml::to_string(&config)?).await?;
+        }
+    }
+    Ok(is_updated)
 }
