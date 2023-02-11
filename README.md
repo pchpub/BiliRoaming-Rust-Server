@@ -20,7 +20,6 @@
 * ~~/pgc/view/web/season?~~ web脚本已弃用
 * web panel
 * local search
-* https support
 * to be faster
 
 ## [使用说明]
