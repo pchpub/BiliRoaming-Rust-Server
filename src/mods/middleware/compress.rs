@@ -46,44 +46,51 @@ where
         if let Some(_) = accept_encoding {
             let headers = req.headers_mut();
             let mut accept_encodings = headers
-                .get_all("Accept-Encoding")
+                .get("Accept-Encoding")
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .split(',')
                 .map(|header_value| {
-                    let mut temp = header_value
-                        .to_str()
-                        .unwrap()
+                    let temp = header_value
                         .split(';')
                         .map(|value| value.trim())
                         .collect::<Vec<&str>>();
+                    let mut temp2 = ((&temp[0]).to_string(), 0);
                     if temp.len() == 1 {
-                        temp.push({
+                        temp2.1 = {
                             match temp[0] {
-                                "br" => &"5",
-                                "zstd" => &"4",
-                                "gzip" => &"3",
-                                "deflate" => &"2",
-                                "identity" => &"1",
-                                "*" => &"1",
-                                _ => &"0",
+                                "br" => 5,
+                                "zstd" => 4,
+                                "gzip" => 3,
+                                "deflate" => 2,
+                                "identity" => 1,
+                                "*" => 1,
+                                _ => 0,
                             }
-                        });
+                        };
+                    }else{
+                        temp2.1 = (&temp[1].char_indices().filter(|value| value.0 >= 2).map(|value| value.1).collect::<String>().parse::<f32>().unwrap() * 10.0) as i32;
                     }
-                    temp
+                    temp2
                 })
-                .filter(|header_value| header_value[1] != "0")
+                .filter(|header_value| header_value.1 != 0)
                 .collect::<Vec<_>>();
-            accept_encodings.sort_by_key(|key| (key[1].parse::<f32>().unwrap() * 10.0) as i32);
+            accept_encodings.sort_by_key(|key| key.1);
             accept_encodings.reverse();
             let accept_encodings = accept_encodings
                 .iter()
-                .map(|header_value| header_value[0])
+                .map(|header_value| &header_value.0[..])
                 .collect::<Vec<_>>();
             if accept_encodings.len() >= 2 {
                 *headers.get_mut("Accept-Encoding").unwrap() =
-                    accept_encodings.join(",").parse().unwrap();
+                    accept_encodings[0].parse().unwrap();
             } else if accept_encodings.len() == 0 {
                 headers.remove("Accept-Encoding");
             } else if accept_encodings[0] == "*" {
                 *headers.get_mut("Accept-Encoding").unwrap() = "br".parse().unwrap();
+            } else {
+                *headers.get_mut("Accept-Encoding").unwrap() = accept_encodings[0].parse().unwrap();
             }
         }
         let fut = self.service.call(req);
