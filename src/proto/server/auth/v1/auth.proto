@@ -1,0 +1,156 @@
+syntax = "proto3";
+
+package server.auth.v1;
+
+// 视频url
+service Auth {
+    // 用户登录
+    rpc Auth (ClientInfo) returns (AuthReply);
+}
+
+// 用户鉴权
+message ClientInfo {
+    // 用户uid
+    uint64 uid = 1;
+    // 登录access_key
+    string access_key = 2;
+    // 哔哩哔哩客户端信息
+    ClientInfoApp app_info = 3;
+    // 用户设备信息
+    ClientInfoDevice device_info = 4;
+    // sso登录信息
+    ClientUserInfoExtra extra_info = 5;
+}
+
+message AuthReply {
+    // 响应代码
+    int32 code = 1;
+    // 提示信息
+    string message = 2;
+}
+
+// 哔哩哔哩客户端信息
+message ClientInfoApp {
+    // app版本号, 如`7.8.2`
+    string app_ver = 1;
+    // app build, 如`7082100`
+    int32 app_build = 2;
+    // app innerVer
+    int32 app_build_inner = 3;
+    // app类型, 不提供则默认为大陆版
+    ClientAppType app_type = 4;
+    // app来源, 不提供则默认为master
+    string app_channel = 5;
+    // app包类型
+    string mobi_app = 6;
+    // appkey
+    string appkey = 7;
+    // 其他非必要信息
+    ClientInfoAppExtra app_extra = 10;
+}
+
+message ClientInfoAppExtra {
+    //产品编号，由数据平台分配，粉=1，白=2，蓝=3，直播姬=4，HD=5，海外=6，OTT=7，漫画=8，TV野版=9，小视频=10，网易漫画=11，网易漫画lite=12，网易漫画HD=13,国际版=14
+    uint32 app_id = 1;
+}
+
+// 哔哩哔哩客户端类型
+enum ClientAppType {
+    // 大陆版(粉版)
+    Android = 0;
+    // play版
+    AndroidI = 1;
+    // 概念版(蓝版)
+    AndroidB = 2;
+    // HD版
+    AndroidHd = 3;
+    // 东南亚版
+    BstarA = 4;
+    // 云视听小电视(TV版)
+    AndroidTv = 5;
+    // IOS版通用
+    Ios = 6;
+    // PC的electron版本
+    Pc = 10;
+    // 其他未知
+    UNKNOWN = 999;
+}
+
+// 用户设备信息
+message ClientInfoDevice {
+    // 平台类型
+    string platform = 1;
+    // AndroidId
+    string android_id = 2;
+    // DrmId
+    string drm_id = 3;
+    // 硬件指纹
+    string fp = 4;
+    // 设备其他信息
+    ClientInfoDeviceExtra device_extra = 10;
+}
+
+
+// 用户设备其他信息
+message ClientInfoDeviceExtra {
+    // dalvik版本, 安卓独有字段, 默认`2.1.0``
+    string dalvik_ver = 1;
+    // 系统版本, 安卓默认`11``, ios默认`16.1`即可
+    string os_ver = 2;
+    // 手机品牌, 随机生成
+    string brand = 3;
+    // 手机型号, 随机生成
+    string model = 4;
+    // wifi, default
+    uint32 network_type = 5;
+    // 免流类型, 保持默认为0, 即不免流.
+    uint32 network_tf = 6;
+    // 运营商代码, 留空
+    string network_oid = 7;
+    // 区域, 默认为`CN`即可
+    string region = 8;
+    // 语言, 默认为`zh`即可
+    string language = 9;
+}
+
+
+// 用户信息, v2
+message ClientUserInfo {
+    // 用户uid
+    uint64 uid = 1;
+    // 用户access_key
+    string access_key = 2;
+    // 首次访问时间
+    int64 fts = 3;
+    // 访问次数
+    uint32 access_count = 4;
+    // buvid, used for general purpose
+    string buvid = 5;
+    // buvid, used for auth related
+    string buvid_auth = 6;
+    // 大会员过期时间
+    int64 vip_expire_time = 7;
+    // 缓存过期时间
+    int64 expire_time = 8;
+    // 漫游黑名单
+    ClientUserCerInfo user_cer_info = 100;
+}
+
+// sso登录信息, 可选, 自建服务器用, 供服务器自行刷新access_key
+message ClientUserInfoExtra {
+    string dede_user_id = 1;
+    string dede_user_id_ck_md5 = 2;
+    string bili_jct = 3;
+    string sessdata = 4;
+    string sid = 5;
+    string refresh_token = 6;
+    uint64 expires = 7;
+}
+
+// 漫游黑名单
+message ClientUserCerInfo {
+    bool is_whitelisted = 1;
+    bool is_blacklisted = 2;
+    int64 ban_until = 3;
+    int64 last_updated = 4;
+}

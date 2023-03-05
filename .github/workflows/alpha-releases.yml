@@ -11,12 +11,21 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
+    - name: Setup protoc
+      run: |
+        wget -P /tmp https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-linux-x86_64.zip
+        unzip /tmp/protoc-21.12-linux-x86_64.zip -d /tmp/protoc
+        chmod +x /tmp/protoc/bin/protoc
     - name: Build
       run: |
         docker run -i --rm \
         -v $PWD:/workdir \
+        -v /tmp/protoc:/tmp/protoc \
         -v ~/.cargo/git:/root/.cargo/git \
         -v ~/.cargo/registry:/root/.cargo/registry \
+        -e PROTOBUF_LOCATION='/tmp/protoc' \
+        -e PROTOC='/tmp/protoc/bin/protoc' \
+        -e PROTOC_INCLUDE='/tmp/protoc/include' \
         registry.gitlab.com/rust_musl_docker/image:stable-latest \
         cargo build --profile=fast -vv --target=x86_64-unknown-linux-musl
     - name: Rename config file

@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package server.api.public.bangumi;
+
+// 番剧信息
+service BangumiInfo {
+    rpc SeasonInfo (stream BiliBangumiInfoReq) returns (stream BiliSeasonInfoReply);
+    rpc EpInfo (stream BiliBangumiInfoReq) returns (stream BiliEpInfoReply);
+}
+
+message BiliBangumiInfoReq {
+    repeated uint64 epid = 1;
+    repeated uint64 season_id = 2;
+}
+
+message BiliSeasonInfoReply {
+    repeated BiliSeasonInfo season_info = 1;
+}
+
+message BiliEpInfoReply {
+    repeated BiliEpInfo ep_info = 1;
+}
+
+// season_info
+message BiliSeasonInfo {
+    // 番剧系列标题
+    string season_title = 1;
+    uint64 season_id = 2;
+    uint64 media_id = 3;
+    int64 update_time = 4;
+    repeated BiliEpInfo episodes = 5;
+    // 服务端最后更新时间(毫秒时间戳)
+    int64 last_updated = 6;
+}
+
+// ep_info
+message BiliEpInfo {
+    uint64 aid = 1;
+    uint64 cid = 2;
+    string avid = 3;
+    string bvid = 4;
+    uint64 ep_id = 5;
+    bool need_vip = 6;
+    uint64 title = 7;
+    // 服务端最后更新时间(毫秒时间戳)
+    int64 last_updated = 8;
+}
