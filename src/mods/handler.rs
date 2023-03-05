@@ -777,34 +777,38 @@ pub async fn handle_api_access_key_request(req: &HttpRequest) -> HttpResponse {
     ))
 }
 
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref ERRORURL_REG: Regex = Regex::new(
+        r"(/pgc/player/api/playurl)|(/pgc/player/web/playurl)|(/intl/gateway/v2/ogv/playurl)|(/x/v2/search/type)|(/x/web-interface/search/type)|(/intl/gateway/v2/app/search/type)|(/intl/gateway/v2/ogv/view/app/season)|(/intl/gateway/v2/app/subtitle)|(/pgc/view/v2/app/season)",
+    ).unwrap();
+}
+
 pub async fn errorurl_reg(url: &str) -> Option<u8> {
-    let re = if let Ok(value) = Regex::new(
-        r"(/pgc/player/api/playurl)|(/pgc/player/web/playurl)|(/intl/gateway/v2/ogv/playurl)|(/x/v2/search/type)|(/x/web-interface/search/type)|(/intl/gateway/v2/app/search/type)|(/intl/gateway/v2/ogv/view/app/season)|(/intl/gateway/v2/app/subtitle)",
-    ) {
-        value
-    } else {
-        return None;
-    };
-    let caps = if let Ok(value) = re.captures(url.as_bytes()) {
-        match value {
-            Some(cap) => cap,
-            None => return None,
-        }
-    } else {
-        return None;
-    };
-    debug!("[ERRORURL_REG] {:?}", caps);
+    let re = &*ERRORURL_REG;
+    let caps = re.captures(url.as_bytes()).ok()??;
+    debug!("[ERRORURL_REG] Captures: {:?}", caps);
     let mut res_url: &str = "";
-    let mut index = 1;
-    while index <= 8 {
+    // let mut index = 1;
+    // while index <= 8 {
+    //     match &caps.get(index) {
+    //         Some(value) => {
+    //             res_url = std::str::from_utf8(value.as_bytes()).unwrap();
+    //             break;
+    //         }
+    //         None => (),
+    //     }
+    //     index += 1;
+    // }
+    for index in 1..=8usize {
         match &caps.get(index) {
             Some(value) => {
-                res_url = std::str::from_utf8(value.as_bytes()).unwrap();
+                res_url = unsafe { std::str::from_utf8_unchecked(value.as_bytes()) };
                 break;
             }
             None => (),
         }
-        index += 1;
     }
 
     match res_url {
@@ -816,6 +820,7 @@ pub async fn errorurl_reg(url: &str) -> Option<u8> {
         "/intl/gateway/v2/app/search/type" => Some(6),
         "/intl/gateway/v2/ogv/view/app/season" => Some(7),
         "/intl/gateway/v2/app/subtitle" => Some(8),
+        "/pgc/view/v2/app/season" => Some(9),
         _ => None,
     }
 }
