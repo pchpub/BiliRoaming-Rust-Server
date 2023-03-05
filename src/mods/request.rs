@@ -78,7 +78,7 @@ pub async fn async_getwebpage(
         return Err(EType::ServerReqError("Client request failed Step 4"));
     };
     debug!("[GET WEBPAGE] URL {}", url);
-    Ok(UpstreamRawResp::new(rsp_headers, rsp_body))
+    Ok(UpstreamRawResp::new(url, rsp_headers, rsp_body))
 }
 
 pub async fn async_postwebpage(
@@ -144,7 +144,7 @@ pub async fn async_postwebpage(
     } else {
         return Err(EType::ServerReqError("Client request failed Step 4"));
     };
-    Ok(UpstreamRawResp::new(rsp_headers, rsp_body))
+    Ok(UpstreamRawResp::new(url, rsp_headers, rsp_body))
 }
 
 pub async fn redis_get(redis: &Pool, key: &str) -> Option<String> {

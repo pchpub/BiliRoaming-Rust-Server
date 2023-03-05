@@ -1,6 +1,6 @@
 use super::background_tasks::update_cached_ep_vip_status_background;
 use super::request::async_getwebpage;
-use super::types::{Area, BiliRuntime, CacheType, ReqType};
+use super::types::{Area, BiliRuntime, CacheType, ReqType, RawRespTrait};
 use super::upstream_res::get_upstream_bili_ep_info;
 use log::{debug, error};
 use serde_json::json;

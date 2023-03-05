@@ -1,8 +1,8 @@
 use super::{
     request::async_getwebpage,
     types::{
-        Area, BackgroundTaskType, BiliRuntime, HealthData, HealthReportType, HealthTask, ReqType,
-        UpstreamReply,
+        Area, BackgroundTaskType, BiliRuntime, HealthData, HealthReportType, HealthTask,
+        RawRespTrait, ReqType, UpstreamReply,
     },
 };
 use log::debug;

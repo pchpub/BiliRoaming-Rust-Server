@@ -1,5 +1,8 @@
+use crate::unsafe_str_copy;
+
 use super::{
     ep_info::get_ep_need_vip,
+    middleware::error::definition::{BiliUpstreamError, BiliUpstreamErrorType},
     request::{redis_get, redis_set},
 };
 use actix_web::HttpRequest;
@@ -11,6 +14,189 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, hash::Hash, sync::Arc};
 use urlencoding::encode;
+
+/*
+* Pub use trait
+ */
+
+/// 为所有错误类型实现此trait
+pub trait ErrorTrait: std::fmt::Display {
+    fn is_ok(&self) -> bool {
+        false
+    }
+    fn e_code(&self) -> i32;
+    fn e_message<'e>(&self) -> &'e str;
+    /// 追踪ID, 如果B站返回x-bili-trace-id, 即为之, 否则为md5 -> raw_query
+    fn e_trace_id<'e>(&self) -> String;
+}
+
+/// 所有原始返回值
+pub trait RawRespTrait {
+    /// 返回所有头部信息
+    fn raw_headers(&self) -> &HashMap<String, String>;
+    /// 返回原始请求
+    fn raw_query(&self) -> &str;
+    /// 返回原始响应
+    fn raw_resp_content(&self) -> &str;
+    /// 序列化
+    fn json(&self) -> Option<serde_json::Value> {
+        if let Ok(json_content) = serde_json::from_str(&self.raw_resp_content()) {
+            Some(json_content)
+        } else {
+            None
+        }
+    }
+    /// 返回所有头部信息的String
+    fn get_all_headers_string(&self) -> String {
+        let mut headers: Vec<String> = Vec::new();
+        let headers_hashmap = self.raw_headers();
+        for (key, value) in headers_hashmap {
+            headers.push(key.to_owned());
+            unsafe {
+                headers.push(String::from_utf8_unchecked(vec![58u8, 32]));
+            }
+            headers.push(value.to_owned());
+            unsafe {
+                headers.push(String::from_utf8_unchecked(vec![13u8, 10]));
+            }
+        }
+        headers.join("")
+    }
+    /// 获取特定头部
+    fn get_header(&self, key: &str) -> Option<&String> {
+        self.raw_headers().get(key)
+    }
+}
+
+/// 原始返回值
+pub struct UpstreamRawResp {
+    pub req_url: String,
+    pub resp_header: HashMap<String, String>,
+    pub resp_content: String,
+}
+
+impl RawRespTrait for UpstreamRawResp {
+    fn raw_headers(&self) -> &HashMap<String, String> {
+        &self.resp_header
+    }
+    fn raw_query(&self) -> &str {
+        &self.req_url
+    }
+    fn raw_resp_content(&self) -> &str {
+        &self.resp_content
+    }
+}
+impl RawRespTrait for &UpstreamRawResp {
+    fn raw_headers(&self) -> &HashMap<String, String> {
+        &self.resp_header
+    }
+    fn raw_query(&self) -> &str {
+        &self.req_url
+    }
+    fn raw_resp_content(&self) -> &str {
+        &self.resp_content
+    }
+}
+
+impl UpstreamRawResp {
+    pub fn new(
+        req_url: &str,
+        resp_header: HashMap<String, String>,
+        resp_content: String,
+    ) -> UpstreamRawResp {
+        UpstreamRawResp {
+            req_url: unsafe_str_copy!(req_url),
+            resp_header,
+            resp_content,
+        }
+    }
+}
+
+impl std::fmt::Display for UpstreamRawResp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.resp_content)
+    }
+}
+
+/// Bilibili Resp
+pub struct BiliResp {
+    pub resp: UpstreamRawResp,
+    pub error: Option<BiliUpstreamError>,
+}
+
+impl RawRespTrait for BiliResp {
+    fn raw_headers(&self) -> &HashMap<String, String> {
+        self.resp.raw_headers()
+    }
+    fn raw_query(&self) -> &str {
+        self.resp.raw_query()
+    }
+    fn raw_resp_content(&self) -> &str {
+        self.resp.raw_resp_content()
+    }
+}
+
+impl std::fmt::Display for BiliResp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.error {
+            Some(e) => e.fmt(f),
+            None => self.resp.fmt(f),
+        }
+    }
+}
+
+impl From<UpstreamRawResp> for BiliResp {
+    fn from(value: UpstreamRawResp) -> Self {
+        let error = BiliUpstreamError::from(&value);
+        match error.r#type() {
+            BiliUpstreamErrorType::Ok => Self {
+                resp: value,
+                error: None,
+            },
+            _ => Self {
+                resp: value,
+                error: Some(error),
+            },
+        }
+    }
+}
+
+impl ErrorTrait for BiliResp {
+    #[inline]
+    fn is_ok(&self) -> bool {
+        if let Some(_) = self.error {
+            false
+        } else {
+            true
+        }
+    }
+    #[inline]
+    fn e_code(&self) -> i32 {
+        if self.is_ok() {
+            0
+        } else {
+            self.error.as_ref().unwrap().e_code()
+        }
+    }
+    #[inline]
+    fn e_message<'e>(&self) -> &'e str {
+        if self.is_ok() {
+            ""
+        } else {
+            self.error.as_ref().unwrap().e_message()
+        }
+    }
+    #[inline]
+    fn e_trace_id<'e>(&self) -> String {
+        if self.is_ok() {
+            String::new()
+        } else {
+            self.error.as_ref().unwrap().e_trace_id()
+        }
+    }
+}
+
+impl BiliResp {}
 
 /*
 * the following is server config related
@@ -772,122 +958,6 @@ impl<'cache_type> CacheType<'cache_type> {
 //         }
 //     }
 // }
-
-#[macro_export]
-/// `build_result_response` accept Result<String, EType>
-macro_rules! build_result_response {
-    ($resp:ident) => {
-        match $resp {
-            Ok(value) => {
-                return HttpResponse::Ok()
-                    .content_type(ContentType::json())
-                    .insert_header(("From", "biliroaming-rust-server"))
-                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-                    .insert_header(("Access-Control-Allow-Credentials", "true"))
-                    .insert_header(("Access-Control-Allow-Methods", "GET"))
-                    .body(value);
-            }
-            Err(value) => {
-                return HttpResponse::Ok()
-                    .content_type(ContentType::json())
-                    .insert_header(("From", "biliroaming-rust-server"))
-                    .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-                    .insert_header(("Access-Control-Allow-Credentials", "true"))
-                    .insert_header(("Access-Control-Allow-Methods", "GET"))
-                    .body(value.to_string());
-            }
-        }
-    };
-}
-
-#[macro_export]
-/// `build_response` accepts &str, String, EType, or any that has method `to_string()`
-macro_rules! build_response {
-    // support enum
-    ($resp:path) => {
-        return HttpResponse::Ok()
-            .content_type(ContentType::json())
-            .insert_header(("From", "biliroaming-rust-server"))
-            .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-            .insert_header(("Access-Control-Allow-Credentials", "true"))
-            .insert_header(("Access-Control-Allow-Methods", "GET"))
-            .body($resp.to_string())
-    };
-    // support value.to_string(), etc.
-    ($resp:expr) => {
-        return HttpResponse::Ok()
-            .content_type(ContentType::json())
-            .insert_header(("From", "biliroaming-rust-server"))
-            .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-            .insert_header(("Access-Control-Allow-Credentials", "true"))
-            .insert_header(("Access-Control-Allow-Methods", "GET"))
-            .body($resp)
-    };
-    ($resp:ident) => {
-        return HttpResponse::Ok()
-            .content_type(ContentType::json())
-            .insert_header(("From", "biliroaming-rust-server"))
-            .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-            .insert_header(("Access-Control-Allow-Credentials", "true"))
-            .insert_header(("Access-Control-Allow-Methods", "GET"))
-            .body($resp)
-    };
-    // support like `build_response!(-412, "什么旧版本魔人,升下级");`
-    ($err_code:expr, $err_msg:expr) => {
-        return HttpResponse::Ok()
-            .content_type(ContentType::json())
-            .insert_header(("From", "biliroaming-rust-server"))
-            .insert_header(("Access-Control-Allow-Origin", "https://www.bilibili.com"))
-            .insert_header(("Access-Control-Allow-Credentials", "true"))
-            .insert_header(("Access-Control-Allow-Methods", "GET"))
-            .body(format!(
-                "{{\"code\":{},\"message\":\"其他错误: {}\"}}",
-                $err_code, $err_msg
-            ))
-    };
-}
-
-#[macro_export]
-/// support like `build_signed_url!(unsigned_url, vec![query_param], "sign_secret");`, return tuple (signed_url, md5_sign), mg5_sign for debug
-macro_rules! build_signed_url {
-    ($unsigned_url:expr, $query_vec:expr, $sign_secret:expr) => {{
-        let req_params = qstring::QString::new($query_vec).to_string();
-        let mut signed_url = String::with_capacity(600);
-        signed_url.push_str(&($unsigned_url));
-        signed_url.push_str("?");
-        signed_url.push_str(&req_params);
-        signed_url.push_str("&sign=");
-        let mut sign = crypto::md5::Md5::new();
-        crypto::digest::Digest::input_str(&mut sign, &(req_params + $sign_secret));
-        let md5_sign = crypto::digest::Digest::result_str(&mut sign);
-        signed_url.push_str(&md5_sign);
-        (signed_url, md5_sign)
-    }};
-}
-#[macro_export]
-/// support like `build_signed_url!(unsigned_url, vec![query_param], "sign_secret");`, return tuple (signed_url, md5_sign), mg5_sign for debug
-macro_rules! build_signed_params {
-    ($query_vec:expr, $sign_secret:expr) => {{
-        let req_params = qstring::QString::new($query_vec).to_string();
-        let mut signed_params = String::with_capacity(600);
-        signed_params.push_str(&req_params);
-        signed_params.push_str("&sign=");
-        let mut sign = crypto::md5::Md5::new();
-        crypto::digest::Digest::input_str(&mut sign, &(req_params + $sign_secret));
-        let md5_sign = crypto::digest::Digest::result_str(&mut sign);
-        signed_params.push_str(&md5_sign);
-        (signed_params, md5_sign)
-    }};
-}
-
-#[macro_export]
-macro_rules! calc_md5 {
-    ($input_str: expr) => {{
-        let mut md5_instance = crypto::md5::Md5::new();
-        crypto::digest::Digest::input_str(&mut md5_instance, &($input_str));
-        crypto::digest::Digest::result_str(&mut md5_instance)
-    }};
-}
 
 #[macro_export]
 /// + 随机字符串
@@ -1786,66 +1856,6 @@ fn default_http_port() -> u16 {
 
 fn default_https_port() -> u16 {
     443
-}
-
-pub struct UpstreamRawResp {
-    pub resp_header: HashMap<String, String>,
-    pub resp_content: String,
-}
-
-impl UpstreamRawResp {
-    pub fn new(resp_header: HashMap<String, String>, resp_content: String) -> UpstreamRawResp {
-        UpstreamRawResp {
-            resp_header,
-            resp_content,
-        }
-    }
-    // pub fn init_headers(&self) -> HashMap<String, String> {
-    //     let mut resp_header: HashMap<String, String> = HashMap::new();
-    //     let resp_header_raw_string =
-    //         unsafe { String::from_utf8_unchecked(self.resp_header.clone()) };
-    //     let mut resp_header_raw_string_vec: Vec<&str> = resp_header_raw_string.split("‡").collect();
-    //     resp_header_raw_string_vec.pop(); //去掉最后一个
-    //     for header_item in resp_header_raw_string_vec {
-    //         let header_item: Vec<&str> = header_item.split(": ").collect();
-    //         if header_item.len() == 2 {
-    //             resp_header.insert(header_item[0].to_string(), header_item[1].to_string());
-    //         }
-    //     }
-    //     resp_header
-    // }
-    pub fn json(&self) -> Option<serde_json::Value> {
-        if let Ok(json_content) = serde_json::from_str(&self.resp_content) {
-            Some(json_content)
-        } else {
-            None
-        }
-    }
-    // pub fn read_header(&self, header: &str) -> Option<String> {
-    //     let headers_hashmap = self.init_headers();
-    //     headers_hashmap.get(header).unwrap()
-    // }
-    pub fn read_headers(&self) -> String {
-        let mut headers: Vec<String> = Vec::new();
-        let headers_hashmap = &self.resp_header;
-        for (key, value) in headers_hashmap {
-            headers.push(key.to_owned());
-            unsafe {
-                headers.push(String::from_utf8_unchecked(vec![58u8, 32]));
-            }
-            headers.push(value.to_owned());
-            unsafe {
-                headers.push(String::from_utf8_unchecked(vec![13u8, 10]));
-            }
-        }
-        headers.join("")
-    }
-}
-
-impl std::fmt::Display for UpstreamRawResp {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.resp_content)
-    }
 }
 
 pub enum Area {

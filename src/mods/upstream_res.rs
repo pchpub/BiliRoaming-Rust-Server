@@ -13,7 +13,8 @@ use super::tools::{
 };
 use super::types::{
     Area, BiliRuntime, ClientType, EType, EpInfo, FakeUA, HealthData, HealthReportType,
-    PlayurlParams, ReqType, SearchParams, UniqueId, UpstreamReply, UserCerinfo, UserInfo,
+    PlayurlParams, RawRespTrait, ReqType, SearchParams, UniqueId, UpstreamReply, UserCerinfo,
+    UserInfo,
 };
 use super::user_info::get_blacklist_info;
 use crate::{build_signed_url, random_string};
@@ -162,7 +163,7 @@ pub fn get_upstream_bili_account_info_rec<'rec>(
                 area_num: 0,
                 is_200_ok: true,
                 upstream_reply: UpstreamReply {
-                    upstream_header: upstream_raw_resp.read_headers(),
+                    upstream_header: upstream_raw_resp.get_all_headers_string(),
                     proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
                     proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
                     ..Default::default()
@@ -230,7 +231,7 @@ pub fn get_upstream_bili_account_info_rec<'rec>(
                         .as_str()
                         .unwrap_or("null")
                         .to_owned(),
-                    upstream_header: upstream_raw_resp.read_headers(),
+                    upstream_header: upstream_raw_resp.get_all_headers_string(),
                     proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
                     proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
                 },
@@ -284,7 +285,7 @@ pub fn get_upstream_bili_account_info_rec<'rec>(
                             .as_str()
                             .unwrap_or("null")
                             .to_owned(),
-                        upstream_header: upstream_raw_resp.read_headers(),
+                        upstream_header: upstream_raw_resp.get_all_headers_string(),
                         proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
                         proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
                     },
@@ -327,7 +328,7 @@ pub fn get_upstream_bili_account_info_rec<'rec>(
                                 upstream_reply: UpstreamReply {
                                     code,
                                     message: upstream_message,
-                                    upstream_header: upstream_raw_resp.read_headers(),
+                                    upstream_header: upstream_raw_resp.get_all_headers_string(),
                                     proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
                                     proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
                                 },
@@ -369,7 +370,7 @@ pub fn get_upstream_bili_account_info_rec<'rec>(
                     upstream_reply: UpstreamReply {
                         code,
                         message: upstream_message.clone(),
-                        upstream_header: upstream_raw_resp.read_headers(),
+                        upstream_header: upstream_raw_resp.get_all_headers_string(),
                         proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
                         proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
                     },
@@ -402,7 +403,7 @@ pub fn get_upstream_bili_account_info_rec<'rec>(
                             .as_str()
                             .unwrap_or("null")
                             .to_owned(),
-                        upstream_header: upstream_raw_resp.read_headers(),
+                        upstream_header: upstream_raw_resp.get_all_headers_string(),
                         proxy_open: bili_runtime.config.cn_proxy_accesskey_open,
                         proxy_url: bili_runtime.config.cn_proxy_accesskey_url.clone(),
                     },
@@ -574,7 +575,7 @@ pub async fn get_upstream_bili_account_info_ak_to_mid(
                         .as_str()
                         .unwrap_or("null")
                         .to_owned(),
-                    upstream_header: upstream_raw_resp.read_headers(),
+                    upstream_header: upstream_raw_resp.get_all_headers_string(),
                     ..Default::default()
                 },
                 is_custom: true,
@@ -596,7 +597,7 @@ pub async fn get_upstream_bili_account_info_ak_to_mid(
                         .as_str()
                         .unwrap_or("null")
                         .to_owned(),
-                    upstream_header: upstream_raw_resp.read_headers(),
+                    upstream_header: upstream_raw_resp.get_all_headers_string(),
                     ..Default::default()
                 },
                 is_custom: true,
@@ -887,7 +888,7 @@ pub async fn get_upstream_bili_playurl(
                     area_num: params.area_num,
                     is_200_ok: true,
                     upstream_reply: UpstreamReply {
-                        upstream_header: upstream_raw_resp.read_headers(),
+                        upstream_header: upstream_raw_resp.get_all_headers_string(),
                         proxy_open,
                         proxy_url: String::from(proxy_url),
                         ..Default::default()
@@ -924,7 +925,7 @@ pub async fn get_upstream_bili_playurl(
             UpstreamReply {
                 code,
                 message,
-                upstream_header: upstream_raw_resp.read_headers(),
+                upstream_header: upstream_raw_resp.get_all_headers_string(),
                 proxy_open,
                 proxy_url: String::from(proxy_url),
                 ..Default::default()
@@ -1209,7 +1210,7 @@ pub async fn get_upstream_bili_playurl_background(
     let upstream_reply = UpstreamReply {
         code,
         message,
-        upstream_header: upstream_raw_resp.read_headers(),
+        upstream_header: upstream_raw_resp.get_all_headers_string(),
         proxy_open,
         proxy_url: String::from(proxy_url),
     };
@@ -1316,9 +1317,9 @@ pub async fn get_upstream_bili_search(
 
     query_vec.sort_by_key(|v| v.0.clone());
 
-    let signed_url =  if !params.is_app {
+    let signed_url = if !params.is_app {
         format!("{}?{}", api, raw_query)
-    }else{
+    } else {
         build_signed_url!(api, query_vec, params.appsec).0
     };
 
@@ -1343,7 +1344,7 @@ pub async fn get_upstream_bili_search(
                     UpstreamReply {
                         code: upstream_code,
                         message: upstream_message.to_string(),
-                        upstream_header: data.read_headers(),
+                        upstream_header: data.get_all_headers_string(),
                         proxy_open,
                         proxy_url: String::from(proxy_url),
                     },

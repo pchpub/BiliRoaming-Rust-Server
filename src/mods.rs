@@ -4,6 +4,7 @@ pub mod config;
 pub mod ep_info;
 pub mod handler;
 pub mod health;
+pub mod macros;
 pub mod middleware;
 pub mod push;
 pub mod rate_limit;

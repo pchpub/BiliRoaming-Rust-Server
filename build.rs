@@ -31,6 +31,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tonic_build::configure()
         .build_server(true)
         .build_client(false)
+        .out_dir("src/mods/middleware/error")
+        .type_attribute(".", "#[derive(serde::Serialize, serde::Deserialize)]")
+        .compile(
+            &["./src/proto/server/rpc/error.proto"],
+            &["./src/proto"],
+        )?;
+    tonic_build::configure()
+        .build_server(true)
+        .build_client(false)
         .out_dir("src/mods/middleware/grpc_api")
         // .type_attribute(".", "#[derive(serde::Serialize, serde::Deserialize)]")
         .compile(

@@ -1,3 +1,5 @@
+use super::types::RawRespTrait;
+
 use super::cache::{get_cached_user_info, update_cached_playurl, update_user_info_cache};
 use super::ep_info::update_ep_vip_status_cache;
 use super::health::*;
