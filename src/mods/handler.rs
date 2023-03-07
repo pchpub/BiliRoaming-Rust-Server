@@ -133,8 +133,8 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     // detect user's access_key
     params.access_key = match query.get("access_key") {
         Some(key) => {
-            if key.len() == 0 {
-                error!("[GET PLAYURL] IP {client_ip} -> Detect req without access_key");
+            if key.len() != 32 {
+                error!("[GET PLAYURL] IP {client_ip} -> Detect req with invalid access_key {key}");
                 build_response!(EType::UserNotLoginedError);
             } else {
                 key
@@ -408,9 +408,8 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
 
     // detect user's access_key
     params.access_key = match query.get("access_key") {
-        Option::Some(key) => {
-            let key = key;
-            if key.len() == 0 {
+        Some(key) => {
+            if key.len() != 32 {
                 build_response!(EType::UserNotLoginedError);
             } else {
                 key
@@ -614,9 +613,8 @@ pub async fn handle_th_season_request(
 
     // detect user's access_key
     params.access_key = match query.get("access_key") {
-        Option::Some(key) => {
-            let key = key;
-            if key.len() == 0 {
+        Some(key) => {
+            if key.len() != 32 {
                 build_response!(EType::UserNotLoginedError);
             } else {
                 key
