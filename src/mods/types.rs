@@ -950,6 +950,10 @@ impl UpstreamReply {
         let code = self.code;
         match code {
             0 => true,
+            // 6002105, 开通大会员观看
+            6002105 => true,
+            // 6002003, 抱歉您所在地区不可观看！
+            // 6002003 => false,
             -10403 => {
                 if self.message == "大会员专享限制"
                     || self.message == "抱歉您所使用的平台不可观看！"
