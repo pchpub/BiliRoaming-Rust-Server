@@ -133,11 +133,11 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     // detect user's access_key
     params.access_key = match query.get("access_key") {
         Some(key) => {
-            if key.len() != 32 {
+            if key.len() != 32 && key.len() != 107 {
                 error!("[GET PLAYURL] IP {client_ip} -> Detect req with invalid access_key {key}");
                 build_response!(EType::UserNotLoginedError);
             } else {
-                key
+                key.split_at(32).0
             }
         }
         _ => {
