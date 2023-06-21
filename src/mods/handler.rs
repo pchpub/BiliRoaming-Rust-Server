@@ -22,6 +22,7 @@ use log::{debug, error, warn};
 use pcre2::bytes::Regex;
 use qstring::QString;
 use serde_json::{self, json};
+use tokio::io::split;
 use std::sync::Arc;
 
 // playurl分流
@@ -133,15 +134,11 @@ pub async fn handle_playurl_request(req: &HttpRequest, is_app: bool, is_th: bool
     // detect user's access_key
     params.access_key = match query.get("access_key") {
         Some(key) => {
-            if key.len() != 32 {
-                if key.len() == 107 {
-                    key.split_at(32).0
-                } else {
+            if key.len() != 32 && key.len() != 107 {
                 error!("[GET PLAYURL] IP {client_ip} -> Detect req with invalid access_key {key}");
                 build_response!(EType::UserNotLoginedError);
-              }
             } else {
-                key
+                key.split_at(32).0
             }
         }
         _ => {
@@ -413,15 +410,11 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
     // detect user's access_key
     params.access_key = match query.get("access_key") {
         Some(key) => {
-            if key.len() != 32 {
-                if key.len() == 107 {
-                    key.split_at(32).0
-                } else {
-                error!("[GET PLAYURL] IP {client_ip} -> Detect req with invalid access_key {key}");
+            if key.len() != 32 && key.len() != 107 {
+                error!("[SEARCH] IP {client_ip} -> Detect req with invalid access_key {key}");
                 build_response!(EType::UserNotLoginedError);
-              }
             } else {
-                key
+                key.split_at(32).0
             }
         }
         _ => {
@@ -623,15 +616,11 @@ pub async fn handle_th_season_request(
     // detect user's access_key
     params.access_key = match query.get("access_key") {
         Some(key) => {
-            if key.len() != 32 {
-                if key.len() == 107 {
-                    key.split_at(32).0
-                } else {
+            if key.len() != 32 && key.len() != 107 {
                 error!("[GET PLAYURL] IP {client_ip} -> Detect req with invalid access_key {key}");
                 build_response!(EType::UserNotLoginedError);
-              }
             } else {
-                key
+                key.split_at(32).0
             }
         }
         _ => {
