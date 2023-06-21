@@ -3,7 +3,7 @@ name: PR Check
 on: [pull_request]
 
 jobs:
-  build:
+  check:
     name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
