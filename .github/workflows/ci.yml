@@ -79,7 +79,7 @@ jobs:
         prerelease: true
         tag_name: alpha-releases
         files: |
-          biliroaming_rust_server
+          ./biliroaming_rust_server
 
   release:
     name: Upload the binary file when it is released
@@ -98,4 +98,4 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          biliroaming_rust_server
+          ./biliroaming_rust_server
