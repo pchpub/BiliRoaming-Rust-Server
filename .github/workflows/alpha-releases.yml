@@ -19,26 +19,9 @@ jobs:
         -v ~/.cargo/registry:/root/.cargo/registry \
         registry.gitlab.com/rust_musl_docker/image:stable-latest \
         cargo build --profile=fast -vv --target=x86_64-unknown-linux-musl
-    - name: Rename config file
-      if: ${{ success() }}
-      run: |
-        cp config.example.json config.json
-    - name: Delete old release assets
-      uses: mknejp/delete-release-assets@v1
-      if: ${{ success() }}
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v3.1.0
       with:
-        token: ${{ github.token }}
-        tag: alpha-releases
-        assets: |
-          biliroaming_rust_server
-          config.json
-          *.zip
-    - name: Release
-      uses: softprops/action-gh-release@v1
-#       if: ${{ success() }}
-      with:
-        prerelease: true
-        tag_name: alpha-releases
-        files: |
-          ./target/x86_64-unknown-linux-musl/fast/biliroaming_rust_server
-          ./config.json
+        name: biliroaming-rust-server-${{ github.run_number }}
+        path: |
+            ./target/x86_64-unknown-linux-musl/fast/biliroaming_rust_server
