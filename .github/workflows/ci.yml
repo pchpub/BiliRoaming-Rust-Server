@@ -57,7 +57,11 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
+    - name: Check if alpha-releases tag exists
+      id: check_tag
+      run: echo ::set-output name=tag_exists::$(git tag --list "alpha-releases")
     - name: Delete old release assets
+      if: steps.check_tag.outputs.tag_exists == 'alpha-releases'
       uses: mknejp/delete-release-assets@v1
       with:
         token: ${{ github.token }}
@@ -65,6 +69,7 @@ jobs:
         assets: |
           biliroaming_rust_server
     - name: Release
+      if: steps.check_tag.outputs.tag_exists == 'alpha-releases'
       uses: softprops/action-gh-release@v1
       with:
         prerelease: true
