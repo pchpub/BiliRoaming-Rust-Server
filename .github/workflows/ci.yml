@@ -51,7 +51,6 @@ jobs:
   
   alpha:
     name: Upload the Alpha test version file
-    if: ${{ contains(github.ref, 'refs/tags/alpha-releases') }}
     runs-on: ubuntu-latest
     needs:
       - build
