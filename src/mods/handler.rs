@@ -414,7 +414,12 @@ pub async fn handle_search_request(req: &HttpRequest, is_app: bool, is_th: bool)
     params.access_key = match query.get("access_key") {
         Some(key) => {
             if key.len() != 32 {
+                if key.len() == 107 {
+                    key.split_at(32).0
+                } else {
+                error!("[GET PLAYURL] IP {client_ip} -> Detect req with invalid access_key {key}");
                 build_response!(EType::UserNotLoginedError);
+              }
             } else {
                 key
             }
@@ -619,7 +624,12 @@ pub async fn handle_th_season_request(
     params.access_key = match query.get("access_key") {
         Some(key) => {
             if key.len() != 32 {
+                if key.len() == 107 {
+                    key.split_at(32).0
+                } else {
+                error!("[GET PLAYURL] IP {client_ip} -> Detect req with invalid access_key {key}");
                 build_response!(EType::UserNotLoginedError);
+              }
             } else {
                 key
             }
