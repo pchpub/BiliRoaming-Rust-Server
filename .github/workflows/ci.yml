@@ -35,7 +35,13 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: Build
-      run: cargo build --profile=fast -vv --target=x86_64-unknown-linux-musl
+      run: |
+        docker run -i --rm \
+        -v $PWD:/workdir \
+        -v ~/.cargo/git:/root/.cargo/git \
+        -v ~/.cargo/registry:/root/.cargo/registry \
+        registry.gitlab.com/rust_musl_docker/image:stable-latest \
+        cargo build --profile=fast -vv --target=x86_64-unknown-linux-musl
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v3.1.0
       with:
@@ -58,6 +64,7 @@ jobs:
     - name: Update Alpha Release
       uses: mini-bomba/create-github-release@v1.1.3
       with:
+        token: ${{ secrets.GITHUB_TOKEN }}
         prerelease: true
         tag: alpha-releases
         name: Alpha-Release
