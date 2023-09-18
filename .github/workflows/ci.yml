@@ -61,20 +61,22 @@ jobs:
       uses: actions/download-artifact@v3
       with:
         name: biliroaming-rust-server-${{ github.run_number }}
-    - name: Delete old release assets
-      uses: mknejp/delete-release-assets@v1
+    - name: Update Alpha Release
+      uses: mini-bomba/create-github-release@v1.1.3
       with:
-        token: ${{ github.token }}
-        tag: alpha-releases
-        assets: |
-          biliroaming_rust_server
-    - name: Release
-      uses: softprops/action-gh-release@v1
-      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
         prerelease: true
-        tag_name: alpha-releases
+        tag: alpha-releases
+        name: Alpha-Release
+        body: |
+            This automatic prerelease is built from commit ${{ env.GIT_HASH }} and was triggered by @${{ github.actor }}
+            [Github Actions workflow run that built this prerelease](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            Commit message:
+            ${{ env.GIT_MESSAGE }}
         files: |
           ./biliroaming_rust_server
+        clear_attachments: true
 
   release:
     name: Upload the binary file when it is released
