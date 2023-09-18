@@ -1316,9 +1316,9 @@ pub async fn get_upstream_bili_search(
 
     query_vec.sort_by_key(|v| v.0.clone());
 
-    let signed_url =  if !params.is_app {
+    let signed_url = if !params.is_app {
         format!("{}?{}", api, raw_query)
-    }else{
+    } else {
         build_signed_url!(api, query_vec, params.appsec).0
     };
 
@@ -1594,32 +1594,51 @@ pub async fn get_upstream_bili_season(
                                 }
                             }
                         }
-                        let mut index_of_replace_json = 0;
-                        let len_of_replace_json =
-                            sub_replace_json["data"].as_array().unwrap().len();
-                        while index_of_replace_json < len_of_replace_json {
-                            let ep: usize = sub_replace_json["data"][index_of_replace_json]["ep"]
-                                .as_u64()
-                                .unwrap() as usize;
-                            let key = sub_replace_json["data"][index_of_replace_json]["key"]
-                                .as_str()
-                                .unwrap();
-                            let lang = sub_replace_json["data"][index_of_replace_json]["lang"]
-                                .as_str()
-                                .unwrap();
-                            let url = sub_replace_json["data"][index_of_replace_json]["url"]
-                                .as_str()
-                                .unwrap();
-                            if is_result {
-                                let element = format!("{{\"id\":{index_of_replace_json},\"key\":\"{key}\",\"title\":\"[非官方] {lang} {}\",\"url\":\"https://{url}\"}}",config.th_app_season_sub_name);
-                                body_data_json["result"]["modules"][0]["data"]["episodes"][ep]
-                                    ["subtitles"]
-                                    .as_array_mut()
-                                    .unwrap()
-                                    .insert(0, serde_json::from_str(&element).unwrap());
-                            }
-                            index_of_replace_json += 1;
-                        }
+                        sub_replace_json["data"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .enumerate()
+                            .for_each(|(id, item)| {
+                                let ep = item["ep"].as_u64().unwrap() as usize;
+                                let key = item["key"].as_str().unwrap();
+                                let lang = item["lang"].as_str().unwrap();
+                                let url = item["url"].as_str().unwrap();
+                                if is_result {
+                                    let element = format!("{{\"id\":{id},\"key\":\"{key}\",\"title\":\"[非官方] {lang} {}\",\"url\":\"https://{url}\"}}",config.th_app_season_sub_name);
+                                    body_data_json["result"]["modules"][0]["data"]["episodes"][ep]
+                                        ["subtitles"]
+                                        .as_array_mut()
+                                        .unwrap()
+                                        .insert(0, serde_json::from_str(&element).unwrap());
+                                }
+                            });
+                        // let mut index_of_replace_json = 0;
+                        // let len_of_replace_json =
+                        //     sub_replace_json["data"].as_array().unwrap().len();
+                        // while index_of_replace_json < len_of_replace_json {
+                        //     let ep: usize = sub_replace_json["data"][index_of_replace_json]["ep"]
+                        //         .as_u64()
+                        //         .unwrap() as usize;
+                        //     let key = sub_replace_json["data"][index_of_replace_json]["key"]
+                        //         .as_str()
+                        //         .unwrap();
+                        //     let lang = sub_replace_json["data"][index_of_replace_json]["lang"]
+                        //         .as_str()
+                        //         .unwrap();
+                        //     let url = sub_replace_json["data"][index_of_replace_json]["url"]
+                        //         .as_str()
+                        //         .unwrap();
+                        //     if is_result {
+                        //         let element = format!("{{\"id\":{index_of_replace_json},\"key\":\"{key}\",\"title\":\"[非官方] {lang} {}\",\"url\":\"https://{url}\"}}",config.th_app_season_sub_name);
+                        //         body_data_json["result"]["modules"][0]["data"]["episodes"][ep]
+                        //             ["subtitles"]
+                        //             .as_array_mut()
+                        //             .unwrap()
+                        //             .insert(0, serde_json::from_str(&element).unwrap());
+                        //     }
+                        //     index_of_replace_json += 1;
+                        // }
                     }
 
                     return serde_json::to_string(&body_data_json).unwrap();
