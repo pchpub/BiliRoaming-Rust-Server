@@ -14,7 +14,7 @@ serde_yaml = "0.9.14"
 serde = {version = "1.0.147",features = ["derive"]}
 deadpool = "0.9.5"
 deadpool-redis = "0.11.0"
-async-channel = "1.7.1"
+async-channel = "2.1.0"
 futures = "0.3.25"
 tokio = { version = "1.22.0", features = ["full"] }
 pcre2 = "0.2.3"
